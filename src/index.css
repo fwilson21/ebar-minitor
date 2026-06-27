@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply bg-panel-900 text-slate-100 antialiased;
+}
+
+/* Lectura tipo instrumento: usado para voltaje/amperaje/horas, evoca un display de panel eléctrico */
+.lectura {
+  @apply font-mono tabular-nums tracking-wide;
+}
+
+.tarjeta {
+  @apply bg-panel-800 border border-panel-600/60 rounded-xl shadow-lg shadow-black/20;
+}
+
+.boton-primario {
+  @apply bg-gauge-ok text-panel-900 font-semibold rounded-lg px-4 py-2.5 transition active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100;
+}
+
+.boton-secundario {
+  @apply bg-panel-700 border border-panel-600 text-slate-100 font-medium rounded-lg px-4 py-2.5 transition active:scale-[0.98];
+}
+
+.campo {
+  @apply w-full bg-panel-900 border border-panel-600 rounded-lg px-3 py-2.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-gauge-ok/60;
+}
+
+.etiqueta {
+  @apply text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5 block;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #1E4254; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
