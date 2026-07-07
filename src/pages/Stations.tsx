@@ -6,6 +6,7 @@ import { StationCard } from '../components/StationCard';
 
 export function Stations() {
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
+  const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>({});
   const [filtroZona, setFiltroZona] = useState<ZonaTipo | 'todas'>('todas');
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
@@ -18,7 +19,23 @@ export function Stations() {
         .eq('activa', true)
         .order('nombre');
 
-      setEstaciones((data as EstacionEbar[]) ?? []);
+      const lista = (data as EstacionEbar[]) ?? [];
+      setEstaciones(lista);
+
+      if (lista.length > 0) {
+        const { data: visitas } = await supabase
+          .from('visitas')
+          .select('estacion_id, fecha_hora_llegada')
+          .in('estacion_id', lista.map((e) => e.id))
+          .order('fecha_hora_llegada', { ascending: false });
+
+        const mapa: Record<string, string> = {};
+        for (const v of visitas ?? []) {
+          if (!mapa[v.estacion_id]) mapa[v.estacion_id] = v.fecha_hora_llegada;
+        }
+        setUltimasVisitas(mapa);
+      }
+
       setCargando(false);
     }
 
@@ -71,7 +88,7 @@ export function Stations() {
       ) : (
         <div className="space-y-2">
           {filtradas.map((e) => (
-            <StationCard key={e.id} estacion={e} />
+            <StationCard key={e.id} estacion={e} ultimaVisita={ultimasVisitas[e.id]} />
           ))}
         </div>
       )}

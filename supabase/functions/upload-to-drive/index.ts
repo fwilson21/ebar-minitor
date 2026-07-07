@@ -15,6 +15,7 @@
 // en GOOGLE_DRIVE_WEBAPP_URL. Si esa variable existe, se usa primero.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { corsHeaders } from '../_shared/cors.ts';
 
 interface Payload {
   visita_id: string;
@@ -23,8 +24,16 @@ interface Payload {
   descripcion?: string | null;
 }
 
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   try {
     const body: Payload = await req.json();
@@ -60,7 +69,7 @@ Deno.serve(async (req) => {
         url_publica: resultado.url_publica,
         descripcion: body.descripcion ?? null,
       });
-      return new Response(JSON.stringify(resultado), { headers: { 'Content-Type': 'application/json' } });
+      return json(resultado);
     }
 
     const accessToken = await obtenerTokenAccesoGoogle();
@@ -84,11 +93,9 @@ Deno.serve(async (req) => {
       descripcion: body.descripcion ?? null,
     });
 
-    return new Response(JSON.stringify(resultado),
-      { headers: { 'Content-Type': 'application/json' } },
-    );
+    return json(resultado);
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+    return json({ error: String(err) }, 500);
   }
 });
 

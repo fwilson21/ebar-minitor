@@ -3,11 +3,20 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { estaConfiguradoSupabase } from '../lib/supabase';
 
+function mensajeError(original: string): string {
+  const m = original.toLowerCase();
+  if (m.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.';
+  if (m.includes('email not confirmed')) return 'Debes confirmar tu correo antes de ingresar.';
+  if (m.includes('failed to fetch') || m.includes('network')) return 'No se pudo conectar. Verifica tu conexión a internet.';
+  return 'No se pudo iniciar sesión. Intenta de nuevo.';
+}
+
 export function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mostrarPassword, setMostrarPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
@@ -17,7 +26,7 @@ export function Login() {
     setError(null);
     const { error } = await login(email, password);
     setCargando(false);
-    if (error) setError('Correo o contraseña incorrectos.');
+    if (error) setError(mensajeError(error));
     else navigate('/');
   }
 
@@ -42,18 +51,30 @@ export function Login() {
         />
 
         <label className="etiqueta">Contraseña</label>
-        <input
-          type="password"
-          required
-          className="campo mb-4"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
-        />
+        <div className="relative mb-4">
+          <input
+            type={mostrarPassword ? 'text' : 'password'}
+            required
+            className="campo pr-16"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+          <button
+            type="button"
+            onClick={() => setMostrarPassword((v) => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
+          >
+            {mostrarPassword ? 'Ocultar' : 'Mostrar'}
+          </button>
+        </div>
 
         {error && <p className="text-sm text-gauge-danger mb-4">{error}</p>}
 
-        <button type="submit" disabled={cargando} className="boton-primario w-full">
+        <button type="submit" disabled={cargando} className="boton-primario w-full flex items-center justify-center gap-2">
+          {cargando && (
+            <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          )}
           {cargando ? 'Ingresando…' : 'Ingresar'}
         </button>
 

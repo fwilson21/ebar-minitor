@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import { supabase } from './supabase';
-import type { VisitaInput } from './types';
+import type { FotoLocal, VisitaInput } from './types';
 
 // ----------------------------------------------------------------------------
 // Base de datos local (IndexedDB) para soportar el modo offline básico.
@@ -9,12 +9,14 @@ import type { VisitaInput } from './types';
 // vuelve la conexión.
 // ----------------------------------------------------------------------------
 
-interface VisitaPendiente {
+export interface VisitaPendiente {
   cliente_uuid: string;
   payload: VisitaInput;
   intentos: number;
   ultimo_error?: string;
   creado_en: string;
+  /** Si está presente, esta entrada es una edición de una visita ya existente (no una nueva). */
+  visita_id?: string;
 }
 
 class OfflineDB extends Dexie {
@@ -39,8 +41,23 @@ export async function encolarVisita(payload: VisitaInput) {
   });
 }
 
+/** Encola la edición de una visita ya existente (identificada por su id real en la BD). */
+export async function encolarEdicionVisita(visitaId: string, payload: VisitaInput) {
+  await offlineDB.visitas_pendientes.put({
+    cliente_uuid: payload.cliente_uuid,
+    visita_id: visitaId,
+    payload,
+    intentos: 0,
+    creado_en: new Date().toISOString(),
+  });
+}
+
 export async function contarPendientes(): Promise<number> {
   return offlineDB.visitas_pendientes.count();
+}
+
+export async function obtenerPendientes(): Promise<VisitaPendiente[]> {
+  return offlineDB.visitas_pendientes.orderBy('creado_en').toArray();
 }
 
 /**
@@ -55,19 +72,71 @@ export async function sincronizarPendientes(): Promise<{ ok: number; fallidas: n
 
   for (const item of pendientes) {
     try {
-      const { bombas, fotos, ...visita } = item.payload;
+      const {
+        id: _idPayload, cliente_uuid: _clienteUuidPayload,
+        bombas, fotos, lineas_impulsion, guias_izado, valvulas_compuerta, valvulas_check, valvula_aire,
+        camara_rejilla, camara_valvula_compuerta,
+        tablero_distribucion, variador,
+        descarga_emergencia, tuberia_400_valvulas_aire, tuberia_400_uniones_elastomericas,
+        tuberia_600_valvulas_aire, tuberia_600_uniones_elastomericas, cerramiento_seguridad,
+        jardineras, patios_maniobras, ...visita
+      } = item.payload;
 
-      const { data: visitaInsertada, error: errorVisita } = await supabase
-        .from('visitas')
-        .upsert(visita, { onConflict: 'cliente_uuid' })
-        .select('id')
-        .single();
+      // Columnas JSONB: estado/observaciones/números afectados/tiene (las fotos van a la tabla fotos)
+      const aJsonb = (eq: typeof lineas_impulsion) =>
+        eq
+          ? {
+              estado: eq.estado,
+              observaciones: eq.observaciones ?? null,
+              numeros_afectados: eq.numeros_afectados ?? null,
+              tiene: eq.tiene ?? null,
+            }
+          : null;
+      const equiposParaBD = {
+        lineas_impulsion: aJsonb(lineas_impulsion),
+        guias_izado: aJsonb(guias_izado),
+        valvulas_compuerta: aJsonb(valvulas_compuerta),
+        valvulas_check: aJsonb(valvulas_check),
+        valvula_aire: aJsonb(valvula_aire),
+        camara_rejilla: aJsonb(camara_rejilla),
+        camara_valvula_compuerta: aJsonb(camara_valvula_compuerta),
+        tablero_distribucion: aJsonb(tablero_distribucion),
+        variador: aJsonb(variador),
+        descarga_emergencia: aJsonb(descarga_emergencia),
+        tuberia_400_valvulas_aire: aJsonb(tuberia_400_valvulas_aire),
+        tuberia_400_uniones_elastomericas: aJsonb(tuberia_400_uniones_elastomericas),
+        tuberia_600_valvulas_aire: aJsonb(tuberia_600_valvulas_aire),
+        tuberia_600_uniones_elastomericas: aJsonb(tuberia_600_uniones_elastomericas),
+      };
 
-      if (errorVisita) throw errorVisita;
+      let visitaId: string;
+      if (item.visita_id) {
+        // Edición de una visita existente: actualizar por id real, sin tocar cliente_uuid.
+        const { error: errorUpdate } = await supabase
+          .from('visitas')
+          .update({ ...visita, ...equiposParaBD })
+          .eq('id', item.visita_id);
+        if (errorUpdate) throw errorUpdate;
+        visitaId = item.visita_id;
+      } else {
+        const { data: visitaInsertada, error: errorVisita } = await supabase
+          .from('visitas')
+          .upsert({ ...visita, cliente_uuid: item.cliente_uuid, ...equiposParaBD }, { onConflict: 'cliente_uuid' })
+          .select('id')
+          .single();
+        if (errorVisita) throw errorVisita;
+        visitaId = visitaInsertada.id;
+      }
 
       const registrosBombas = bombas.map((b) => ({
-        ...b,
-        visita_id: visitaInsertada.id,
+        bomba_id: b.bomba_id,
+        numero_bomba: b.numero_bomba,
+        estado: b.estado,
+        voltaje: b.voltaje,
+        amperaje: b.amperaje,
+        horas_operacion_acumuladas: b.horas_operacion_acumuladas,
+        observaciones: b.observaciones,
+        visita_id: visitaId,
       }));
       if (registrosBombas.length) {
         const { error: errorBombas } = await supabase
@@ -76,11 +145,41 @@ export async function sincronizarPendientes(): Promise<{ ok: number; fallidas: n
         if (errorBombas) throw errorBombas;
       }
 
-      // Las fotos con blob pendiente se suben vía Edge Function `upload-to-drive`
-      for (const foto of fotos) {
-        if (foto.estado_subida === 'subida' || !foto.blob) continue;
-        await subirFotoADrive(visitaInsertada.id, foto);
-      }
+      // Fotos de cada sección de equipo (descripcion identifica la sección en Drive)
+      const seccionesEquipo = [
+        { datos: lineas_impulsion, nombre: 'lineas_impulsion' },
+        { datos: guias_izado, nombre: 'guias_izado' },
+        { datos: valvulas_compuerta, nombre: 'valvulas_compuerta' },
+        { datos: valvulas_check, nombre: 'valvulas_check' },
+        { datos: valvula_aire, nombre: 'valvula_aire' },
+        { datos: camara_rejilla, nombre: 'camara_rejilla' },
+        { datos: camara_valvula_compuerta, nombre: 'camara_valvula_compuerta' },
+        { datos: tablero_distribucion, nombre: 'tablero_distribucion' },
+        { datos: variador, nombre: 'variador' },
+        { datos: descarga_emergencia, nombre: 'descarga_emergencia' },
+        { datos: tuberia_400_valvulas_aire, nombre: 'tuberia_400_valvulas_aire' },
+        { datos: tuberia_400_uniones_elastomericas, nombre: 'tuberia_400_uniones_elastomericas' },
+        { datos: tuberia_600_valvulas_aire, nombre: 'tuberia_600_valvulas_aire' },
+        { datos: tuberia_600_uniones_elastomericas, nombre: 'tuberia_600_uniones_elastomericas' },
+        { datos: cerramiento_seguridad, nombre: 'cerramiento_seguridad' },
+        { datos: jardineras, nombre: 'jardineras' },
+        { datos: patios_maniobras, nombre: 'patios_maniobras' },
+      ] as const;
+
+      // Se juntan todas las fotos pendientes (generales + por sección + por bomba) en una sola
+      // lista y se suben en paralelo (con tope de concurrencia): antes se subían de a una en
+      // serie, y con internet rápido pero muchas fotos (una visita completa puede tener 20-30)
+      // el cuello de botella era la latencia de cada ida y vuelta a la Edge Function, no el ancho
+      // de banda — subir 20 fotos secuenciales podía tardar más de medio minuto solo en eso.
+      const fotosPorSubir: Array<{ foto: FotoLocal; descripcion?: string }> = [
+        ...fotos.map((foto) => ({ foto, descripcion: undefined })),
+        ...seccionesEquipo.flatMap(({ datos, nombre }) =>
+          datos ? datos.fotos.map((foto) => ({ foto, descripcion: nombre })) : []
+        ),
+        ...bombas.flatMap((b) => (b.fotos ?? []).map((foto) => ({ foto, descripcion: `bomba_${b.numero_bomba}` }))),
+      ].filter(({ foto }) => foto.estado_subida !== 'subida' && foto.blob);
+
+      await subirEnParalelo(fotosPorSubir, 4, ({ foto, descripcion }) => subirFotoADrive(visitaId, { ...foto, descripcion }));
 
       await offlineDB.visitas_pendientes.delete(item.cliente_uuid);
       ok += 1;
@@ -94,6 +193,17 @@ export async function sincronizarPendientes(): Promise<{ ok: number; fallidas: n
   }
 
   return { ok, fallidas };
+}
+
+/** Ejecuta `tarea` sobre cada elemento de `items` con un máximo de `concurrencia` a la vez. */
+async function subirEnParalelo<T>(items: T[], concurrencia: number, tarea: (item: T) => Promise<void>): Promise<void> {
+  let indice = 0;
+  async function trabajador() {
+    while (indice < items.length) {
+      await tarea(items[indice++]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrencia, items.length) }, trabajador));
 }
 
 /**

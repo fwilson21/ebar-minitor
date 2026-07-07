@@ -2,7 +2,20 @@ import { Link } from 'react-router-dom';
 import type { EstacionEbar } from '../lib/types';
 import { EstadoBadge } from './EstadoBadge';
 
-export function StationCard({ estacion }: { estacion: EstacionEbar }) {
+function tiempoRelativo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutos = Math.floor(diff / 60000);
+  const horas = Math.floor(minutos / 60);
+  const dias = Math.floor(horas / 24);
+  if (minutos < 1) return 'justo ahora';
+  if (minutos < 60) return `hace ${minutos} min`;
+  if (horas < 24) return `hace ${horas}h`;
+  if (dias === 1) return 'ayer';
+  if (dias < 7) return `hace ${dias} días`;
+  return new Date(iso).toLocaleDateString('es-EC');
+}
+
+export function StationCard({ estacion, ultimaVisita }: { estacion: EstacionEbar; ultimaVisita?: string }) {
   return (
     <Link
       to={`/estaciones/${estacion.id}`}
@@ -10,7 +23,6 @@ export function StationCard({ estacion }: { estacion: EstacionEbar }) {
     >
       <div className="w-16 h-16 rounded-lg bg-panel-700 overflow-hidden flex-shrink-0 flex items-center justify-center text-slate-500">
         {estacion.foto_url ? (
-          // eslint-disable-next-line jsx-a11y/alt-text
           <img src={estacion.foto_url} className="w-full h-full object-cover" alt={estacion.nombre} />
         ) : (
           <span className="text-2xl">🏭</span>
@@ -22,10 +34,17 @@ export function StationCard({ estacion }: { estacion: EstacionEbar }) {
           <span className="text-xs text-slate-500 lectura">{estacion.codigo}</span>
         </div>
         <p className="text-sm text-slate-400 truncate">{estacion.direccion ?? 'Sin dirección registrada'}</p>
-        <div className="flex items-center gap-2 mt-2">
-          <EstadoBadge estado={estacion.estado_actual} />
-          <span className="text-xs text-slate-500 uppercase tracking-wide">{estacion.zona}</span>
-          <span className="text-xs text-slate-500">· {estacion.numero_bombas} bomba(s)</span>
+        <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center gap-2">
+            <EstadoBadge estado={estacion.estado_actual} />
+            <span className="text-xs text-slate-500 uppercase tracking-wide">{estacion.zona}</span>
+            {estacion.numero_bombas > 0 && (
+              <span className="text-xs text-slate-500">· {estacion.numero_bombas} bomba(s)</span>
+            )}
+          </div>
+          <span className={`text-xs lectura ${ultimaVisita ? 'text-slate-500' : 'text-gauge-warn'}`}>
+            {ultimaVisita ? tiempoRelativo(ultimaVisita) : 'Sin visitas'}
+          </span>
         </div>
       </div>
     </Link>

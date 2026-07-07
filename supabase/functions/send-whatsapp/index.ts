@@ -14,6 +14,7 @@
 //        individualmente a cada integrante del grupo/supervisión.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { corsHeaders } from '../_shared/cors.ts';
 
 interface Payload {
   destino: 'grupo' | 'supervisores';
@@ -22,8 +23,16 @@ interface Payload {
   mensaje: string;
 }
 
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   try {
     const { destino, nombre_archivo, pdf_base64, mensaje }: Payload = await req.json();
@@ -40,7 +49,7 @@ Deno.serve(async (req) => {
 
     const destinatarios = await resolverDestinatarios(supabaseAdmin, destino);
     if (destinatarios.length === 0) {
-      return new Response(JSON.stringify({ error: 'No hay destinatarios configurados.' }), { status: 400 });
+      return json({ error: 'No hay destinatarios configurados.' }, 400);
     }
 
     const resultados = [];
@@ -49,11 +58,9 @@ Deno.serve(async (req) => {
       resultados.push({ numero, ok: r.ok });
     }
 
-    return new Response(JSON.stringify({ enviados: resultados }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return json({ enviados: resultados });
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+    return json({ error: String(err) }, 500);
   }
 });
 

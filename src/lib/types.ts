@@ -3,8 +3,9 @@
 export type UserRole = 'operador' | 'administrador' | 'supervisor';
 export type ZonaTipo = 'urbana' | 'rural';
 export type EstadoEstacion = 'operativa' | 'mantenimiento_correctivo' | 'fuera_de_servicio';
-export type EstadoBomba = 'encendida' | 'apagada' | 'en_reposo';
+export type EstadoBomba = 'encendida' | 'apagada' | 'en_falla' | 'retirado_para_mantenimiento';
 export type NivelTanque = 'alto' | 'medio' | 'bajo';
+export type TipoEstacion = 'ebar' | 'linea_conduccion';
 
 export interface Usuario {
   id: string;
@@ -29,6 +30,7 @@ export interface EstacionEbar {
   numero_bombas: number;
   estado_actual: EstadoEstacion;
   activa: boolean;
+  tipo: TipoEstacion;
 }
 
 export interface Bomba {
@@ -41,16 +43,21 @@ export interface Bomba {
   voltaje_nominal?: number | null;
   amperaje_nominal?: number | null;
   activa: boolean;
+  custodio?: string | null;
+  codigo_sigame?: string | null;
 }
 
 export interface RegistroBombaInput {
   bomba_id: string;
   numero_bomba: number;
-  estado: EstadoBomba;
+  estado: EstadoBomba | '';
   voltaje?: number | null;
   amperaje?: number | null;
   horas_operacion_acumuladas?: number | null;
   observaciones?: string | null;
+  custodio?: string | null;
+  codigo_sigame?: string | null;
+  fotos: FotoLocal[];
 }
 
 export interface VisitaInput {
@@ -68,9 +75,28 @@ export interface VisitaInput {
   ruidos_descripcion?: string | null;
   cerramiento_ok: boolean;
   cerramiento_observaciones?: string | null;
+  cerramiento_seguridad?: RegistroEquipo | null;
+  jardineras_observaciones?: string | null;
+  jardineras?: RegistroEquipo | null;
+  patios_maniobras_observaciones?: string | null;
+  patios_maniobras?: RegistroEquipo | null;
   observaciones_generales?: string | null;
   bombas: RegistroBombaInput[];
   fotos: FotoLocal[];
+  lineas_impulsion?: RegistroEquipo | null;
+  guias_izado?: RegistroEquipo | null;
+  valvulas_compuerta?: RegistroEquipo | null;
+  valvulas_check?: RegistroEquipo | null;
+  valvula_aire?: RegistroEquipo | null;
+  camara_rejilla?: RegistroEquipo | null;
+  camara_valvula_compuerta?: RegistroEquipo | null;
+  tablero_distribucion?: RegistroEquipo | null;
+  variador?: RegistroEquipo | null;
+  descarga_emergencia?: RegistroEquipo | null;
+  tuberia_400_valvulas_aire?: RegistroEquipo | null;
+  tuberia_400_uniones_elastomericas?: RegistroEquipo | null;
+  tuberia_600_valvulas_aire?: RegistroEquipo | null;
+  tuberia_600_uniones_elastomericas?: RegistroEquipo | null;
 }
 
 export interface FotoLocal {
@@ -83,12 +109,25 @@ export interface FotoLocal {
   url_publica?: string;
 }
 
+export type EstadoEquipo = 'operativo' | 'en_falla' | 'requiere_mantenimiento';
+
+export interface RegistroEquipo {
+  estado: EstadoEquipo | '';
+  observaciones?: string | null;
+  fotos: FotoLocal[];
+  /** Números de unidad afectados por el estado elegido (ej. válvula de compuerta 2 y 4 en falla). */
+  numeros_afectados?: number[] | null;
+  /** Para equipos opcionales (ej. Descarga de emergencia): si la estación cuenta con ese equipo. */
+  tiene?: boolean | null;
+}
+
 export interface DashboardResumen {
   fecha: string;
   total_visitas: number;
   estaciones_con_problemas: number;
   alertas_voltaje: number;
   estaciones_sin_visitar: number;
+  equipos_con_alerta: number;
 }
 
 // Rango de voltaje aceptable usado para resaltar alertas en la UI.
