@@ -1,97 +1,123 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { descargarBlob, generarReporteVisitas, type VisitaParaReporte } from '../lib/pdf';
-
-const EMPRESA = {
-  nombre: 'Tu Empresa de Agua y Saneamiento',
-  direccion: 'Quito, Ecuador',
-  telefono: '+593 99 999 9999',
-};
+import { abrirBlob, descargarBlob, generarReporteVisitas, type VisitaParaReporte } from '../lib/pdf';
+import { incrustarFotosVisitas } from '../lib/fotos';
+import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
+import type { EstacionEbar, Usuario } from '../lib/types';
 
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
 
 export function Reports() {
   const { usuario } = useAuth();
+  const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
+
   const [tipo, setTipo] = useState<TipoReporte>('consolidado_fecha');
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().slice(0, 10));
+  const [fechaFin, setFechaFin] = useState(new Date().toISOString().slice(0, 10));
+  const [operadores, setOperadores] = useState<Usuario[]>([]);
+  const [operadorId, setOperadorId] = useState<string>(usuario?.id ?? '');
+  const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
+  const [estacionId, setEstacionId] = useState<string>('');
   const [generando, setGenerando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ultimoPdf, setUltimoPdf] = useState<Blob | null>(null);
   const [ultimoNombre, setUltimoNombre] = useState('');
 
+  useEffect(() => {
+    if (!esAdmin) return;
+    supabase
+      .from('usuarios')
+      .select('id, nombre_completo, rol, activo, firma_url')
+      .eq('activo', true)
+      .order('nombre_completo')
+      .then(({ data }) => setOperadores((data as Usuario[]) ?? []));
+  }, [esAdmin]);
+
+  useEffect(() => {
+    supabase
+      .from('estaciones_ebar')
+      .select('id, codigo, nombre, zona')
+      .order('codigo')
+      .then(({ data }) => {
+        const lista = (data as EstacionEbar[]) ?? [];
+        setEstaciones(lista);
+        setEstacionId((actual) => actual || lista[0]?.id || '');
+      });
+  }, []);
+
+  const operadorNombre =
+    operadores.find((o) => o.id === operadorId)?.nombre_completo ?? usuario?.nombre_completo ?? '';
+  const estacionNombre = estaciones.find((e) => e.id === estacionId);
+
+  const esRango = tipo === 'consolidado_fecha' || tipo === 'individual_estacion';
+  const fechaInicioEfectiva = fechaInicio;
+  const fechaFinEfectiva = esRango ? fechaFin : fechaInicio;
+  const rangoLabel =
+    fechaInicioEfectiva === fechaFinEfectiva
+      ? fechaInicioEfectiva
+      : `${fechaInicioEfectiva} al ${fechaFinEfectiva}`;
+
   async function obtenerVisitas(): Promise<VisitaParaReporte[]> {
     let query = supabase
       .from('visitas')
-      .select(
-        `id, fecha_hora_llegada, fecha_hora_salida, estado_estacion, nivel_tanque,
-         olores_anormales, olores_descripcion, ruidos_extranos, ruidos_descripcion,
-         cerramiento_ok, observaciones_generales,
-         estaciones_ebar ( nombre, codigo, zona ),
-         usuarios ( nombre_completo, firma_url ),
-         registros_bombas ( numero_bomba, estado, voltaje, amperaje, horas_operacion_acumuladas, observaciones, voltaje_fuera_rango ),
-         fotos ( url_publica )`
-      )
-      .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
-      .lte('fecha_hora_llegada', `${fecha}T23:59:59`);
+      .select(SELECT_VISITA_REPORTE)
+      .gte('fecha_hora_llegada', `${fechaInicioEfectiva}T00:00:00`)
+      .lte('fecha_hora_llegada', `${fechaFinEfectiva}T23:59:59`);
 
-    if (tipo === 'diario_operador' && usuario) {
-      query = query.eq('operador_id', usuario.id);
+    if (tipo === 'diario_operador') {
+      query = query.eq('operador_id', esAdmin ? operadorId : (usuario?.id ?? ''));
+    }
+    if (tipo === 'consolidado_fecha' && esAdmin && operadorId) {
+      query = query.eq('operador_id', operadorId);
+    }
+    if (tipo === 'individual_estacion') {
+      query = query.eq('estacion_id', estacionId);
     }
 
     const { data, error } = await query;
     if (error) throw error;
 
-    return (data ?? []).map((v: any) => ({
-      estacion_nombre: v.estaciones_ebar?.nombre ?? '-',
-      estacion_codigo: v.estaciones_ebar?.codigo ?? '-',
-      zona: v.estaciones_ebar?.zona ?? '-',
-      fecha_hora_llegada: v.fecha_hora_llegada,
-      fecha_hora_salida: v.fecha_hora_salida,
-      operador_nombre: v.usuarios?.nombre_completo ?? '-',
-      firma_url: v.usuarios?.firma_url ?? null,
-      estado_estacion: v.estado_estacion,
-      nivel_tanque: v.nivel_tanque,
-      olores_anormales: v.olores_anormales,
-      olores_descripcion: v.olores_descripcion,
-      ruidos_extranos: v.ruidos_extranos,
-      ruidos_descripcion: v.ruidos_descripcion,
-      cerramiento_ok: v.cerramiento_ok,
-      observaciones_generales: v.observaciones_generales,
-      bombas: v.registros_bombas ?? [],
-      fotos_urls: (v.fotos ?? []).map((f: any) => f.url_publica).filter(Boolean),
-    }));
+    return (data ?? []).map(mapearVisitaFila);
   }
 
   async function manejarGenerar() {
     setGenerando(true);
     setMensaje(null);
     try {
-      const visitas = await obtenerVisitas();
-      if (visitas.length === 0) {
+      const visitasSinFotos = await obtenerVisitas();
+      if (visitasSinFotos.length === 0) {
         setMensaje('No hay visitas registradas para los filtros seleccionados.');
         return;
       }
+      const visitas = await incrustarFotosVisitas(visitasSinFotos);
+
       const titulo =
         tipo === 'diario_operador'
-          ? `Reporte diario — ${usuario?.nombre_completo}`
+          ? `Reporte diario — ${operadorNombre}`
           : tipo === 'consolidado_fecha'
-          ? 'Reporte consolidado'
-          : 'Reporte de estación';
+          ? `Reporte consolidado${esAdmin && operadorId ? ` — ${operadorNombre}` : ''}`
+          : `Reporte de estación — ${estacionNombre ? `${estacionNombre.codigo} ${estacionNombre.nombre}` : ''}`;
 
-      const blob = await generarReporteVisitas(EMPRESA, `${titulo}\n${fecha}`, visitas);
-      const nombre = `reporte_${tipo}_${fecha}.pdf`;
+      const blob = await generarReporteVisitas(`${titulo}\n${rangoLabel}`, visitas);
+      const nombreFechas =
+        fechaInicioEfectiva === fechaFinEfectiva ? fechaInicioEfectiva : `${fechaInicioEfectiva}_a_${fechaFinEfectiva}`;
+      const ahora = new Date();
+      const horaArchivo = [ahora.getHours(), ahora.getMinutes(), ahora.getSeconds()]
+        .map((n) => String(n).padStart(2, '0'))
+        .join('-');
+      const nombre = `reporte_${tipo}_${nombreFechas}_${horaArchivo}.pdf`;
       setUltimoPdf(blob);
       setUltimoNombre(nombre);
       descargarBlob(blob, nombre);
+      abrirBlob(blob);
 
-      // Registrar el reporte en la base de datos para trazabilidad.
       await supabase.from('reportes').insert({
         tipo,
         generado_por: usuario?.id,
-        fecha_referencia: fecha,
-        operador_id: tipo === 'diario_operador' ? usuario?.id : null,
+        fecha_referencia: fechaInicioEfectiva,
+        operador_id: tipo === 'diario_operador' ? (esAdmin ? operadorId : usuario?.id) : null,
       });
 
       setMensaje('Reporte generado y descargado.');
@@ -113,10 +139,10 @@ export function Reports() {
       const base64 = await blobToBase64(ultimoPdf);
       const { error } = await supabase.functions.invoke('send-whatsapp', {
         body: {
-          destino, // 'grupo' usa el grupo por defecto; 'supervisores' busca números en `usuarios`
+          destino,
           nombre_archivo: ultimoNombre,
           pdf_base64: base64,
-          mensaje: `Reporte EBAR — ${fecha}`,
+          mensaje: `Reporte EBAR — ${rangoLabel}`,
         },
       });
       if (error) throw error;
@@ -137,15 +163,82 @@ export function Reports() {
           <label className="etiqueta">Tipo de reporte</label>
           <select className="campo" value={tipo} onChange={(e) => setTipo(e.target.value as TipoReporte)}>
             <option value="consolidado_fecha">Consolidado por fecha (todas las EBAR)</option>
-            <option value="diario_operador">Diario por operador (mis visitas)</option>
+            <option value="diario_operador">Diario por operador</option>
             <option value="individual_estacion">Individual por estación</option>
           </select>
         </div>
-        <div>
-          <label className="etiqueta">Fecha</label>
-          <input type="date" className="campo" value={fecha} onChange={(e) => setFecha(e.target.value)} />
-        </div>
-        <button onClick={manejarGenerar} disabled={generando} className="boton-primario w-full">
+
+        {(tipo === 'diario_operador' || tipo === 'consolidado_fecha') && esAdmin && operadores.length > 0 && (
+          <div>
+            <label className="etiqueta">Operador</label>
+            <select
+              className="campo"
+              value={operadorId}
+              onChange={(e) => setOperadorId(e.target.value)}
+            >
+              {tipo === 'consolidado_fecha' && <option value="">Todos los operadores</option>}
+              {operadores.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.nombre_completo}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {tipo === 'individual_estacion' && estaciones.length > 0 && (
+          <div>
+            <label className="etiqueta">Estación</label>
+            <select className="campo" value={estacionId} onChange={(e) => setEstacionId(e.target.value)}>
+              {estaciones.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.codigo} — {e.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {esRango ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="etiqueta">Fecha inicio</label>
+              <input
+                type="date"
+                className="campo"
+                value={fechaInicio}
+                max={fechaFin}
+                onChange={(e) => setFechaInicio(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="etiqueta">Fecha fin</label>
+              <input
+                type="date"
+                className="campo"
+                value={fechaFin}
+                min={fechaInicio}
+                onChange={(e) => setFechaFin(e.target.value)}
+              />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="etiqueta">Fecha</label>
+            <input
+              type="date"
+              className="campo"
+              value={fechaInicio}
+              onChange={(e) => setFechaInicio(e.target.value)}
+            />
+          </div>
+        )}
+
+        <button
+          onClick={manejarGenerar}
+          disabled={generando || (tipo === 'individual_estacion' && !estacionId)}
+          className="boton-primario w-full"
+        >
           {generando ? 'Generando…' : '📄 Generar PDF'}
         </button>
       </div>

@@ -1,25 +1,64 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
+import { useAuth } from '../contexts/AuthContext';
 import type { DashboardResumen, EstacionEbar } from '../lib/types';
 import { StationCard } from '../components/StationCard';
 
+const HOY = new Date().toISOString().slice(0, 10);
+
+type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona'>;
+
 export function Dashboard() {
+  const { usuario } = useAuth();
+  const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
+  const [fecha, setFecha] = useState(HOY);
   const [resumen, setResumen] = useState<DashboardResumen | null>(null);
   const [estacionesConProblemas, setEstacionesConProblemas] = useState<EstacionEbar[]>([]);
+  const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>({});
+  const [sinVisitar, setSinVisitar] = useState<EstacionSimple[]>([]);
+  const [mostrarSinVisitar, setMostrarSinVisitar] = useState(true);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
     async function cargar() {
-      const { data: resumenData } = await supabase.rpc('rpc_dashboard_resumen');
-      setResumen(resumenData as DashboardResumen);
+      const [
+        { data: resumenData },
+        { data: estaciones },
+        { data: todasEstaciones },
+        { data: visitasDelDia },
+      ] = await Promise.all([
+        supabase.rpc('rpc_dashboard_resumen', { p_fecha: fecha }),
+        supabase.from('estaciones_ebar').select('*').neq('estado_actual', 'operativa').eq('activa', true),
+        supabase.from('estaciones_ebar').select('id, nombre, codigo, zona').eq('activa', true).order('nombre'),
+        supabase.from('visitas').select('estacion_id')
+          .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
+          .lte('fecha_hora_llegada', `${fecha}T23:59:59`),
+      ]);
 
-      const { data: estaciones } = await supabase
-        .from('estaciones_ebar')
-        .select('*')
-        .neq('estado_actual', 'operativa')
-        .eq('activa', true);
-      setEstacionesConProblemas((estaciones as EstacionEbar[]) ?? []);
+      setResumen(resumenData as DashboardResumen);
+      const listaConProblemas = (estaciones as EstacionEbar[]) ?? [];
+      setEstacionesConProblemas(listaConProblemas);
+
+      const idsConVisita = new Set((visitasDelDia ?? []).map((v: any) => v.estacion_id));
+      setSinVisitar(((todasEstaciones ?? []) as EstacionSimple[]).filter((e) => !idsConVisita.has(e.id)));
+
+      if (listaConProblemas.length > 0) {
+        const { data: visitasRecientes } = await supabase
+          .from('visitas')
+          .select('estacion_id, fecha_hora_llegada')
+          .in('estacion_id', listaConProblemas.map((e) => e.id))
+          .order('fecha_hora_llegada', { ascending: false });
+
+        const mapa: Record<string, string> = {};
+        for (const v of visitasRecientes ?? []) {
+          if (!mapa[v.estacion_id]) mapa[v.estacion_id] = v.fecha_hora_llegada;
+        }
+        setUltimasVisitas(mapa);
+      } else {
+        setUltimasVisitas({});
+      }
 
       setCargando(false);
     }
@@ -33,28 +72,80 @@ export function Dashboard() {
     });
 
     return () => detener();
-  }, []);
+  }, [fecha]);
+
+  const esHoy = fecha === HOY;
+  const tituloFecha = esHoy
+    ? 'Resumen de hoy'
+    : `Resumen del ${new Date(fecha + 'T12:00:00').toLocaleDateString('es-EC', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })}`;
 
   if (cargando) return <p className="text-slate-400">Cargando…</p>;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-bold mb-3">Resumen de hoy</h1>
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-lg font-bold">{tituloFecha}</h1>
+          {esAdmin && (
+            <input
+              type="date"
+              className="campo py-1 text-sm w-auto"
+              value={fecha}
+              max={HOY}
+              onChange={(e) => { setCargando(true); setFecha(e.target.value); }}
+            />
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <Metrica label="Visitas registradas" valor={resumen?.total_visitas ?? 0} acento="ok" />
+          <Metrica label="Estaciones sin visitar" valor={resumen?.estaciones_sin_visitar ?? 0} acento="idle" />
+          <Metrica label="Equipos con falla o por mantener" valor={resumen?.equipos_con_alerta ?? 0} acento="danger" />
           <Metrica label="Estaciones con problemas" valor={resumen?.estaciones_con_problemas ?? 0} acento="warn" />
           <Metrica label="Alertas de voltaje" valor={resumen?.alertas_voltaje ?? 0} acento="danger" />
-          <Metrica label="Estaciones sin visitar" valor={resumen?.estaciones_sin_visitar ?? 0} acento="idle" />
         </div>
       </div>
+
+      {sinVisitar.length > 0 && (
+        <div>
+          <button
+            className="flex items-center justify-between w-full mb-2"
+            onClick={() => setMostrarSinVisitar((v) => !v)}
+          >
+            <h2 className="text-sm font-semibold text-slate-300">
+              Pendientes de visita ({sinVisitar.length})
+            </h2>
+            <span className="text-xs text-slate-500">{mostrarSinVisitar ? '▲ ocultar' : '▼ ver'}</span>
+          </button>
+          {mostrarSinVisitar && (
+            <div className="space-y-2">
+              {sinVisitar.map((e) => (
+                <Link
+                  key={e.id}
+                  to={`/estaciones/${e.id}/nueva-visita`}
+                  className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-100">{e.nombre}</p>
+                    <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
+                  </div>
+                  <span className="text-xs text-gauge-ok flex-shrink-0">+ Visita →</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {estacionesConProblemas.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold text-slate-300 mb-2">Requieren atención</h2>
           <div className="space-y-2">
             {estacionesConProblemas.map((e) => (
-              <StationCard key={e.id} estacion={e} />
+              <StationCard key={e.id} estacion={e} ultimaVisita={ultimasVisitas[e.id]} />
             ))}
           </div>
         </div>
