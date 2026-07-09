@@ -5,8 +5,20 @@ import type { Usuario } from '../lib/types';
 interface AuthState {
   usuario: Usuario | null;
   cargando: boolean;
-  login: (email: string, password: string) => Promise<{ error?: string }>;
+  login: (usuarioOCorreo: string, password: string) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
+}
+
+// Los usuarios creados desde la app (ver Users.tsx) no tienen correo real: se
+// autentican con un nombre de usuario al que se le agrega este dominio ficticio
+// para satisfacer el modelo de Supabase Auth (que requiere un "email"). Las
+// cuentas antiguas creadas con correo real (ej. el primer administrador) siguen
+// funcionando igual: si lo que se ingresa ya tiene "@", se usa tal cual.
+const DOMINIO_USUARIO_INTERNO = 'ebar-monitor.local';
+
+function resolverEmailLogin(entrada: string): string {
+  const valor = entrada.trim();
+  return valor.includes('@') ? valor : `${valor.toLowerCase()}@${DOMINIO_USUARIO_INTERNO}`;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -34,8 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  async function login(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  async function login(usuarioOCorreo: string, password: string) {
+    const { error } = await supabase.auth.signInWithPassword({ email: resolverEmailLogin(usuarioOCorreo), password });
     if (error) return { error: error.message };
     return {};
   }

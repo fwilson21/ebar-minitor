@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import {
   contarPendientes,
   iniciarAutoSincronizacion,
@@ -24,6 +25,7 @@ export function AppShell() {
   const [detallePendientes, setDetallePendientes] = useState<VisitaPendiente[]>([]);
   const [sincronizando, setSincronizando] = useState(false);
   const [mensajeSync, setMensajeSync] = useState<string | null>(null);
+  const [mostrarPassword, setMostrarPassword] = useState(false);
 
   useEffect(() => {
     const detener = iniciarAutoSincronizacion((r) => {
@@ -89,6 +91,9 @@ export function AppShell() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-400 hidden sm:inline">{usuario?.nombre_completo}</span>
+          <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-400 hover:text-slate-100">
+            🔑
+          </button>
           <button onClick={logout} className="text-sm text-slate-400 hover:text-slate-100">
             Salir
           </button>
@@ -127,7 +132,107 @@ export function AppShell() {
           onCerrar={() => setMostrarPanel(false)}
         />
       )}
+
+      {mostrarPassword && <ModalCambiarPassword onCerrar={() => setMostrarPassword(false)} />}
     </div>
+  );
+}
+
+function ModalCambiarPassword({ onCerrar }: { onCerrar: () => void }) {
+  const [actual, setActual] = useState('');
+  const [nueva, setNueva] = useState('');
+  const [repetir, setRepetir] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+
+  async function manejarGuardar() {
+    if (nueva.length < 6) {
+      setMensaje('La contraseña nueva debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (nueva !== repetir) {
+      setMensaje('Las contraseñas no coinciden.');
+      return;
+    }
+    setGuardando(true);
+    setMensaje(null);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.email) throw new Error('No se pudo identificar tu usuario.');
+
+      // Se re-autentica con la contraseña actual antes de cambiarla, para
+      // confirmar que quien está frente a la pantalla es realmente el dueño
+      // de la cuenta (updateUser no lo exige por sí solo).
+      const { error: errorLogin } = await supabase.auth.signInWithPassword({ email: user.email, password: actual });
+      if (errorLogin) throw new Error('La contraseña actual no es correcta.');
+
+      const { error: errorUpdate } = await supabase.auth.updateUser({ password: nueva });
+      if (errorUpdate) throw errorUpdate;
+
+      setMensaje('Contraseña actualizada correctamente.');
+      setActual('');
+      setNueva('');
+      setRepetir('');
+    } catch (err: any) {
+      setMensaje(err.message ?? 'No se pudo cambiar la contraseña.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-20" onClick={onCerrar} />
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[90vw] max-w-sm p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-sm">Cambiar contraseña</h2>
+          <button onClick={onCerrar} className="text-slate-400 hover:text-slate-100 text-lg leading-none">✕</button>
+        </div>
+
+        <div>
+          <label className="etiqueta">Contraseña actual</label>
+          <input
+            type="password"
+            className="campo"
+            value={actual}
+            onChange={(e) => setActual(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="etiqueta">Contraseña nueva</label>
+          <input
+            type="password"
+            className="campo"
+            minLength={6}
+            value={nueva}
+            onChange={(e) => setNueva(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="etiqueta">Repetir contraseña nueva</label>
+          <input
+            type="password"
+            className="campo"
+            minLength={6}
+            value={repetir}
+            onChange={(e) => setRepetir(e.target.value)}
+          />
+        </div>
+
+        {mensaje && (
+          <p className={`text-xs ${mensaje.includes('correctamente') ? 'text-gauge-ok' : 'text-gauge-danger'}`}>
+            {mensaje}
+          </p>
+        )}
+
+        <button onClick={manejarGuardar} disabled={guardando} className="boton-primario w-full">
+          {guardando ? 'Guardando…' : 'Guardar contraseña'}
+        </button>
+        <p className="text-xs text-slate-500">
+          Si olvidaste tu contraseña actual, pídele a un administrador que te la restablezca desde Usuarios.
+        </p>
+      </div>
+    </>
   );
 }
 
