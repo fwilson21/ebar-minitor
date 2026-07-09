@@ -40,11 +40,7 @@ export function Reports() {
       .from('estaciones_ebar')
       .select('id, codigo, nombre, zona')
       .order('codigo')
-      .then(({ data }) => {
-        const lista = (data as EstacionEbar[]) ?? [];
-        setEstaciones(lista);
-        setEstacionId((actual) => actual || lista[0]?.id || '');
-      });
+      .then(({ data }) => setEstaciones((data as EstacionEbar[]) ?? []));
   }, []);
 
   const operadorNombre =
@@ -56,8 +52,8 @@ export function Reports() {
   const fechaFinEfectiva = esRango ? fechaFin : fechaInicio;
   const rangoLabel =
     fechaInicioEfectiva === fechaFinEfectiva
-      ? fechaInicioEfectiva
-      : `${fechaInicioEfectiva} al ${fechaFinEfectiva}`;
+      ? formatFechaCorta(fechaInicioEfectiva)
+      : `${formatFechaCorta(fechaInicioEfectiva)} al ${formatFechaCorta(fechaFinEfectiva)}`;
 
   async function obtenerVisitas(): Promise<VisitaParaReporte[]> {
     let query = supabase
@@ -68,11 +64,13 @@ export function Reports() {
 
     if (tipo === 'diario_operador') {
       query = query.eq('operador_id', esAdmin ? operadorId : (usuario?.id ?? ''));
-    }
-    if (tipo === 'consolidado_fecha' && esAdmin && operadorId) {
+    } else if (esAdmin && operadorId) {
       query = query.eq('operador_id', operadorId);
     }
+
     if (tipo === 'individual_estacion') {
+      query = query.eq('estacion_id', estacionId);
+    } else if (estacionId) {
       query = query.eq('estacion_id', estacionId);
     }
 
@@ -93,12 +91,14 @@ export function Reports() {
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
 
+      const sufijoOperador = esAdmin && operadorId ? ` — ${operadorNombre}` : '';
+      const sufijoEstacion = estacionNombre ? ` — ${estacionNombre.codigo} ${estacionNombre.nombre}` : '';
       const titulo =
         tipo === 'diario_operador'
-          ? `Reporte diario — ${operadorNombre}`
+          ? `Reporte diario — ${operadorNombre}${sufijoEstacion}`
           : tipo === 'consolidado_fecha'
-          ? `Reporte consolidado${esAdmin && operadorId ? ` — ${operadorNombre}` : ''}`
-          : `Reporte de estación — ${estacionNombre ? `${estacionNombre.codigo} ${estacionNombre.nombre}` : ''}`;
+          ? `Reporte consolidado${sufijoOperador}${sufijoEstacion}`
+          : `Reporte de estación${sufijoEstacion}${sufijoOperador}`;
 
       const blob = await generarReporteVisitas(`${titulo}\n${rangoLabel}`, visitas);
       const nombreFechas =
@@ -128,7 +128,7 @@ export function Reports() {
     }
   }
 
-  async function manejarEnviarWhatsApp(destino: 'grupo' | 'supervisores') {
+  async function manejarCompartir() {
     if (!ultimoPdf) {
       setMensaje('Primero genera el reporte en PDF.');
       return;
@@ -136,19 +136,22 @@ export function Reports() {
     setEnviando(true);
     setMensaje(null);
     try {
-      const base64 = await blobToBase64(ultimoPdf);
-      const { error } = await supabase.functions.invoke('send-whatsapp', {
-        body: {
-          destino,
-          nombre_archivo: ultimoNombre,
-          pdf_base64: base64,
-          mensaje: `Reporte EBAR — ${rangoLabel}`,
-        },
-      });
-      if (error) throw error;
-      setMensaje('Reporte enviado por WhatsApp.');
+      const archivo = new File([ultimoPdf], ultimoNombre, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({
+          files: [archivo],
+          title: 'Reporte EBAR',
+          text: `Reporte EBAR — ${rangoLabel}`,
+        });
+        setMensaje('Reporte compartido.');
+      } else {
+        descargarBlob(ultimoPdf, ultimoNombre);
+        setMensaje('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente por WhatsApp, correo, etc.');
+      }
     } catch (err: any) {
-      setMensaje(`No se pudo enviar por WhatsApp: ${err.message ?? err}`);
+      if (err?.name !== 'AbortError') {
+        setMensaje(`No se pudo compartir: ${err.message ?? err}`);
+      }
     } finally {
       setEnviando(false);
     }
@@ -161,14 +164,22 @@ export function Reports() {
       <div className="tarjeta p-4 space-y-3">
         <div>
           <label className="etiqueta">Tipo de reporte</label>
-          <select className="campo" value={tipo} onChange={(e) => setTipo(e.target.value as TipoReporte)}>
-            <option value="consolidado_fecha">Consolidado por fecha (todas las EBAR)</option>
+          <select
+            className="campo"
+            value={tipo}
+            onChange={(e) => {
+              setTipo(e.target.value as TipoReporte);
+              setEstacionId('');
+              setOperadorId(e.target.value === 'diario_operador' ? (usuario?.id ?? '') : '');
+            }}
+          >
+            <option value="consolidado_fecha">Consolidado por fecha</option>
             <option value="diario_operador">Diario por operador</option>
             <option value="individual_estacion">Individual por estación</option>
           </select>
         </div>
 
-        {(tipo === 'diario_operador' || tipo === 'consolidado_fecha') && esAdmin && operadores.length > 0 && (
+        {esAdmin && operadores.length > 0 && (
           <div>
             <label className="etiqueta">Operador</label>
             <select
@@ -176,7 +187,7 @@ export function Reports() {
               value={operadorId}
               onChange={(e) => setOperadorId(e.target.value)}
             >
-              {tipo === 'consolidado_fecha' && <option value="">Todos los operadores</option>}
+              {tipo !== 'diario_operador' && <option value="">Todos los operadores</option>}
               {operadores.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.nombre_completo}
@@ -186,10 +197,15 @@ export function Reports() {
           </div>
         )}
 
-        {tipo === 'individual_estacion' && estaciones.length > 0 && (
+        {estaciones.length > 0 && (
           <div>
             <label className="etiqueta">Estación</label>
             <select className="campo" value={estacionId} onChange={(e) => setEstacionId(e.target.value)}>
+              {tipo === 'individual_estacion' ? (
+                <option value="" disabled>Selecciona una estación…</option>
+              ) : (
+                <option value="">Todas las estaciones</option>
+              )}
               {estaciones.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.codigo} — {e.nombre}
@@ -244,24 +260,16 @@ export function Reports() {
       </div>
 
       <div className="tarjeta p-4 space-y-2">
-        <p className="etiqueta mb-1">Enviar por WhatsApp</p>
+        <p className="etiqueta mb-1">Compartir</p>
         <button
-          onClick={() => manejarEnviarWhatsApp('grupo')}
+          onClick={manejarCompartir}
           disabled={enviando || !ultimoPdf}
           className="boton-secundario w-full"
         >
-          Enviar al grupo de WhatsApp
-        </button>
-        <button
-          onClick={() => manejarEnviarWhatsApp('supervisores')}
-          disabled={enviando || !ultimoPdf}
-          className="boton-secundario w-full"
-        >
-          Enviar a supervisores individuales
+          📤 Descargar y compartir
         </button>
         <p className="text-xs text-slate-500">
-          El envío requiere que la Edge Function <code>send-whatsapp</code> esté configurada con las credenciales de la
-          WhatsApp Cloud API (ver README).
+          El PDF ya se descarga al generarlo. Este botón abre el menú para reenviarlo por WhatsApp, correo u otra app.
         </p>
       </div>
 
@@ -270,11 +278,7 @@ export function Reports() {
   );
 }
 
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+function formatFechaCorta(fechaISO: string): string {
+  const [anio, mes, dia] = fechaISO.split('-');
+  return `${dia}-${mes}-${anio}`;
 }

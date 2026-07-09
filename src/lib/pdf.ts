@@ -53,6 +53,16 @@ export interface VisitaParaReporte {
   firma_url?: string | null;
 }
 
+function formatFechaHora(fechaISO: string): string {
+  const d = new Date(fechaISO);
+  const dia = String(d.getDate()).padStart(2, '0');
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const anio = d.getFullYear();
+  const horas = String(d.getHours()).padStart(2, '0');
+  const minutos = String(d.getMinutes()).padStart(2, '0');
+  return `${dia}/${mes}/${anio}, ${horas}:${minutos}`;
+}
+
 const ESTADO_LABEL: Record<string, string> = {
   operativa: 'Operativa',
   mantenimiento_correctivo: 'Mantenimiento correctivo',
@@ -94,7 +104,7 @@ const ETIQUETA_FOTO: Record<string, string> = {
   tuberia_600_valvulas_aire: '600mm — Válvulas de aire',
   tuberia_600_uniones_elastomericas: '600mm — Uniones elastoméricas',
   cerramiento_seguridad: 'Cerramiento y seguridad',
-  jardineras: 'Jardineras',
+  jardineras: 'Jardineras y áreas verdes',
   patios_maniobras: 'Patios de maniobras',
 };
 
@@ -109,12 +119,13 @@ function bloqueFotos(fotos?: Array<{ url: string; etiqueta?: string | null }>): 
   if (!fotos?.length) return null;
   return {
     columns: fotos.slice(0, 3).map((f) => ({
+      width: '*',
       stack: [
-        { image: f.url, fit: [150, 150] },
+        { image: f.url, fit: [150, 150], alignment: 'center' },
         { text: etiquetaFoto(f.etiqueta), fontSize: 7, alignment: 'center', color: '#5B7184', margin: [0, 2, 0, 0] },
       ],
-      margin: [0, 0, 4, 0],
     })),
+    columnGap: 8,
     margin: [0, 4, 0, 8],
   };
 }
@@ -122,21 +133,6 @@ function bloqueFotos(fotos?: Array<{ url: string; etiqueta?: string | null }>): 
 /** Fotos de una visita cuya `etiqueta` (= `descripcion` en la tabla `fotos`) corresponde a una subcategoría puntual. */
 function fotosDeSeccion(fotos: Array<{ url: string; etiqueta?: string | null }> | undefined, clave: string | null): Array<{ url: string; etiqueta?: string | null }> {
   return (fotos ?? []).filter((f) => (f.etiqueta ?? null) === clave);
-}
-
-// Ancho fijo (no 'auto') para la columna de Estado: al partir la tabla en una
-// mini-tabla por fila (para poder intercalar fotos entre filas), 'auto' se
-// recalcularía por separado en cada una y las columnas ya no alinearían entre
-// sí. 130pt alcanza para el texto más largo posible ("Requiere mantenimiento").
-const ANCHO_ESTADO = 130;
-
-/** Tabla de una sola fila (sin encabezado propio) — se usa para poder intercalar fotos entre filas. */
-function tablaFila(fila: any[], widths: (string | number)[] = ['*', ANCHO_ESTADO, '*']): any {
-  return {
-    table: { widths, body: [fila] },
-    layout: 'lightHorizontalLines',
-    margin: [0, 0, 0, 0],
-  };
 }
 
 function encabezado(titulo: string): any {
@@ -151,40 +147,50 @@ function encabezado(titulo: string): any {
   };
 }
 
-function filaEquipo(label: string, equipo?: EquipoReporte | null): any[] {
+/** Bloque en formato párrafo: título del elemento en negrita y una línea por dato (Estado, Observaciones, etc). */
+function parrafoElemento(titulo: string, lineas: any[]): any {
+  return {
+    stack: [
+      { text: titulo, bold: true, fontSize: 10, margin: [0, 0, 0, 3] },
+      ...lineas.map((linea) => ({ text: linea, margin: [0, 0, 0, 1] })),
+    ],
+    margin: [0, 2, 0, 4],
+  };
+}
+
+function parrafoEquipo(label: string, equipo?: EquipoReporte | null): any {
   const estado = equipo?.estado ?? 'operativo';
   const numeros = equipo?.numeros_afectados?.length ? ` (N.º ${equipo.numeros_afectados.join(', ')})` : '';
-  return [
-    label + numeros,
-    {
-      text: ESTADO_EQUIPO_LABEL[estado] ?? estado,
-      color: ESTADO_EQUIPO_COLOR[estado] ?? '#16303F',
-      bold: true,
-    },
-    equipo?.observaciones || '-',
-  ];
+  return parrafoElemento(label + numeros, [
+    [
+      { text: 'Estado: ', bold: true },
+      { text: ESTADO_EQUIPO_LABEL[estado] ?? estado, color: ESTADO_EQUIPO_COLOR[estado] ?? '#16303F', bold: true },
+    ],
+    [{ text: 'Observaciones: ', bold: true }, equipo?.observaciones || '-'],
+  ]);
 }
 
-function filaTiene(label: string, equipo?: EquipoReporte | null): any[] {
+function parrafoTiene(label: string, equipo?: EquipoReporte | null): any {
   const tiene = equipo?.tiene ?? null;
-  return [
-    label,
-    {
-      text: tiene === true ? 'Sí tiene' : tiene === false ? 'No tiene' : '-',
-      color: tiene === true ? '#059669' : '#16303F',
-      bold: true,
-    },
-    tiene ? (equipo?.observaciones || '-') : '-',
+  const lineas: any[] = [
+    [
+      { text: 'Tiene: ', bold: true },
+      { text: tiene === true ? 'Sí' : tiene === false ? 'No' : '-', color: tiene === true ? '#059669' : '#16303F', bold: true },
+    ],
   ];
+  if (tiene) lineas.push([{ text: 'Observaciones: ', bold: true }, equipo?.observaciones || '-']);
+  return parrafoElemento(label, lineas);
 }
 
-/** Como filaTiene(), pero cuando "Sí tiene" muestra además el Estado (3 opciones), igual que filaEquipo(). */
-function filaTieneConEstado(label: string, equipo?: EquipoReporte | null): any[] {
+/** Como parrafoTiene(), pero cuando "Sí tiene" muestra además el Estado (3 opciones), igual que parrafoEquipo(). */
+function parrafoTieneConEstado(label: string, equipo?: EquipoReporte | null): any {
   const tiene = equipo?.tiene ?? null;
   if (tiene !== true) {
-    return [label, { text: tiene === false ? 'No tiene' : '-', color: '#16303F', bold: true }, '-'];
+    return parrafoElemento(label, [
+      [{ text: 'Tiene: ', bold: true }, { text: tiene === false ? 'No' : '-', bold: true }],
+    ]);
   }
-  return filaEquipo(label, equipo);
+  return parrafoEquipo(label, equipo);
 }
 
 /** Línea horizontal fina para separar visualmente cada subcategoría en el PDF. */
@@ -193,24 +199,23 @@ function lineaDivisoria(): any {
 }
 
 function bloqueEquipos(v: VisitaParaReporte): any {
-  const items: Array<{ clave: string; fila: any[] }> = [
-    { clave: 'lineas_impulsion', fila: filaEquipo('Líneas de impulsión', v.lineas_impulsion) },
-    { clave: 'guias_izado', fila: filaEquipo('Guías de izado de bombas', v.guias_izado) },
-    { clave: 'valvulas_compuerta', fila: filaEquipo('Válvulas de compuerta', v.valvulas_compuerta) },
-    { clave: 'valvulas_check', fila: filaEquipo('Válvulas check', v.valvulas_check) },
-    { clave: 'valvula_aire', fila: filaTieneConEstado('Válvula de aire', v.valvula_aire) },
-    { clave: 'camara_rejilla', fila: filaEquipo('Cámara de llegada — Rejilla', v.camara_rejilla) },
-    { clave: 'camara_valvula_compuerta', fila: filaTieneConEstado('Cámara de llegada — Compuerta', v.camara_valvula_compuerta) },
-    { clave: 'tablero_distribucion', fila: filaEquipo('Tablero de distribución, contactores y breakers', v.tablero_distribucion) },
-    { clave: 'variador', fila: filaEquipo('Variadores de frecuencia', v.variador) },
-    { clave: 'descarga_emergencia', fila: filaTiene('Descarga de emergencia', v.descarga_emergencia) },
+  const items: Array<{ clave: string; parrafo: any }> = [
+    { clave: 'lineas_impulsion', parrafo: parrafoEquipo('Líneas de impulsión', v.lineas_impulsion) },
+    { clave: 'guias_izado', parrafo: parrafoEquipo('Guías de izado de bombas', v.guias_izado) },
+    { clave: 'valvulas_compuerta', parrafo: parrafoEquipo('Válvulas de compuerta', v.valvulas_compuerta) },
+    { clave: 'valvulas_check', parrafo: parrafoEquipo('Válvulas check', v.valvulas_check) },
+    { clave: 'valvula_aire', parrafo: parrafoTieneConEstado('Válvula de aire', v.valvula_aire) },
+    { clave: 'camara_rejilla', parrafo: parrafoEquipo('Cámara de llegada — Rejilla', v.camara_rejilla) },
+    { clave: 'camara_valvula_compuerta', parrafo: parrafoTieneConEstado('Cámara de llegada — Compuerta', v.camara_valvula_compuerta) },
+    { clave: 'tablero_distribucion', parrafo: parrafoEquipo('Tablero de distribución, contactores y breakers', v.tablero_distribucion) },
+    { clave: 'variador', parrafo: parrafoTieneConEstado('Variadores de frecuencia', v.variador) },
+    { clave: 'descarga_emergencia', parrafo: parrafoTiene('Descarga de emergencia', v.descarga_emergencia) },
   ];
 
   return [
     { text: 'Estado de equipos', style: 'subtitulo', margin: [0, 4, 0, 4] },
-    tablaFila(['Equipo', 'Estado', 'Observaciones']),
-    ...items.flatMap(({ clave, fila }) => [
-      tablaFila(fila),
+    ...items.flatMap(({ clave, parrafo }) => [
+      parrafo,
       bloqueFotos(fotosDeSeccion(v.fotos, clave)),
       lineaDivisoria(),
     ]),
@@ -218,18 +223,17 @@ function bloqueEquipos(v: VisitaParaReporte): any {
 }
 
 function bloqueTuberias(v: VisitaParaReporte): any {
-  const items: Array<{ clave: string; fila: any[] }> = [
-    { clave: 'tuberia_400_valvulas_aire', fila: filaEquipo('400mm — Válvulas de aire', v.tuberia_400_valvulas_aire) },
-    { clave: 'tuberia_400_uniones_elastomericas', fila: filaEquipo('400mm — Uniones elastoméricas', v.tuberia_400_uniones_elastomericas) },
-    { clave: 'tuberia_600_valvulas_aire', fila: filaEquipo('600mm — Válvulas de aire', v.tuberia_600_valvulas_aire) },
-    { clave: 'tuberia_600_uniones_elastomericas', fila: filaEquipo('600mm — Uniones elastoméricas', v.tuberia_600_uniones_elastomericas) },
+  const items: Array<{ clave: string; parrafo: any }> = [
+    { clave: 'tuberia_400_valvulas_aire', parrafo: parrafoEquipo('400mm — Válvulas de aire', v.tuberia_400_valvulas_aire) },
+    { clave: 'tuberia_400_uniones_elastomericas', parrafo: parrafoEquipo('400mm — Uniones elastoméricas', v.tuberia_400_uniones_elastomericas) },
+    { clave: 'tuberia_600_valvulas_aire', parrafo: parrafoEquipo('600mm — Válvulas de aire', v.tuberia_600_valvulas_aire) },
+    { clave: 'tuberia_600_uniones_elastomericas', parrafo: parrafoEquipo('600mm — Uniones elastoméricas', v.tuberia_600_uniones_elastomericas) },
   ];
 
   return [
     { text: 'Tuberías de impulsión', style: 'subtitulo', margin: [0, 4, 0, 4] },
-    tablaFila(['Tubería', 'Estado', 'Observaciones']),
-    ...items.flatMap(({ clave, fila }) => [
-      tablaFila(fila),
+    ...items.flatMap(({ clave, parrafo }) => [
+      parrafo,
       bloqueFotos(fotosDeSeccion(v.fotos, clave)),
       lineaDivisoria(),
     ]),
@@ -246,8 +250,8 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
           {},
         ],
         ['Zona', v.zona],
-        ['Llegada', new Date(v.fecha_hora_llegada).toLocaleString('es-EC')],
-        ['Salida', v.fecha_hora_salida ? new Date(v.fecha_hora_salida).toLocaleString('es-EC') : '-'],
+        ['Llegada', formatFechaHora(v.fecha_hora_llegada)],
+        ['Salida', v.fecha_hora_salida ? formatFechaHora(v.fecha_hora_salida) : '-'],
         ['Operador', v.operador_nombre],
         ['Estado general', ESTADO_LABEL[v.estado_estacion] ?? v.estado_estacion],
       ]
@@ -257,8 +261,8 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
           {},
         ],
         ['Zona', v.zona],
-        ['Llegada', new Date(v.fecha_hora_llegada).toLocaleString('es-EC')],
-        ['Salida', v.fecha_hora_salida ? new Date(v.fecha_hora_salida).toLocaleString('es-EC') : '-'],
+        ['Llegada', formatFechaHora(v.fecha_hora_llegada)],
+        ['Salida', v.fecha_hora_salida ? formatFechaHora(v.fecha_hora_salida) : '-'],
         ['Operador', v.operador_nombre],
         ['Estado de la estación', ESTADO_LABEL[v.estado_estacion] ?? v.estado_estacion],
         ['Nivel de tanque', v.nivel_tanque],
@@ -278,24 +282,19 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
     ].filter(Boolean);
   }
 
-  // Anchos fijos por la misma razón que ANCHO_ESTADO: cada bomba es su propia
-  // mini-tabla (para poder intercalar sus fotos debajo), así que las columnas
-  // deben tener el mismo ancho en todas para seguir alineadas verticalmente.
-  const bombasWidths: (string | number)[] = [18, 150, 62, 65, 62, '*'];
   const bombasBloques = v.bombas.flatMap((b) => [
-    tablaFila(
+    parrafoElemento(`Bomba ${b.numero_bomba}`, [
+      [{ text: 'Estado: ', bold: true }, ESTADO_BOMBA_LABEL[b.estado] ?? b.estado],
       [
-        String(b.numero_bomba),
-        ESTADO_BOMBA_LABEL[b.estado] ?? b.estado,
+        { text: 'Voltaje: ', bold: true },
         b.voltaje_fuera_rango
-          ? { text: `${b.voltaje ?? '-'} ⚠`, color: '#B91C1C', bold: true }
-          : String(b.voltaje ?? '-'),
-        String(b.amperaje ?? '-'),
-        String(b.horas_operacion_acumuladas ?? '-'),
-        b.observaciones ?? '-',
+          ? { text: `${b.voltaje ?? '-'} V ⚠`, color: '#B91C1C', bold: true }
+          : `${b.voltaje ?? '-'} V`,
       ],
-      bombasWidths,
-    ),
+      [{ text: 'Amperaje: ', bold: true }, `${b.amperaje ?? '-'} A`],
+      [{ text: 'Horas acumuladas: ', bold: true }, `${b.horas_operacion_acumuladas ?? '-'}`],
+      [{ text: 'Observaciones: ', bold: true }, b.observaciones || '-'],
+    ]),
     bloqueFotos(fotosDeSeccion(v.fotos, `bomba_${b.numero_bomba}`)),
     lineaDivisoria(),
   ]);
@@ -303,7 +302,6 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
   return [
     cabecera,
     { text: 'Registro de bombas', style: 'subtitulo', margin: [0, 4, 0, 4] },
-    tablaFila(['#', 'Estado', 'Voltaje (V)', 'Amperaje (A)', 'Horas acum.', 'Observaciones'], bombasWidths),
     bombasBloques,
     bloqueEquipos(v),
     v.cerramiento_observaciones
@@ -312,7 +310,7 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
     bloqueFotos(fotosDeSeccion(v.fotos, 'cerramiento_seguridad')),
     lineaDivisoria(),
     v.jardineras_observaciones
-      ? { text: [{ text: 'Jardineras: ', bold: true }, v.jardineras_observaciones], margin: [0, 0, 0, 4] }
+      ? { text: [{ text: 'Jardineras y áreas verdes: ', bold: true }, v.jardineras_observaciones], margin: [0, 0, 0, 4] }
       : null,
     bloqueFotos(fotosDeSeccion(v.fotos, 'jardineras')),
     lineaDivisoria(),

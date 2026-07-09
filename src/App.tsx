@@ -8,8 +8,6 @@ import { StationDetail } from './pages/StationDetail';
 import { VisitForm } from './pages/VisitForm';
 import { Reports } from './pages/Reports';
 import { Users } from './pages/Users';
-import { Bootstrap } from './pages/Bootstrap';
-import { CreateAdmin } from './pages/CreateAdmin';
 
 function RutaProtegida({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useAuth();
@@ -21,8 +19,6 @@ function RutaProtegida({ children }: { children: React.ReactNode }) {
 export const routes = createRoutesFromElements(
   <>
     <Route path="/login" element={<Login />} />
-    <Route path="/bootstrap" element={<Bootstrap />} />
-    <Route path="/crear-admin" element={<CreateAdmin />} />
     <Route
       path="/"
       element={

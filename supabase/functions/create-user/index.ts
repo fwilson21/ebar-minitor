@@ -1,17 +1,27 @@
 // supabase/functions/create-user/index.ts
 //
-// Invita a un nuevo usuario (operador/supervisor/administrador) por correo.
+// Crea un nuevo usuario (operador/supervisor/administrador) con la contraseña
+// que define el administrador al momento de crearlo — no se envía correo de
+// invitación (la entrega de correos a Hotmail/Outlook resultó poco confiable,
+// ver notas del proyecto). Los usuarios no tienen correo real: Supabase Auth
+// exige un "email" internamente, así que se construye uno ficticio a partir
+// del nombre de usuario (ej. "jperez" -> "jperez@ebar-monitor.local"). El
+// usuario puede cambiar su contraseña luego desde la app; si la olvida, el
+// administrador se la puede restablecer desde Usuarios (ver Edge Function
+// reset-user-password).
 // Solo puede ser invocada por un administrador autenticado: se verifica el
 // JWT de quien llama contra la tabla `usuarios` antes de usar la service role
-// key para crear la cuenta. El usuario recibe un correo de invitación de
-// Supabase Auth para establecer su propia contraseña.
+// key para crear la cuenta.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { corsHeaders } from '../_shared/cors.ts';
 
+const DOMINIO_USUARIO_INTERNO = 'ebar-monitor.local';
+
 interface Payload {
-  email: string;
+  usuario: string;
   nombre_completo: string;
+  password: string;
   rol?: 'operador' | 'supervisor' | 'administrador';
 }
 
@@ -52,24 +62,37 @@ Deno.serve(async (req) => {
       return json({ error: 'Solo un administrador puede crear usuarios.' }, 403);
     }
 
-    const { email, nombre_completo, rol }: Payload = await req.json();
-    if (!email || !nombre_completo) {
-      return json({ error: 'Correo y nombre completo son requeridos.' }, 400);
+    const { usuario: nombreUsuario, nombre_completo, password, rol }: Payload = await req.json();
+    if (!nombreUsuario || !nombre_completo || !password) {
+      return json({ error: 'Usuario, nombre completo y contraseña son requeridos.' }, 400);
+    }
+    if (!/^[a-z0-9._-]{3,30}$/.test(nombreUsuario)) {
+      return json({ error: 'El usuario debe tener 3-30 caracteres: minúsculas, números, puntos, guiones o guiones bajos.' }, 400);
+    }
+    if (password.length < 6) {
+      return json({ error: 'La contraseña debe tener al menos 6 caracteres.' }, 400);
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+    const email = `${nombreUsuario}@${DOMINIO_USUARIO_INTERNO}`;
 
-    const { data: invitado, error: errorInvitar } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      data: { nombre_completo },
+    const { data: creado, error: errorCrear } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { nombre_completo },
     });
-    if (errorInvitar) return json({ error: errorInvitar.message }, 400);
+    if (errorCrear) {
+      const yaExiste = errorCrear.message.toLowerCase().includes('already registered');
+      return json({ error: yaExiste ? `Ya existe un usuario "${nombreUsuario}".` : errorCrear.message }, 400);
+    }
 
     // El trigger handle_new_auth_user crea la fila en `usuarios` con rol 'operador' por defecto.
     if (rol && rol !== 'operador') {
-      await supabaseAdmin.from('usuarios').update({ rol }).eq('id', invitado.user.id);
+      await supabaseAdmin.from('usuarios').update({ rol }).eq('id', creado.user.id);
     }
 
-    return json({ ok: true, id: invitado.user.id });
+    return json({ ok: true, id: creado.user.id });
   } catch (err) {
     return json({ error: String(err) }, 500);
   }

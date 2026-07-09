@@ -75,6 +75,7 @@ export function VisitForm() {
   const [estacion, setEstacion] = useState<EstacionEbar | null>(null);
   const [bombas, setBombas] = useState<Bomba[]>([]);
   const [registrosBombas, setRegistrosBombas] = useState<Record<string, RegistroBombaInput>>({});
+  const [bombasSeleccionadas, setBombasSeleccionadas] = useState<Set<string>>(new Set());
   const [cargandoDatos, setCargandoDatos] = useState(true);
   const [horaLlegada, setHoraLlegada] = useState(new Date().toISOString());
   const [fechaSalidaOriginal, setFechaSalidaOriginal] = useState<string | null>(null);
@@ -122,7 +123,9 @@ export function VisitForm() {
     return {
       estadoEstacion, nivelTanque, observaciones,
       fotos: fotos.map((f) => f.id).sort(),
+      bombasSeleccionadas: Array.from(bombasSeleccionadas).sort(),
       registrosBombas: Object.values(registrosBombas)
+        .filter((b) => bombasSeleccionadas.has(b.bomba_id))
         .sort((a, b) => a.numero_bomba - b.numero_bomba)
         .map((b) => ({ ...b })),
       lineasImpulsion: equipoSnapshot(lineasImpulsion),
@@ -176,6 +179,7 @@ export function VisitForm() {
     if (esLineaConduccion) return [];
     const lista: string[] = [];
     for (const b of Object.values(registrosBombas)) {
+      if (!bombasSeleccionadas.has(b.bomba_id)) continue;
       if (b.estado === 'encendida') {
         if (b.voltaje == null) lista.push(`Bomba ${b.numero_bomba}: voltaje no ingresado`);
         if (b.amperaje == null) lista.push(`Bomba ${b.numero_bomba}: amperaje no ingresado`);
@@ -214,6 +218,7 @@ export function VisitForm() {
       setEstacion(est as EstacionEbar);
       const lista = (bombasData as Bomba[]) ?? [];
       setBombas(lista);
+      setBombasSeleccionadas(new Set());
       const iniciales: Record<string, RegistroBombaInput> = {};
       for (const b of lista) {
         iniciales[b.id] = {
@@ -259,7 +264,11 @@ export function VisitForm() {
                 estado_subida: 'subida' as const,
               }));
 
-          for (const rb of (visita.registros_bombas as any[]) ?? []) {
+          const registrosGuardados = (visita.registros_bombas as any[]) ?? [];
+          if (registrosGuardados.length > 0) {
+            setBombasSeleccionadas(new Set(registrosGuardados.map((rb) => rb.bomba_id)));
+          }
+          for (const rb of registrosGuardados) {
             iniciales[rb.bomba_id] = {
               ...iniciales[rb.bomba_id],
               bomba_id: rb.bomba_id,
@@ -334,7 +343,9 @@ export function VisitForm() {
     }
 
     if (!esLineaConduccion) {
-      const bombaSinEstado = Object.values(registrosBombas).find((b) => b.estado === '');
+      const bombaSinEstado = Object.values(registrosBombas).find(
+        (b) => bombasSeleccionadas.has(b.bomba_id) && b.estado === '',
+      );
       if (bombaSinEstado) {
         setMensaje(`Selecciona el estado de la bomba ${bombaSinEstado.numero_bomba} antes de guardar.`);
         return;
@@ -371,7 +382,7 @@ export function VisitForm() {
           { titulo: 'Válvulas check', valor: valvulasCheck },
           ...(valvulaAire.tiene === true ? [{ titulo: 'Válvula de aire', valor: valvulaAire }] : []),
           { titulo: 'Tablero de distribución', valor: tableroDistribucion },
-          { titulo: 'Variadores de frecuencia', valor: variador },
+          ...(variador.tiene === true ? [{ titulo: 'Variadores de frecuencia', valor: variador }] : []),
           { titulo: 'Cámara de llegada — Rejilla', valor: camaraRejilla },
           ...(camaraValvulaCompuerta.tiene === true
             ? [{ titulo: 'Cámara de llegada — Compuerta', valor: camaraValvulaCompuerta }]
@@ -398,6 +409,11 @@ export function VisitForm() {
       return;
     }
 
+    if (!esLineaConduccion && variador.tiene == null) {
+      setMensaje('Indica si la estación tiene variadores de frecuencia antes de guardar.');
+      return;
+    }
+
     const fotosPendientes = esLineaConduccion
       ? [tuberia400ValvulasAire, tuberia400Uniones, tuberia600ValvulasAire, tuberia600Uniones].flatMap((eq) => eq.fotos)
       : [
@@ -406,7 +422,9 @@ export function VisitForm() {
             lineasImpulsion, guiasIzado, valvulasCompuerta, valvulasCheck, valvulaAire, camaraRejilla, camaraValvulaCompuerta,
             tableroDistribucion, variador, descargaEmergencia, cerramientoSeguridad, jardineras, patiosManiobras,
           ].flatMap((eq) => eq.fotos),
-          ...Object.values(registrosBombas).flatMap((b) => b.fotos),
+          ...Object.values(registrosBombas)
+            .filter((b) => bombasSeleccionadas.has(b.bomba_id))
+            .flatMap((b) => b.fotos),
         ];
     const fotoDeOtroDia = fotosPendientes.find((f) => f.blob && !esMismoDia(f.tomada_en, horaLlegada));
     if (fotoDeOtroDia) {
@@ -452,7 +470,9 @@ export function VisitForm() {
       patios_maniobras_observaciones: esLineaConduccion ? null : (patiosManiobras.observaciones || null),
       patios_maniobras: esLineaConduccion ? null : patiosManiobras,
       observaciones_generales: esLineaConduccion ? null : observaciones || null,
-      bombas: esLineaConduccion ? [] : Object.values(registrosBombas),
+      bombas: esLineaConduccion
+        ? []
+        : Object.values(registrosBombas).filter((b) => bombasSeleccionadas.has(b.bomba_id)),
       fotos: esLineaConduccion ? [] : fotos,
       lineas_impulsion: esLineaConduccion ? null : lineasImpulsion,
       guias_izado: esLineaConduccion ? null : guiasIzado,
@@ -679,7 +699,7 @@ export function VisitForm() {
                 placeholderObservaciones=""
               />
               <EquipoSection
-                titulo="Jardineras"
+                titulo="Jardineras y áreas verdes"
                 valor={jardineras}
                 onChange={setJardineras}
                 sinEstado
@@ -698,14 +718,48 @@ export function VisitForm() {
           <div>
             <h2 className="text-lg font-bold uppercase tracking-wide text-slate-200 mb-2">Bombas</h2>
             <div className="space-y-3">
-              {bombas.map((b) => (
-                <PumpForm
-                  key={b.id}
-                  bomba={b}
-                  valor={registrosBombas[b.id]}
-                  onChange={(v) => setRegistrosBombas((prev) => ({ ...prev, [b.id]: v }))}
-                />
-              ))}
+              {bombas.length > 1 && (
+                <div className="tarjeta p-4 space-y-2">
+                  <h3 className="text-base font-bold uppercase tracking-wide text-slate-200">Bombas a reportar hoy</h3>
+                  <div className="flex gap-2 flex-wrap">
+                    {bombas.map((b) => {
+                      const activa = bombasSeleccionadas.has(b.id);
+                      return (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() =>
+                            setBombasSeleccionadas((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(b.id)) next.delete(b.id);
+                              else next.add(b.id);
+                              return next;
+                            })
+                          }
+                          className={`rounded-lg px-3 py-2 text-sm border transition ${
+                            activa ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'bg-panel-900 border-panel-600 text-slate-400'
+                          }`}
+                        >
+                          Bomba {b.numero_bomba}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Desmarca las bombas que no están instaladas o no vas a revisar hoy — no se te pedirán sus datos.
+                  </p>
+                </div>
+              )}
+              {bombas
+                .filter((b) => bombasSeleccionadas.has(b.id))
+                .map((b) => (
+                  <PumpForm
+                    key={b.id}
+                    bomba={b}
+                    valor={registrosBombas[b.id]}
+                    onChange={(v) => setRegistrosBombas((prev) => ({ ...prev, [b.id]: v }))}
+                  />
+                ))}
             </div>
           </div>
 
@@ -788,6 +842,8 @@ export function VisitForm() {
                 onChange={setVariador}
                 cantidadNumerada={4}
                 opciones={ESTADOS_VALVULAS_LINEAS}
+                tieneSelector
+                estadoSiTiene
               />
               <EquipoSection
                 titulo="Descarga de emergencia"

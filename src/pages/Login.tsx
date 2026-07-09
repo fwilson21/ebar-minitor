@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { estaConfiguradoSupabase } from '../lib/supabase';
 
 function mensajeError(original: string): string {
   const m = original.toLowerCase();
-  if (m.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.';
+  if (m.includes('invalid login credentials')) return 'Usuario o contraseña incorrectos.';
   if (m.includes('email not confirmed')) return 'Debes confirmar tu correo antes de ingresar.';
   if (m.includes('failed to fetch') || m.includes('network')) return 'No se pudo conectar. Verifica tu conexión a internet.';
   return 'No se pudo iniciar sesión. Intenta de nuevo.';
@@ -14,7 +14,7 @@ function mensajeError(original: string): string {
 export function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [usuario, setUsuario] = useState('');
   const [password, setPassword] = useState('');
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +24,7 @@ export function Login() {
     e.preventDefault();
     setCargando(true);
     setError(null);
-    const { error } = await login(email, password);
+    const { error } = await login(usuario, password);
     setCargando(false);
     if (error) setError(mensajeError(error));
     else navigate('/');
@@ -40,14 +40,16 @@ export function Login() {
           {estaConfiguradoSupabase() ? 'Conectado a Supabase' : 'Falta configurar Supabase para usar el backend real'}
         </div>
 
-        <label className="etiqueta">Correo electrónico</label>
+        <label className="etiqueta">Usuario</label>
         <input
-          type="email"
+          type="text"
           required
           className="campo mb-4"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="operador@empresa.com"
+          value={usuario}
+          onChange={(e) => setUsuario(e.target.value)}
+          placeholder="jperez"
+          autoCapitalize="none"
+          autoCorrect="off"
         />
 
         <label className="etiqueta">Contraseña</label>
@@ -78,16 +80,6 @@ export function Login() {
           {cargando ? 'Ingresando…' : 'Ingresar'}
         </button>
 
-        {estaConfiguradoSupabase() && (
-          <div className="mt-3 space-y-2 text-center">
-            <Link to="/bootstrap" className="block text-sm text-gauge-ok">
-              Crear datos base de ejemplo
-            </Link>
-            <Link to="/crear-admin" className="block text-sm text-gauge-ok">
-              Crear primer administrador
-            </Link>
-          </div>
-        )}
       </form>
     </div>
   );

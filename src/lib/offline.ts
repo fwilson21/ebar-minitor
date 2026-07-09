@@ -144,6 +144,18 @@ export async function sincronizarPendientes(): Promise<{ ok: number; fallidas: n
           .upsert(registrosBombas, { onConflict: 'visita_id,bomba_id' });
         if (errorBombas) throw errorBombas;
       }
+      // Al editar: si el operador deseleccionó una bomba que antes tenía registro
+      // (ver selector en VisitForm), el upsert de arriba no la toca — hay que
+      // borrar explícitamente su fila para que no siga apareciendo en reportes.
+      if (item.visita_id) {
+        let borrado = supabase.from('registros_bombas').delete().eq('visita_id', visitaId);
+        const idsSeleccionados = registrosBombas.map((b) => b.bomba_id);
+        if (idsSeleccionados.length) {
+          borrado = borrado.not('bomba_id', 'in', `(${idsSeleccionados.join(',')})`);
+        }
+        const { error: errorBorrado } = await borrado;
+        if (errorBorrado) throw errorBorrado;
+      }
 
       // Fotos de cada sección de equipo (descripcion identifica la sección en Drive)
       const seccionesEquipo = [
