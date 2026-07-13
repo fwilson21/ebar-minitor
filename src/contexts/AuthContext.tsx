@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import { obtenerIdDispositivo } from '../lib/dispositivo';
 import type { Usuario } from '../lib/types';
 
 interface AuthState {
@@ -49,6 +50,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function login(usuarioOCorreo: string, password: string) {
     const { error } = await supabase.auth.signInWithPassword({ email: resolverEmailLogin(usuarioOCorreo), password });
     if (error) return { error: error.message };
+
+    const { data: sesion } = await supabase.auth.getUser();
+    const userId = sesion.user?.id;
+    if (!userId) return { error: 'No se pudo verificar la sesión.' };
+
+    // Los operadores quedan vinculados al primer celular desde el que inician
+    // sesión (ver 0015_vinculacion_dispositivo.sql) para evitar que reporten
+    // visitas de compañeros que no fueron al sitio desde un mismo celular.
+    const { data: perfil } = await supabase.from('usuarios').select('rol, device_id').eq('id', userId).single();
+    if (perfil?.rol === 'operador') {
+      const deviceId = obtenerIdDispositivo();
+      if (perfil.device_id && perfil.device_id !== deviceId) {
+        await supabase.auth.signOut();
+        return { error: 'device_mismatch' };
+      }
+      if (!perfil.device_id) {
+        const { error: vincularError } = await supabase.from('usuarios').update({ device_id: deviceId }).eq('id', userId);
+        if (vincularError) {
+          await supabase.auth.signOut();
+          return { error: vincularError.code === '23505' ? 'device_mismatch' : vincularError.message };
+        }
+      }
+    }
+
     return {};
   }
 

@@ -15,6 +15,8 @@ export interface Usuario {
   whatsapp_numero?: string | null;
   activo: boolean;
   firma_url?: string | null;
+  device_id?: string | null;
+  nombre_usuario?: string | null;
 }
 
 export interface EstacionEbar {

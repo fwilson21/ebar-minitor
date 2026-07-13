@@ -87,10 +87,13 @@ Deno.serve(async (req) => {
       return json({ error: yaExiste ? `Ya existe un usuario "${nombreUsuario}".` : errorCrear.message }, 400);
     }
 
-    // El trigger handle_new_auth_user crea la fila en `usuarios` con rol 'operador' por defecto.
-    if (rol && rol !== 'operador') {
-      await supabaseAdmin.from('usuarios').update({ rol }).eq('id', creado.user.id);
-    }
+    // El trigger handle_new_auth_user crea la fila en `usuarios` con rol 'operador' por defecto;
+    // acá se completa el nombre de usuario (para poder mostrarlo luego en la pantalla de Usuarios)
+    // y se ajusta el rol si no es el operador por defecto.
+    await supabaseAdmin
+      .from('usuarios')
+      .update({ nombre_usuario: nombreUsuario, ...(rol && rol !== 'operador' ? { rol } : {}) })
+      .eq('id', creado.user.id);
 
     return json({ ok: true, id: creado.user.id });
   } catch (err) {

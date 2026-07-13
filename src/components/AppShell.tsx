@@ -271,7 +271,7 @@ function PanelPendientes({
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-slate-300">
                     {new Date(p.creado_en).toLocaleString('es-EC', {
-                      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
                     })}
                   </p>
                   {p.intentos > 0 && (
@@ -280,7 +280,7 @@ function PanelPendientes({
                 </div>
                 <p className="text-xs text-slate-500 lectura">
                   {new Date(p.payload.fecha_hora_llegada).toLocaleString('es-EC', {
-                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
                   })} · {p.payload.bombas.length} bomba(s)
                 </p>
                 {p.ultimo_error && (
