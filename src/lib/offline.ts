@@ -19,18 +19,48 @@ export interface VisitaPendiente {
   visita_id?: string;
 }
 
+// Borrador de una visita en curso: el operador puede pausar el registro (ej. para
+// ir a limpiar válvulas sin el celular) y continuar más tarde donde quedó, en el
+// mismo dispositivo. Se guarda TODO el estado del formulario (incluidas fotos ya
+// tomadas, como Blob) — no es lo mismo que `visitas_pendientes`, que es una visita
+// ya finalizada esperando sincronizar con el servidor.
+export interface BorradorVisita {
+  clave: string; // `visita:${estacion_id}:${visita_id ?? 'nueva'}`
+  estacion_id: string;
+  visita_id?: string;
+  actualizado_en: string;
+  datos: unknown;
+}
+
 class OfflineDB extends Dexie {
   visitas_pendientes!: Table<VisitaPendiente, string>;
+  borradores_visita!: Table<BorradorVisita, string>;
 
   constructor() {
     super('ebar_monitor_offline');
     this.version(1).stores({
       visitas_pendientes: 'cliente_uuid, creado_en',
     });
+    this.version(2).stores({
+      visitas_pendientes: 'cliente_uuid, creado_en',
+      borradores_visita: 'clave, actualizado_en',
+    });
   }
 }
 
 export const offlineDB = new OfflineDB();
+
+export async function guardarBorradorVisita(clave: string, estacionId: string, visitaId: string | undefined, datos: unknown) {
+  await offlineDB.borradores_visita.put({ clave, estacion_id: estacionId, visita_id: visitaId, datos, actualizado_en: new Date().toISOString() });
+}
+
+export async function obtenerBorradorVisita(clave: string): Promise<BorradorVisita | undefined> {
+  return offlineDB.borradores_visita.get(clave);
+}
+
+export async function eliminarBorradorVisita(clave: string) {
+  await offlineDB.borradores_visita.delete(clave);
+}
 
 export async function encolarVisita(payload: VisitaInput) {
   await offlineDB.visitas_pendientes.put({

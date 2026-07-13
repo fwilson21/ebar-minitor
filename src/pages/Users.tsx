@@ -33,6 +33,10 @@ export function Users() {
   const [passwordReset, setPasswordReset] = useState('');
   const [mensajeReset, setMensajeReset] = useState<string | null>(null);
   const [guardandoReset, setGuardandoReset] = useState(false);
+  const [renombrandoId, setRenombrandoId] = useState<string | null>(null);
+  const [nuevoNombreUsuario, setNuevoNombreUsuario] = useState('');
+  const [mensajeRenombrar, setMensajeRenombrar] = useState<string | null>(null);
+  const [guardandoRenombrar, setGuardandoRenombrar] = useState(false);
 
   useEffect(() => {
     cargar();
@@ -63,6 +67,34 @@ export function Users() {
     setGuardando(null);
   }
 
+  async function liberarDispositivo(id: string) {
+    setGuardando(id);
+    const { error } = await supabase.from('usuarios').update({ device_id: null }).eq('id', id);
+    if (!error) setUsuarios((prev) => prev.map((u) => (u.id === id ? { ...u, device_id: null } : u)));
+    else setMensaje('Error al liberar el celular.');
+    setGuardando(null);
+  }
+
+  async function manejarEliminar(id: string, nombre: string) {
+    const continuar = window.confirm(
+      `¿Eliminar por completo la cuenta de ${nombre}? Esto no se puede deshacer.\n\n` +
+        'Si esta persona ya tiene visitas registradas, no se va a poder eliminar (para no perder el historial) — en ese caso usa "Desactivar" en vez de esto.',
+    );
+    if (!continuar) return;
+    setGuardando(id);
+    setMensaje(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-user', { body: { usuario_id: id } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setUsuarios((prev) => prev.filter((u) => u.id !== id));
+    } catch (err: any) {
+      setMensaje(`No se pudo eliminar: ${err.message ?? err}`);
+    } finally {
+      setGuardando(null);
+    }
+  }
+
   async function manejarInvitar(e: FormEvent) {
     e.preventDefault();
     setInvitando(true);
@@ -91,6 +123,34 @@ export function Users() {
     setRestableciendoId((actual) => (actual === id ? null : id));
     setPasswordReset('');
     setMensajeReset(null);
+  }
+
+  function abrirRenombrar(id: string, actual: string | null | undefined) {
+    setRenombrandoId((prev) => (prev === id ? null : id));
+    setNuevoNombreUsuario(actual ?? '');
+    setMensajeRenombrar(null);
+  }
+
+  async function manejarRenombrar(id: string) {
+    if (!/^[a-z0-9._-]{3,30}$/.test(nuevoNombreUsuario)) {
+      setMensajeRenombrar('Usuario inválido: 3-30 caracteres, minúsculas, números, puntos, guiones o guiones bajos.');
+      return;
+    }
+    setGuardandoRenombrar(true);
+    setMensajeRenombrar(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('rename-user', {
+        body: { usuario_id: id, nuevo_usuario: nuevoNombreUsuario },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setUsuarios((prev) => prev.map((u) => (u.id === id ? { ...u, nombre_usuario: nuevoNombreUsuario } : u)));
+      setMensajeRenombrar('Usuario actualizado. Ya puede iniciar sesión con el nuevo nombre.');
+    } catch (err: any) {
+      setMensajeRenombrar(`No se pudo cambiar: ${err.message ?? err}`);
+    } finally {
+      setGuardandoRenombrar(false);
+    }
   }
 
   async function manejarRestablecer(id: string) {
@@ -203,8 +263,16 @@ export function Users() {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-slate-100 truncate">{u.nombre_completo}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Usuario: <span className="text-slate-300">{u.nombre_usuario || '(sin registrar)'}</span>
+                </p>
                 {u.telefono && (
                   <p className="text-xs text-slate-500 mt-0.5">{u.telefono}</p>
+                )}
+                {u.rol === 'operador' && (
+                  <p className="text-xs mt-0.5 text-slate-500">
+                    {u.device_id ? '📱 Vinculado a un celular' : '📱 Sin celular vinculado'}
+                  </p>
                 )}
               </div>
               <span className={`text-xs px-2 py-0.5 rounded border flex-shrink-0 ${ROL_CLASE[u.rol]}`}>
@@ -212,20 +280,20 @@ export function Users() {
               </span>
             </div>
 
-            <div className="flex items-center gap-3 mt-3">
-              <select
-                className="campo py-1 text-xs flex-1"
-                value={u.rol}
-                disabled={guardando === u.id}
-                onChange={(e) => cambiarRol(u.id, e.target.value as UserRole)}
-              >
-                <option value="operador">Operador</option>
-                <option value="supervisor">Supervisor</option>
-                <option value="administrador">Administrador</option>
-              </select>
+            <select
+              className="campo py-1.5 text-xs w-full mt-3"
+              value={u.rol}
+              disabled={guardando === u.id}
+              onChange={(e) => cambiarRol(u.id, e.target.value as UserRole)}
+            >
+              <option value="operador">Operador</option>
+              <option value="supervisor">Supervisor</option>
+              <option value="administrador">Administrador</option>
+            </select>
 
+            <div className="flex flex-wrap gap-2 mt-2">
               <button
-                className={`text-xs px-3 py-1.5 rounded-lg border transition flex-shrink-0 ${
+                className={`text-xs px-3 py-1.5 rounded-lg border transition ${
                   u.activo
                     ? 'border-gauge-danger/40 text-gauge-danger hover:bg-gauge-danger/10'
                     : 'border-gauge-ok/40 text-gauge-ok hover:bg-gauge-ok/10'
@@ -238,10 +306,39 @@ export function Users() {
 
               {esAdmin && (
                 <button
-                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100 flex-shrink-0"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
                   onClick={() => abrirReset(u.id)}
                 >
                   🔑 Contraseña
+                </button>
+              )}
+
+              {esAdmin && (
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
+                  onClick={() => abrirRenombrar(u.id, u.nombre_usuario)}
+                >
+                  ✏️ Usuario
+                </button>
+              )}
+
+              {esAdmin && u.rol === 'operador' && u.device_id && (
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
+                  disabled={guardando === u.id}
+                  onClick={() => liberarDispositivo(u.id)}
+                >
+                  {guardando === u.id ? '…' : '📱 Liberar celular'}
+                </button>
+              )}
+
+              {esAdmin && u.id !== usuario?.id && (
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gauge-danger/40 text-gauge-danger hover:bg-gauge-danger/10"
+                  disabled={guardando === u.id}
+                  onClick={() => manejarEliminar(u.id, u.nombre_completo)}
+                >
+                  {guardando === u.id ? '…' : '🗑️ Eliminar'}
                 </button>
               )}
             </div>
@@ -269,6 +366,39 @@ export function Users() {
                 {mensajeReset && (
                   <p className={`text-xs ${mensajeReset.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
                     {mensajeReset}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {esAdmin && renombrandoId === u.id && (
+              <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
+                <label className="etiqueta">Nuevo usuario para {u.nombre_completo}</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="campo flex-1"
+                    pattern="[a-z0-9._-]{3,30}"
+                    placeholder="jperez"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={nuevoNombreUsuario}
+                    onChange={(e) => setNuevoNombreUsuario(e.target.value)}
+                  />
+                  <button
+                    className="boton-primario px-4 flex-shrink-0"
+                    disabled={guardandoRenombrar}
+                    onClick={() => manejarRenombrar(u.id)}
+                  >
+                    {guardandoRenombrar ? '…' : 'Guardar'}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Esto cambia de verdad con qué usuario entra a la app (no solo lo que se muestra acá).
+                </p>
+                {mensajeRenombrar && (
+                  <p className={`text-xs ${mensajeRenombrar.startsWith('No se pudo') || mensajeRenombrar.startsWith('Usuario inválido') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+                    {mensajeRenombrar}
                   </p>
                 )}
               </div>

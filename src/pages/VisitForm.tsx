@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useBlocker, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { encolarEdicionVisita, encolarVisita, sincronizarPendientes } from '../lib/offline';
+import {
+  encolarEdicionVisita, encolarVisita, sincronizarPendientes,
+  guardarBorradorVisita, obtenerBorradorVisita, eliminarBorradorVisita,
+} from '../lib/offline';
 import { esMismoDia, formatearFechaHoraFoto, urlMiniaturaDrive } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { PumpForm } from '../components/PumpForm';
@@ -148,6 +151,61 @@ export function VisitForm() {
     };
   }
 
+  function claveBorrador() {
+    return `visita:${estacionId}:${visitaId ?? 'nueva'}`;
+  }
+
+  // Copia completa del formulario (a diferencia de construirSnapshot(), que solo guarda ids de
+  // fotos para comparar cambios) — esto es lo que se guarda como borrador para poder continuar
+  // la visita más tarde, incluidas las fotos ya tomadas (como Blob, IndexedDB las soporta bien).
+  function construirBorrador() {
+    return {
+      horaLlegada, fechaSalidaOriginal,
+      estadoEstacion, nivelTanque, observaciones, fotos,
+      bombasSeleccionadas: Array.from(bombasSeleccionadas),
+      registrosBombas,
+      lineasImpulsion, guiasIzado, valvulasCompuerta, valvulasCheck, valvulaAire,
+      camaraRejilla, camaraValvulaCompuerta, tableroDistribucion, variador, descargaEmergencia,
+      tuberia400ValvulasAire, tuberia400Uniones, tuberia600ValvulasAire, tuberia600Uniones,
+      cerramientoSeguridad, jardineras, patiosManiobras,
+    };
+  }
+
+  function restaurarBorrador(datos: ReturnType<typeof construirBorrador>) {
+    setHoraLlegada(datos.horaLlegada);
+    setFechaSalidaOriginal(datos.fechaSalidaOriginal);
+    setEstadoEstacion(datos.estadoEstacion);
+    setNivelTanque(datos.nivelTanque);
+    setObservaciones(datos.observaciones);
+    setFotos(datos.fotos);
+    setBombasSeleccionadas(new Set(datos.bombasSeleccionadas));
+    setRegistrosBombas(datos.registrosBombas);
+    setLineasImpulsion(datos.lineasImpulsion);
+    setGuiasIzado(datos.guiasIzado);
+    setValvulasCompuerta(datos.valvulasCompuerta);
+    setValvulasCheck(datos.valvulasCheck);
+    setValvulaAire(datos.valvulaAire);
+    setCamaraRejilla(datos.camaraRejilla);
+    setCamaraValvulaCompuerta(datos.camaraValvulaCompuerta);
+    setTableroDistribucion(datos.tableroDistribucion);
+    setVariador(datos.variador);
+    setDescargaEmergencia(datos.descargaEmergencia);
+    setTuberia400ValvulasAire(datos.tuberia400ValvulasAire);
+    setTuberia400Uniones(datos.tuberia400Uniones);
+    setTuberia600ValvulasAire(datos.tuberia600ValvulasAire);
+    setTuberia600Uniones(datos.tuberia600Uniones);
+    setCerramientoSeguridad(datos.cerramientoSeguridad);
+    setJardineras(datos.jardineras);
+    setPatiosManiobras(datos.patiosManiobras);
+  }
+
+  async function pausarYSalir(salir: () => void) {
+    if (!estacionId) return;
+    await guardarBorradorVisita(claveBorrador(), estacionId, visitaId, construirBorrador());
+    guardadoRef.current = true; // ya quedó a salvo como borrador: no mostrar el aviso de "salir sin guardar"
+    salir();
+  }
+
   const snapshotInicialRef = useRef<string | null>(null);
   useEffect(() => {
     if (!cargandoDatos && snapshotInicialRef.current === null) {
@@ -156,10 +214,23 @@ export function VisitForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cargandoDatos]);
 
+  const snapshotActual = JSON.stringify(construirSnapshot());
   const hayCambios =
     !guardadoRef.current &&
     snapshotInicialRef.current !== null &&
-    JSON.stringify(construirSnapshot()) !== snapshotInicialRef.current;
+    snapshotActual !== snapshotInicialRef.current;
+
+  // Autoguardado del borrador: si el operador deja el celular a medio llenar (batería, se
+  // cierra la app sola, etc.) no se pierde lo ya ingresado — no depende de que use el botón
+  // "Pausar" a propósito.
+  useEffect(() => {
+    if (!hayCambios || !estacionId) return;
+    const t = setTimeout(() => {
+      guardarBorradorVisita(claveBorrador(), estacionId, visitaId, construirBorrador());
+    }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotActual]);
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) => hayCambios && currentLocation.pathname !== nextLocation.pathname
@@ -218,6 +289,26 @@ export function VisitForm() {
       setEstacion(est as EstacionEbar);
       const lista = (bombasData as Bomba[]) ?? [];
       setBombas(lista);
+
+      const clave = `visita:${estacionId}:${visitaId ?? 'nueva'}`;
+      const borrador = await obtenerBorradorVisita(clave);
+      if (borrador) {
+        const datos = borrador.datos as ReturnType<typeof construirBorrador>;
+        const llegadaTexto = new Date(datos.horaLlegada).toLocaleString('es-EC', {
+          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+        });
+        const continuar = window.confirm(
+          `Hay una visita en pausa, iniciada el ${llegadaTexto}. ¿Continuar donde quedaste?\n\n` +
+            'Aceptar = continuar · Cancelar = descartar y empezar de nuevo',
+        );
+        if (continuar) {
+          restaurarBorrador(datos);
+          setCargandoDatos(false);
+          return;
+        }
+        await eliminarBorradorVisita(clave);
+      }
+
       setBombasSeleccionadas(new Set());
       const iniciales: Record<string, RegistroBombaInput> = {};
       for (const b of lista) {
@@ -569,6 +660,7 @@ export function VisitForm() {
       }
 
       guardadoRef.current = true;
+      await eliminarBorradorVisita(claveBorrador());
       setMensaje(modoEdicion ? 'Visita actualizada correctamente.' : 'Visita registrada correctamente.');
       setTimeout(() => navigate(`/estaciones/${estacion.id}`), 800);
     } catch (err: any) {
@@ -576,6 +668,7 @@ export function VisitForm() {
       if (modoEdicion && visitaId) await encolarEdicionVisita(visitaId, payload);
       else await encolarVisita(payload);
       guardadoRef.current = true;
+      await eliminarBorradorVisita(claveBorrador());
       setMensaje('Sin conexión estable: los cambios se guardaron en el dispositivo y se sincronizarán automáticamente.');
       setTimeout(() => navigate(`/estaciones/${estacion.id}`), 1500);
     } finally {
@@ -596,22 +689,29 @@ export function VisitForm() {
           {modoEdicion ? (
             <>
               <p className="text-xs text-slate-500">
-                Llegada {new Date(horaLlegada).toLocaleString('es-EC', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                Llegada {new Date(horaLlegada).toLocaleString('es-EC', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
               </p>
               {fechaSalidaOriginal && (
                 <p className="text-xs text-slate-500">
-                  Salida {new Date(fechaSalidaOriginal).toLocaleString('es-EC', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  Salida {new Date(fechaSalidaOriginal).toLocaleString('es-EC', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
                 </p>
               )}
             </>
           ) : (
             <>
               <p className="text-xs text-slate-500">
-                Llegada {new Date(horaLlegada).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}
+                Llegada {new Date(horaLlegada).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false })}
               </p>
               <p className="text-sm font-semibold text-gauge-ok tabular-nums">{tiempoEnSitio}</p>
             </>
           )}
+          <button
+            type="button"
+            className="text-xs text-slate-400 hover:text-slate-100 underline mt-1"
+            onClick={() => pausarYSalir(() => navigate(`/estaciones/${estacionId}`))}
+          >
+            ⏸ Pausar y continuar luego
+          </button>
         </div>
       </div>
 
@@ -919,16 +1019,22 @@ export function VisitForm() {
         <>
           <div className="fixed inset-0 bg-black/50 z-20" />
           <div className="fixed inset-x-4 top-1/3 z-30 tarjeta border-gauge-warn/50 p-4 space-y-3 max-w-sm mx-auto">
-            <p className="text-sm font-semibold text-gauge-warn">¿Descartar los datos ingresados?</p>
+            <p className="text-sm font-semibold text-gauge-warn">Esta visita tiene datos sin guardar</p>
             <p className="text-xs text-slate-400">
-              Esta visita tiene datos sin guardar. Si sales ahora se perderán.
+              ¿Vas a seguir trabajando en el sitio? Pausa el registro para continuarlo después sin perder nada.
             </p>
-            <div className="flex gap-2 pt-1">
-              <button className="boton-secundario flex-1" onClick={() => blocker.reset?.()}>
+            <div className="flex flex-col gap-2 pt-1">
+              <button className="boton-secundario" onClick={() => blocker.reset?.()}>
                 Seguir editando
               </button>
               <button
-                className="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium border border-gauge-danger/50 text-gauge-danger hover:bg-gauge-danger/10 transition"
+                className="rounded-lg px-4 py-2.5 text-sm font-medium border border-gauge-ok/50 text-gauge-ok hover:bg-gauge-ok/10 transition"
+                onClick={() => pausarYSalir(() => blocker.proceed?.())}
+              >
+                ⏸ Pausar y continuar luego
+              </button>
+              <button
+                className="rounded-lg px-4 py-2.5 text-sm font-medium border border-gauge-danger/50 text-gauge-danger hover:bg-gauge-danger/10 transition"
                 onClick={() => blocker.proceed?.()}
               >
                 Descartar y salir

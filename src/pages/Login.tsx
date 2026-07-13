@@ -5,6 +5,7 @@ import { estaConfiguradoSupabase } from '../lib/supabase';
 
 function mensajeError(original: string): string {
   const m = original.toLowerCase();
+  if (m.includes('device_mismatch')) return 'Este celular ya está vinculado a otro usuario, o tu usuario ya está vinculado a otro celular. Solicita a un administrador que lo libere desde Usuarios.';
   if (m.includes('invalid login credentials')) return 'Usuario o contraseña incorrectos.';
   if (m.includes('email not confirmed')) return 'Debes confirmar tu correo antes de ingresar.';
   if (m.includes('failed to fetch') || m.includes('network')) return 'No se pudo conectar. Verifica tu conexión a internet.';

@@ -334,7 +334,7 @@ export function StationDetail() {
               return (
               <Contenedor key={h.id} className="tarjeta p-3 block hover:border-gauge-ok/50 transition" {...(propsContenedor as any)}>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC')}</span>
+                  <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC', { hour12: false })}</span>
                   <span className="text-xs text-slate-500">{h.operador}{puedeEditar && ' · Editar →'}</span>
                 </div>
                 <div className="flex gap-2 mt-2 flex-wrap">
