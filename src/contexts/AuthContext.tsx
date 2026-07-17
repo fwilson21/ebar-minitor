@@ -17,6 +17,12 @@ interface AuthState {
 // funcionando igual: si lo que se ingresa ya tiene "@", se usa tal cual.
 const DOMINIO_USUARIO_INTERNO = 'ebar-monitor.local';
 
+// Guarda una copia del perfil del último usuario autenticado. Sirve para que, si la app se
+// recarga sin señal (EBAR sin cobertura), el operador siga adentro en vez de que la consulta
+// de perfil fallida (sin red) lo mande de vuelta al login — la sesión de Supabase Auth ya está
+// guardada localmente y sigue siendo válida, solo faltaba no perder el perfil si no hay red.
+const CLAVE_PERFIL_CACHE = 'ebar_perfil_cache';
+
 function resolverEmailLogin(entrada: string): string {
   const valor = entrada.trim();
   return valor.includes('@') ? valor : `${valor.toLowerCase()}@${DOMINIO_USUARIO_INTERNO}`;
@@ -30,7 +36,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function cargarPerfil(userId: string) {
     const { data } = await supabase.from('usuarios').select('*').eq('id', userId).single();
-    setUsuario(data as Usuario | null);
+    if (data) {
+      setUsuario(data as Usuario);
+      localStorage.setItem(CLAVE_PERFIL_CACHE, JSON.stringify(data));
+      return;
+    }
+    // Sin conexión (u otro error de red): usar el último perfil guardado de este mismo usuario
+    // en vez de dejarlo sin sesión.
+    const cache = localStorage.getItem(CLAVE_PERFIL_CACHE);
+    const perfilCache = cache ? (JSON.parse(cache) as Usuario) : null;
+    setUsuario(perfilCache?.id === userId ? perfilCache : null);
   }
 
   useEffect(() => {
@@ -79,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     await supabase.auth.signOut();
+    localStorage.removeItem(CLAVE_PERFIL_CACHE);
   }
 
   return (
