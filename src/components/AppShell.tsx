@@ -38,10 +38,21 @@ export function AppShell() {
     window.addEventListener('online', actualizarEstado);
     window.addEventListener('offline', actualizarEstado);
 
+    // El service worker sincroniza solo en segundo plano en Android (Background Sync) aunque
+    // esta pestaña no haya hecho nada — cuando termina, avisa acá para refrescar el badge.
+    const alMensajeSW = (event: MessageEvent) => {
+      if (event.data?.tipo === 'sync-completado') {
+        contarPendientes().then(setPendientes);
+        if (event.data.ok > 0) setMensajeSync(`${event.data.ok} visita(s) sincronizada(s).`);
+      }
+    };
+    navigator.serviceWorker?.addEventListener?.('message', alMensajeSW);
+
     return () => {
       detener();
       window.removeEventListener('online', actualizarEstado);
       window.removeEventListener('offline', actualizarEstado);
+      navigator.serviceWorker?.removeEventListener?.('message', alMensajeSW);
     };
   }, []);
 
