@@ -4,6 +4,9 @@ import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
 import type { EstacionEbar, TipoEstacion, ZonaTipo } from '../lib/types';
 import { StationCard } from '../components/StationCard';
+import { guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
+
+const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 
 export function Stations() {
   const { usuario } = useAuth();
@@ -14,6 +17,7 @@ export function Stations() {
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [sinConexion, setSinConexion] = useState(false);
 
   useEffect(() => {
     async function cargar() {
@@ -23,7 +27,17 @@ export function Stations() {
         .eq('activa', true)
         .order('nombre');
 
-      const lista = (data as EstacionEbar[]) ?? [];
+      let lista: EstacionEbar[];
+      if (data) {
+        lista = data as EstacionEbar[];
+        guardarCacheLocal(CLAVE_CACHE_ESTACIONES, lista);
+        setSinConexion(false);
+      } else {
+        // Sin conexión (u otro error de red): usar la última lista de estaciones que se haya
+        // cargado con éxito en este dispositivo, en vez de mostrar la lista vacía.
+        lista = leerCacheLocal<EstacionEbar[]>(CLAVE_CACHE_ESTACIONES) ?? [];
+        setSinConexion(true);
+      }
       setEstaciones(lista);
 
       if (lista.length > 0) {
@@ -71,6 +85,12 @@ export function Stations() {
         )}
       </div>
 
+      {sinConexion && (
+        <p className="text-xs text-gauge-warn bg-gauge-warn/10 border border-gauge-warn/30 rounded-lg px-3 py-2">
+          Sin conexión — mostrando la última lista guardada en este dispositivo.
+        </p>
+      )}
+
       {esAdmin && mostrarForm && <FormularioNuevaEstacion onCreada={() => setMostrarForm(false)} />}
 
       <input
@@ -97,7 +117,11 @@ export function Stations() {
       {cargando ? (
         <p className="text-slate-400">Cargando…</p>
       ) : filtradas.length === 0 ? (
-        <p className="text-slate-400">No se encontraron estaciones.</p>
+        <p className="text-slate-400">
+          {sinConexion
+            ? 'No hay ninguna estación guardada todavía en este dispositivo. Conéctate al menos una vez para poder verlas sin señal.'
+            : 'No se encontraron estaciones.'}
+        </p>
       ) : (
         <div className="space-y-2">
           {filtradas.map((e) => (

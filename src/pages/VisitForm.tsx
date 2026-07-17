@@ -9,6 +9,7 @@ import {
 import { esMismoDia, formatearFechaHoraFoto, urlMiniaturaDrive } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { distanciaMetros, useUbicacionActual } from '../lib/useUbicacion';
+import { guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
 import { PumpForm } from '../components/PumpForm';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { EquipoSection } from '../components/EquipoSection';
@@ -28,6 +29,8 @@ import type {
 const crearEquipo = (): RegistroEquipo => ({ estado: '', observaciones: '', fotos: [] });
 
 const DISTANCIA_MAXIMA_METROS = 300;
+const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
+const CLAVE_CACHE_BOMBAS_PREFIJO = 'ebar_cache_bombas:';
 
 const ESTADOS_ESTACION: { value: EstadoEstacion; label: string; claseActiva: string }[] = [
   { value: 'operativa', label: 'Operativa', claseActiva: 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' },
@@ -289,8 +292,16 @@ export function VisitForm() {
         supabase.from('estaciones_ebar').select('*').eq('id', estacionId).single(),
         supabase.from('bombas').select('*').eq('estacion_id', estacionId).eq('activa', true).order('numero_bomba'),
       ]);
-      setEstacion(est as EstacionEbar);
-      const lista = (bombasData as Bomba[]) ?? [];
+
+      // Sin conexión: usar la copia de esta estación (guardada al ver la lista de Estaciones) y
+      // de sus bombas (guardada la última vez que se abrió este formulario con señal) — así un
+      // operador puede seguir registrando una visita nueva en una EBAR ya conocida sin señal.
+      const claveBombas = `${CLAVE_CACHE_BOMBAS_PREFIJO}${estacionId}`;
+      const estacionFinal = est ?? leerCacheLocal<EstacionEbar[]>(CLAVE_CACHE_ESTACIONES)?.find((e) => e.id === estacionId) ?? null;
+      setEstacion(estacionFinal as EstacionEbar);
+
+      const lista = bombasData ? (bombasData as Bomba[]) : leerCacheLocal<Bomba[]>(claveBombas) ?? [];
+      if (bombasData) guardarCacheLocal(claveBombas, bombasData);
       setBombas(lista);
 
       const clave = `visita:${estacionId}:${visitaId ?? 'nueva'}`;
@@ -702,7 +713,16 @@ export function VisitForm() {
     (ubicacion.tipo === 'error' || (ubicacion.tipo === 'ok' && distanciaEfectiva! > DISTANCIA_MAXIMA_METROS));
   const ubicandoAun = requiereUbicacion && ubicacion.tipo === 'buscando';
 
-  if (!estacion || cargandoDatos || ubicandoAun) return <p className="text-slate-400">Cargando…</p>;
+  if (cargandoDatos || ubicandoAun) return <p className="text-slate-400">Cargando…</p>;
+
+  if (!estacion) {
+    return (
+      <p className="text-slate-400">
+        No se pudo cargar esta estación. Si no tienes señal, necesitas haber abierto esta pantalla
+        al menos una vez con conexión antes de poder usarla sin señal.
+      </p>
+    );
+  }
 
   if (bloqueadoPorUbicacion) {
     // Un solo mensaje genérico para los 3 casos (GPS apagado, permiso denegado, fuera de rango)
