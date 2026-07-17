@@ -16,6 +16,7 @@ const NAV_BASE = [
   { to: '/reportes', label: 'Reportes', icon: '📄' },
 ];
 const NAV_ADMIN = { to: '/usuarios', label: 'Usuarios', icon: '👥' };
+const NAV_ADMIN_SUPERVISOR = { to: '/asignaciones', label: 'Asignar', icon: '🗺️' };
 
 export function AppShell() {
   const { usuario, logout } = useAuth();
@@ -116,7 +117,11 @@ export function AppShell() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-panel-800 border-t border-panel-600/60 flex justify-around py-2 z-10">
-        {[...NAV_BASE, ...(usuario?.rol === 'administrador' ? [NAV_ADMIN] : [])].map((item) => (
+        {[
+          ...NAV_BASE,
+          ...(usuario?.rol === 'administrador' || usuario?.rol === 'supervisor' ? [NAV_ADMIN_SUPERVISOR] : []),
+          ...(usuario?.rol === 'administrador' ? [NAV_ADMIN] : []),
+        ].map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
