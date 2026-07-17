@@ -9,8 +9,10 @@ import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
 import { abrirBlob, descargarBlob, generarReporteVisitas } from '../lib/pdf';
 import { incrustarFotosVisitas } from '../lib/fotos';
 import { obtenerVisitasPorEstacion } from '../lib/visitasReporte';
+import { leerCacheLocal } from '../lib/cacheLocal';
 
 const VISITAS_EN_PDF = 30;
+const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 
 interface EquipoHistorial {
   estado: string;
@@ -99,7 +101,10 @@ export function StationDetail() {
         supabase.from('estaciones_ebar').select('*').eq('id', id).single(),
         supabase.rpc('rpc_historial_estacion', { p_estacion_id: id, p_limite: 30 }),
       ]);
-      setEstacion(est as EstacionEbar);
+      // Sin conexión: usar la copia de esta estación guardada la última vez que se cargó
+      // la lista de Estaciones (ver Stations.tsx), para poder llegar igual a "Nueva visita".
+      const estacionFinal = est ?? leerCacheLocal<EstacionEbar[]>(CLAVE_CACHE_ESTACIONES)?.find((e) => e.id === id) ?? null;
+      setEstacion(estacionFinal as EstacionEbar | null);
       setHistorial((hist as HistorialItem[]) ?? []);
       setCargando(false);
     }

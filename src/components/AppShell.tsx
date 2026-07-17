@@ -90,7 +90,7 @@ export function AppShell() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-400 hidden sm:inline">{usuario?.nombre_completo}</span>
+          <span className="text-sm text-slate-400 truncate max-w-[7rem] sm:max-w-none">{usuario?.nombre_completo}</span>
           <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-400 hover:text-slate-100">
             🔑
           </button>
