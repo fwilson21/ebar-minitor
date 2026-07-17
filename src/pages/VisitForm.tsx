@@ -83,6 +83,11 @@ export function VisitForm() {
 
   const [estacion, setEstacion] = useState<EstacionEbar | null>(null);
   const [bombas, setBombas] = useState<Bomba[]>([]);
+  // Bloqueo por asignación: `aplica` es false si el operador todavía no tiene NINGUNA fila en
+  // asignaciones_estacion (para no dejarlo sin poder trabajar mientras el administrador está
+  // terminando de cargar las asignaciones de todos) — en ese caso no se bloquea nada, igual que
+  // antes de que existiera esta funcionalidad.
+  const [asignacion, setAsignacion] = useState<{ aplica: boolean; asignadaHoy: boolean } | null>(null);
   const [registrosBombas, setRegistrosBombas] = useState<Record<string, RegistroBombaInput>>({});
   const [bombasSeleccionadas, setBombasSeleccionadas] = useState<Set<string>>(new Set());
   const [cargandoDatos, setCargandoDatos] = useState(true);
@@ -310,6 +315,29 @@ export function VisitForm() {
       const lista = bombasData ? (bombasData as Bomba[]) : leerCacheLocal<Bomba[]>(claveBombas) ?? [];
       if (bombasData) guardarCacheLocal(claveBombas, bombasData);
       setBombas(lista);
+
+      // Solo aplica a operadores registrando una visita NUEVA (no al editar una ya guardada, ni
+      // a admin/supervisor). Si no hay señal para consultar esto, no se bloquea nada — la
+      // verificación necesita datos frescos, y el registro offline ya es una función que no se
+      // le quiere quitar al operador por no poder chequear esto puntualmente.
+      if (usuario?.rol === 'operador' && !modoEdicion) {
+        const hoy = new Date().toISOString().slice(0, 10);
+        const [{ count: totalAsignaciones }, { data: asignadaHoyData }] = await Promise.all([
+          supabase.from('asignaciones_estacion').select('id', { count: 'exact', head: true }).eq('operador_id', usuario.id),
+          supabase
+            .from('asignaciones_estacion')
+            .select('id')
+            .eq('operador_id', usuario.id)
+            .eq('estacion_id', estacionId)
+            .or(`fecha.is.null,fecha.eq.${hoy}`),
+        ]);
+        setAsignacion({
+          aplica: (totalAsignaciones ?? 0) > 0,
+          asignadaHoy: (asignadaHoyData?.length ?? 0) > 0,
+        });
+      } else {
+        setAsignacion(null);
+      }
 
       const clave = `visita:${estacionId}:${visitaId ?? 'nueva'}`;
       const borrador = await obtenerBorradorVisita(clave);
@@ -728,6 +756,28 @@ export function VisitForm() {
         No se pudo cargar esta estación. Si no tienes señal, necesitas haber abierto esta pantalla
         al menos una vez con conexión antes de poder usarla sin señal.
       </p>
+    );
+  }
+
+  if (asignacion?.aplica && !asignacion.asignadaHoy) {
+    return (
+      <div className="tarjeta p-6 border-2 border-gauge-danger/60 bg-gauge-danger/10 text-center space-y-3">
+        <p className="text-4xl">🚫</p>
+        <h1 className="text-lg font-bold uppercase tracking-wide text-gauge-danger">
+          Esta estación no está asignada a ti hoy
+        </h1>
+        <p className="text-sm text-slate-300">
+          No puedes registrar una visita en {estacion.codigo} — {estacion.nombre} porque no está entre tus EBAR
+          asignadas para hoy. Si crees que es un error, contacta a tu administrador o supervisor.
+        </p>
+        <button
+          type="button"
+          className="text-xs text-slate-400 hover:text-slate-100 underline"
+          onClick={() => navigate(`/estaciones/${estacionId}`)}
+        >
+          ← Volver a la estación
+        </button>
+      </div>
     );
   }
 
