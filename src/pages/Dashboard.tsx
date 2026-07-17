@@ -58,26 +58,23 @@ export function Dashboard() {
       setResumen(resumenData as DashboardResumen);
 
       // Para operadores: sus EBAR asignadas hoy (por defecto o especial) filtran "Requieren
-      // atención" y "Pendientes de visita", además de armar "Tus EBAR de hoy" más abajo — mismo
-      // criterio de transición que en Stations.tsx/VisitForm: si todavía no tiene NINGUNA
-      // asignación cargada, no se filtra nada (sigue viendo todo, sin quedarse sin información
-      // mientras el administrador termina de asignar a todos).
+      // atención" y "Pendientes de visita", además de armar "Tus EBAR de hoy" más abajo. Si
+      // todavía no tiene ninguna, no ve ninguna estación en estas secciones: la asignación la
+      // controla exclusivamente el administrador/supervisor desde "Asignar". Si no hay señal
+      // para verificarlo (la consulta falla y devuelve null), no se filtra nada.
       let idsAsignadosHoy: Set<string> | null = null;
       const estacionesAsignadasInfo = new Map<string, EstacionSimple>();
       if (usuario?.rol === 'operador') {
-        const [{ count: totalAsignaciones }, { data: asignaciones }] = await Promise.all([
-          supabase.from('asignaciones_estacion').select('id', { count: 'exact', head: true }).eq('operador_id', usuario.id),
-          supabase
-            .from('asignaciones_estacion')
-            .select('estacion_id, estaciones_ebar ( id, nombre, codigo, zona )')
-            .eq('operador_id', usuario.id)
-            .or(`fecha.is.null,fecha.eq.${fecha}`),
-        ]);
-        for (const a of (asignaciones as any[]) ?? []) {
-          const est = a.estaciones_ebar;
-          if (est) estacionesAsignadasInfo.set(est.id, est);
-        }
-        if ((totalAsignaciones ?? 0) > 0) {
+        const { data: asignaciones } = await supabase
+          .from('asignaciones_estacion')
+          .select('estacion_id, estaciones_ebar ( id, nombre, codigo, zona )')
+          .eq('operador_id', usuario.id)
+          .or(`fecha.is.null,fecha.eq.${fecha}`);
+        if (asignaciones !== null) {
+          for (const a of asignaciones as any[]) {
+            const est = a.estaciones_ebar;
+            if (est) estacionesAsignadasInfo.set(est.id, est);
+          }
           idsAsignadosHoy = new Set(estacionesAsignadasInfo.keys());
         }
       }
