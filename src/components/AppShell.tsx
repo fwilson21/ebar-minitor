@@ -9,6 +9,7 @@ import {
   sincronizarPendientes,
   type VisitaPendiente,
 } from '../lib/offline';
+import { guardarBorradorDelFormularioActivo, hayCambiosSinGuardar } from '../lib/formularioActivo';
 
 const NAV_BASE = [
   { to: '/', label: 'Inicio', icon: '📊' },
@@ -37,6 +38,8 @@ export function AppShell() {
   const [sincronizando, setSincronizando] = useState(false);
   const [mensajeSync, setMensajeSync] = useState<string | null>(null);
   const [mostrarPassword, setMostrarPassword] = useState(false);
+  const [mostrarConfirmarSalir, setMostrarConfirmarSalir] = useState(false);
+  const [guardandoYSaliendo, setGuardandoYSaliendo] = useState(false);
 
   useEffect(() => {
     const detener = iniciarAutoSincronizacion((r) => {
@@ -92,6 +95,30 @@ export function AppShell() {
     }
   }
 
+  function manejarClickSalir() {
+    if (hayCambiosSinGuardar()) {
+      setMostrarConfirmarSalir(true);
+    } else if (window.confirm('¿Seguro que quieres salir de la app?')) {
+      logout();
+    }
+  }
+
+  async function guardarYSalir() {
+    setGuardandoYSaliendo(true);
+    try {
+      await guardarBorradorDelFormularioActivo();
+    } finally {
+      setGuardandoYSaliendo(false);
+      setMostrarConfirmarSalir(false);
+      logout();
+    }
+  }
+
+  function salirSinGuardarDesdeHeader() {
+    setMostrarConfirmarSalir(false);
+    logout();
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-panel-800 border-b border-panel-600/60 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
@@ -118,10 +145,7 @@ export function AppShell() {
           <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-400 hover:text-slate-100">
             🔑
           </button>
-          <button
-            onClick={() => window.confirm('¿Seguro que quieres salir de la app?') && logout()}
-            className="text-sm text-slate-400 hover:text-slate-100"
-          >
+          <button onClick={manejarClickSalir} className="text-sm text-slate-400 hover:text-slate-100">
             Salir
           </button>
         </div>
@@ -165,6 +189,41 @@ export function AppShell() {
       )}
 
       {mostrarPassword && <ModalCambiarPassword onCerrar={() => setMostrarPassword(false)} />}
+
+      {mostrarConfirmarSalir && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-20" onClick={() => !guardandoYSaliendo && setMostrarConfirmarSalir(false)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[90vw] max-w-sm p-4 space-y-3">
+            <h2 className="font-semibold text-sm">Tienes datos sin guardar</h2>
+            <p className="text-xs text-slate-400">
+              Estás llenando una visita. ¿Qué quieres hacer antes de salir?
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                onClick={guardarYSalir}
+                disabled={guardandoYSaliendo}
+                className="rounded-lg px-4 py-2.5 text-sm font-medium border border-gauge-ok/50 text-gauge-ok hover:bg-gauge-ok/10 transition"
+              >
+                {guardandoYSaliendo ? 'Guardando…' : '⏸ Guardar (pausar visita) y salir'}
+              </button>
+              <button
+                onClick={salirSinGuardarDesdeHeader}
+                disabled={guardandoYSaliendo}
+                className="rounded-lg px-4 py-2.5 text-sm font-medium border border-gauge-danger/50 text-gauge-danger hover:bg-gauge-danger/10 transition"
+              >
+                Salir sin guardar
+              </button>
+              <button
+                onClick={() => setMostrarConfirmarSalir(false)}
+                disabled={guardandoYSaliendo}
+                className="boton-secundario"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

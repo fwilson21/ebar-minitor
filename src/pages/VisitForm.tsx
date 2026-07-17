@@ -10,6 +10,7 @@ import { esMismoDia, formatearFechaHoraFoto, urlMiniaturaDrive } from '../lib/fo
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { distanciaMetros, useUbicacionActual } from '../lib/useUbicacion';
 import { guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
+import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
 import { PumpForm } from '../components/PumpForm';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { EquipoSection } from '../components/EquipoSection';
@@ -249,6 +250,22 @@ export function VisitForm() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshotActual]);
+
+  // Le avisa al header (botón "Salir") que hay datos sin guardar, para que ofrezca guardarlos
+  // como borrador antes de cerrar sesión — "Salir" no navega dentro de la app, así que el
+  // useBlocker de abajo no se entera solo.
+  useEffect(() => {
+    registrarFormularioActivo({
+      hayCambios,
+      guardarBorrador: async () => {
+        if (!estacionId) return;
+        await guardarBorradorVisita(claveBorrador(), estacionId, visitaId, construirBorrador());
+        guardadoRef.current = true;
+      },
+    });
+    return () => desregistrarFormularioActivo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hayCambios, snapshotActual]);
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) => hayCambios && currentLocation.pathname !== nextLocation.pathname
