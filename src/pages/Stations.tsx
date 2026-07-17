@@ -38,6 +38,26 @@ export function Stations() {
         lista = leerCacheLocal<EstacionEbar[]>(CLAVE_CACHE_ESTACIONES) ?? [];
         setSinConexion(true);
       }
+      // Un operador solo ve en esta lista las EBAR que tiene asignadas hoy (por defecto o
+      // especial) — mismo criterio de transición que el bloqueo de VisitForm: si todavía no
+      // tiene NINGUNA asignación cargada, no se filtra nada (se sigue mostrando todo, para no
+      // dejarlo sin ver nada mientras se le está asignando).
+      if (usuario?.rol === 'operador') {
+        const hoy = new Date().toISOString().slice(0, 10);
+        const [{ count: totalAsignaciones }, { data: asignadasHoy }] = await Promise.all([
+          supabase.from('asignaciones_estacion').select('id', { count: 'exact', head: true }).eq('operador_id', usuario.id),
+          supabase
+            .from('asignaciones_estacion')
+            .select('estacion_id')
+            .eq('operador_id', usuario.id)
+            .or(`fecha.is.null,fecha.eq.${hoy}`),
+        ]);
+        if ((totalAsignaciones ?? 0) > 0) {
+          const idsAsignados = new Set((asignadasHoy ?? []).map((a) => a.estacion_id));
+          lista = lista.filter((e) => idsAsignados.has(e.id));
+        }
+      }
+
       setEstaciones(lista);
 
       if (lista.length > 0) {

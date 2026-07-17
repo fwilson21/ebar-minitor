@@ -18,6 +18,16 @@ const NAV_BASE = [
 const NAV_ADMIN = { to: '/usuarios', label: 'Usuarios', icon: '👥' };
 const NAV_ADMIN_SUPERVISOR = { to: '/asignaciones', label: 'Asignar', icon: '🗺️' };
 
+// Muestra solo nombre y apellido (no el nombre completo con 2 nombres/2 apellidos que suelen
+// usarse en Ecuador) — para nombres de 4 palabras asume "Nombre1 Nombre2 Apellido1 Apellido2" y
+// se queda con la 1ª y la 3ª; para 3 palabras se queda con la 1ª y la última.
+function nombreCorto(nombreCompleto: string): string {
+  const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
+  if (partes.length <= 2) return partes.join(' ');
+  const indiceApellido = Math.ceil(partes.length / 2);
+  return `${partes[0]} ${partes[indiceApellido]}`;
+}
+
 export function AppShell() {
   const { usuario, logout } = useAuth();
   const [pendientes, setPendientes] = useState(0);
@@ -102,7 +112,9 @@ export function AppShell() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-400 truncate max-w-[7rem] sm:max-w-none">{usuario?.nombre_completo}</span>
+          <span className="text-sm text-slate-400 truncate max-w-[7rem] sm:max-w-none">
+            {usuario?.nombre_completo ? nombreCorto(usuario.nombre_completo) : ''}
+          </span>
           <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-400 hover:text-slate-100">
             🔑
           </button>
