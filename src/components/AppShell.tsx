@@ -9,7 +9,7 @@ import {
   sincronizarPendientes,
   type VisitaPendiente,
 } from '../lib/offline';
-import { guardarBorradorDelFormularioActivo, hayCambiosSinGuardar } from '../lib/formularioActivo';
+import { guardarCambiosDelFormularioActivo, hayCambiosSinGuardar } from '../lib/formularioActivo';
 
 const NAV_BASE = [
   { to: '/', label: 'Inicio', icon: '📊' },
@@ -106,7 +106,7 @@ export function AppShell() {
   async function guardarYSalir() {
     setGuardandoYSaliendo(true);
     try {
-      await guardarBorradorDelFormularioActivo();
+      await guardarCambiosDelFormularioActivo();
     } finally {
       setGuardandoYSaliendo(false);
       setMostrarConfirmarSalir(false);
@@ -196,7 +196,7 @@ export function AppShell() {
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[90vw] max-w-sm p-4 space-y-3">
             <h2 className="font-semibold text-sm">Tienes datos sin guardar</h2>
             <p className="text-xs text-slate-400">
-              Estás llenando una visita. ¿Qué quieres hacer antes de salir?
+              Tienes cambios sin guardar en esta pantalla. ¿Qué quieres hacer antes de salir?
             </p>
             <div className="flex flex-col gap-2 pt-1">
               <button
@@ -204,7 +204,7 @@ export function AppShell() {
                 disabled={guardandoYSaliendo}
                 className="rounded-lg px-4 py-2.5 text-sm font-medium border border-gauge-ok/50 text-gauge-ok hover:bg-gauge-ok/10 transition"
               >
-                {guardandoYSaliendo ? 'Guardando…' : '⏸ Guardar (pausar visita) y salir'}
+                {guardandoYSaliendo ? 'Guardando…' : '💾 Guardar y salir'}
               </button>
               <button
                 onClick={salirSinGuardarDesdeHeader}
