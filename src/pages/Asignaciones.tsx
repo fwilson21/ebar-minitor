@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { AsignacionEstacion, EstacionEbar, Usuario } from '../lib/types';
+import { calcularFeriados } from '../lib/feriadosEcuador';
+
+interface FeriadoAdicional {
+  id: string;
+  fecha: string;
+  descripcion: string;
+}
 
 export function Asignaciones() {
   const { usuario } = useAuth();
@@ -20,18 +27,55 @@ export function Asignaciones() {
   const [fechaEspecial, setFechaEspecial] = useState('');
   const [seleccionEspecial, setSeleccionEspecial] = useState<Set<string>>(new Set());
 
+  const [feriadosAdicionales, setFeriadosAdicionales] = useState<FeriadoAdicional[]>([]);
+  const [nuevaFechaFeriado, setNuevaFechaFeriado] = useState('');
+  const [nuevaDescripcionFeriado, setNuevaDescripcionFeriado] = useState('');
+  const [guardandoFeriado, setGuardandoFeriado] = useState(false);
+  const [mensajeFeriado, setMensajeFeriado] = useState<string | null>(null);
+
   useEffect(() => {
     async function cargarBase() {
-      const [{ data: ops }, { data: est }] = await Promise.all([
+      const [{ data: ops }, { data: est }, { data: feriados }] = await Promise.all([
         supabase.from('usuarios').select('*').eq('rol', 'operador').eq('activo', true).order('nombre_completo'),
         supabase.from('estaciones_ebar').select('*').eq('activa', true).order('nombre'),
+        supabase.from('feriados_adicionales').select('id, fecha, descripcion').order('fecha'),
       ]);
       setOperadores((ops as Usuario[]) ?? []);
       setEstaciones((est as EstacionEbar[]) ?? []);
+      setFeriadosAdicionales((feriados as FeriadoAdicional[]) ?? []);
       setCargando(false);
     }
     cargarBase();
   }, []);
+
+  async function agregarFeriado() {
+    if (!nuevaFechaFeriado || !nuevaDescripcionFeriado.trim()) return;
+    setGuardandoFeriado(true);
+    setMensajeFeriado(null);
+    try {
+      const { data, error } = await supabase
+        .from('feriados_adicionales')
+        .insert({ fecha: nuevaFechaFeriado, descripcion: nuevaDescripcionFeriado.trim(), creado_por: usuario?.id })
+        .select('id, fecha, descripcion')
+        .single();
+      if (error) throw error;
+      setFeriadosAdicionales((prev) => [...prev, data as FeriadoAdicional].sort((a, b) => a.fecha.localeCompare(b.fecha)));
+      setNuevaFechaFeriado('');
+      setNuevaDescripcionFeriado('');
+    } catch (err: any) {
+      const duplicado = err.code === '23505';
+      setMensajeFeriado(duplicado ? 'Ya hay un feriado agregado para esa fecha.' : `No se pudo agregar: ${err.message ?? err}`);
+    } finally {
+      setGuardandoFeriado(false);
+    }
+  }
+
+  async function quitarFeriado(id: string) {
+    setGuardandoFeriado(true);
+    const { error } = await supabase.from('feriados_adicionales').delete().eq('id', id);
+    if (!error) setFeriadosAdicionales((prev) => prev.filter((f) => f.id !== id));
+    setGuardandoFeriado(false);
+  }
 
   useEffect(() => {
     if (!operadorId) {
@@ -257,6 +301,80 @@ export function Asignaciones() {
           </div>
         </>
       )}
+
+      <div className="tarjeta p-4 space-y-3">
+        <div>
+          <h2 className="text-base font-semibold">Feriados</h2>
+          <p className="text-xs text-slate-500">
+            El calendario nacional de Ecuador y los feriados locales (cantonización de Francisco de Orellana 30 de
+            abril, provincialización de Orellana 30 de julio) se calculan solos. Acá solo agregás una fecha si sale
+            un traslado especial de un año puntual que el cálculo automático no puede prever.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-xs text-slate-500 mb-1">Feriados calculados para {new Date().getFullYear()}:</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-400">
+            {[...calcularFeriados(new Date().getFullYear()).entries()]
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([fecha, nombres]) => (
+                <span key={fecha}>
+                  {fecha} — {nombres.join(' + ')}
+                </span>
+              ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="etiqueta">Fecha</label>
+            <input
+              type="date"
+              className="campo"
+              value={nuevaFechaFeriado}
+              onChange={(e) => setNuevaFechaFeriado(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="etiqueta">Descripción</label>
+            <input
+              className="campo"
+              placeholder="Ej: traslado oficial"
+              value={nuevaDescripcionFeriado}
+              onChange={(e) => setNuevaDescripcionFeriado(e.target.value)}
+            />
+          </div>
+        </div>
+        <button
+          onClick={agregarFeriado}
+          disabled={guardandoFeriado || !nuevaFechaFeriado || !nuevaDescripcionFeriado.trim()}
+          className="boton-primario w-full"
+        >
+          {guardandoFeriado ? 'Guardando…' : 'Agregar feriado adicional'}
+        </button>
+
+        {mensajeFeriado && <p className="text-sm text-gauge-danger">{mensajeFeriado}</p>}
+
+        {feriadosAdicionales.length > 0 && (
+          <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
+            <p className="text-xs text-slate-500">Feriados adicionales agregados a mano:</p>
+            {feriadosAdicionales.map((f) => (
+              <div key={f.id} className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">
+                  {f.fecha} · {f.descripcion}
+                </span>
+                <button
+                  onClick={() => quitarFeriado(f.id)}
+                  disabled={guardandoFeriado}
+                  className="text-gauge-danger hover:underline text-xs"
+                >
+                  Quitar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
