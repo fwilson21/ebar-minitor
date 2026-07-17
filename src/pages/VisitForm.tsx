@@ -8,6 +8,7 @@ import {
 } from '../lib/offline';
 import { esMismoDia, formatearFechaHoraFoto, urlMiniaturaDrive } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
+import { distanciaMetros, useUbicacionActual } from '../lib/useUbicacion';
 import { PumpForm } from '../components/PumpForm';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { EquipoSection } from '../components/EquipoSection';
@@ -25,6 +26,8 @@ import type {
 } from '../lib/types';
 
 const crearEquipo = (): RegistroEquipo => ({ estado: '', observaciones: '', fotos: [] });
+
+const DISTANCIA_MAXIMA_METROS = 300;
 
 const ESTADOS_ESTACION: { value: EstadoEstacion; label: string; claseActiva: string }[] = [
   { value: 'operativa', label: 'Operativa', claseActiva: 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' },
@@ -676,7 +679,54 @@ export function VisitForm() {
     }
   }
 
-  if (!estacion || cargandoDatos) return <p className="text-slate-400">Cargando…</p>;
+  // El bloqueo por ubicación solo aplica al registrar una visita nueva (no al editar una ya
+  // guardada, que puede corregirse después desde cualquier lado), solo a operadores (admin y
+  // supervisor quedan exentos, igual que la vinculación de celular) y solo si la estación tiene
+  // coordenadas registradas (si no las tiene, no hay contra qué comparar y el formulario funciona
+  // como siempre).
+  const requiereUbicacion =
+    !!estacion && !modoEdicion && usuario?.rol === 'operador' && estacion.latitud != null && estacion.longitud != null;
+  const ubicacion = useUbicacionActual(requiereUbicacion);
+  // Se descuenta el margen de precisión (`accuracy`) del GPS antes de comparar: cerca de
+  // estructuras de concreto/metal el celular puede reportar 50-150 m de margen de error, y sin
+  // esto un operador parado justo en el borde de los 300 m podía quedar bloqueado por error.
+  const distanciaEfectiva =
+    requiereUbicacion && ubicacion.tipo === 'ok'
+      ? Math.max(0, distanciaMetros(ubicacion.lat, ubicacion.lon, estacion!.latitud!, estacion!.longitud!) - ubicacion.precision)
+      : null;
+  // Mientras el GPS todavía no da su primera lectura no se bloquea (se trata como una carga
+  // normal, sin mostrar el aviso) — así se evita el falso "no estás en el sitio" mientras el
+  // celular sigue ubicándose, sobre todo en EBAR sin señal de datos donde tarda más.
+  const bloqueadoPorUbicacion =
+    requiereUbicacion &&
+    (ubicacion.tipo === 'error' || (ubicacion.tipo === 'ok' && distanciaEfectiva! > DISTANCIA_MAXIMA_METROS));
+  const ubicandoAun = requiereUbicacion && ubicacion.tipo === 'buscando';
+
+  if (!estacion || cargandoDatos || ubicandoAun) return <p className="text-slate-400">Cargando…</p>;
+
+  if (bloqueadoPorUbicacion) {
+    // Un solo mensaje genérico para los 3 casos (GPS apagado, permiso denegado, fuera de rango)
+    // a propósito: no debe distinguir la causa ni mostrar distancias/coordenadas, para no darle
+    // al operador ninguna pista de que se está verificando su ubicación por GPS.
+    return (
+      <div className="tarjeta p-6 border-2 border-gauge-danger/60 bg-gauge-danger/10 text-center space-y-3">
+        <p className="text-4xl">🚫</p>
+        <h1 className="text-lg font-bold uppercase tracking-wide text-gauge-danger">
+          No se puede registrar la visita
+        </h1>
+        <p className="text-sm text-slate-300">
+          No es posible registrar esta visita porque no te encuentras en las instalaciones de la estación EBAR.
+        </p>
+        <button
+          type="button"
+          className="text-xs text-slate-400 hover:text-slate-100 underline"
+          onClick={() => navigate(`/estaciones/${estacionId}`)}
+        >
+          ← Volver a la estación
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

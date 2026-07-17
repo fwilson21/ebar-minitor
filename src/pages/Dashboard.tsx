@@ -5,6 +5,7 @@ import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
 import type { DashboardResumen, EstacionEbar } from '../lib/types';
 import { StationCard } from '../components/StationCard';
+import { detectarVisitasSospechosas, type ParSospechoso, type VisitaParaChequeo } from '../lib/visitasSospechosas';
 
 const HOY = new Date().toISOString().slice(0, 10);
 
@@ -19,6 +20,7 @@ export function Dashboard() {
   const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>({});
   const [sinVisitar, setSinVisitar] = useState<EstacionSimple[]>([]);
   const [mostrarSinVisitar, setMostrarSinVisitar] = useState(true);
+  const [sospechosas, setSospechosas] = useState<ParSospechoso[]>([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -58,6 +60,32 @@ export function Dashboard() {
         setUltimasVisitas(mapa);
       } else {
         setUltimasVisitas({});
+      }
+
+      // Alerta de "salto geográfico" entre visitas consecutivas de un mismo operador — es
+      // información sobre el desempeño de otros operadores, así que solo se consulta y se
+      // muestra a admin/supervisor, nunca a operadores viendo su propio dashboard.
+      if (esAdmin) {
+        const hace14Dias = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: visitasRecientesTodas } = await supabase
+          .from('visitas')
+          .select('id, operador_id, estacion_id, fecha_hora_llegada, usuarios ( nombre_completo ), estaciones_ebar ( nombre, latitud, longitud )')
+          .gte('fecha_hora_llegada', hace14Dias)
+          .order('fecha_hora_llegada', { ascending: true });
+
+        const paraChequeo: VisitaParaChequeo[] = ((visitasRecientesTodas as any[]) ?? []).map((v) => ({
+          id: v.id,
+          operador_id: v.operador_id,
+          operador_nombre: v.usuarios?.nombre_completo ?? '-',
+          estacion_id: v.estacion_id,
+          estacion_nombre: v.estaciones_ebar?.nombre ?? '-',
+          fecha_hora_llegada: v.fecha_hora_llegada,
+          lat: v.estaciones_ebar?.latitud ?? null,
+          lon: v.estaciones_ebar?.longitud ?? null,
+        }));
+        setSospechosas(detectarVisitasSospechosas(paraChequeo));
+      } else {
+        setSospechosas([]);
       }
 
       setCargando(false);
@@ -150,8 +178,37 @@ export function Dashboard() {
           </div>
         </div>
       )}
+
+      {esAdmin && sospechosas.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-slate-300 mb-2">
+            ⚠️ Visitas con horario sospechoso ({sospechosas.length})
+          </h2>
+          <div className="space-y-2">
+            {sospechosas.map((s, i) => (
+              <div key={i} className="tarjeta p-3 border border-gauge-warn/40">
+                <p className="text-sm font-medium text-slate-100">{s.operador_nombre}</p>
+                <p className="text-xs text-slate-400">
+                  {s.visitaAnterior.estacion_nombre} → {s.visitaSiguiente.estacion_nombre}
+                  {' · '}
+                  {s.km.toFixed(1)} km en {Math.round(s.minutos)} min
+                </p>
+                <p className="text-xs text-slate-500">
+                  {formatFechaCorta(s.visitaAnterior.fecha_hora_llegada)} → {formatFechaCorta(s.visitaSiguiente.fecha_hora_llegada)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function formatFechaCorta(fechaIso: string): string {
+  return new Date(fechaIso).toLocaleString('es-EC', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
 }
 
 const COLOR_ACENTO: Record<'ok' | 'warn' | 'danger' | 'idle', string> = {
