@@ -106,7 +106,10 @@ export function AppShell() {
           <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-400 hover:text-slate-100">
             🔑
           </button>
-          <button onClick={logout} className="text-sm text-slate-400 hover:text-slate-100">
+          <button
+            onClick={() => window.confirm('¿Seguro que quieres salir de la app?') && logout()}
+            className="text-sm text-slate-400 hover:text-slate-100"
+          >
             Salir
           </button>
         </div>

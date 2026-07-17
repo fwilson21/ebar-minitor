@@ -10,6 +10,7 @@ import { detectarVisitasSospechosas, type ParSospechoso, type VisitaParaChequeo 
 const HOY = new Date().toISOString().slice(0, 10);
 
 type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona'>;
+type EstacionAsignadaHoy = EstacionSimple & { visitasHoy: number };
 
 export function Dashboard() {
   const { usuario } = useAuth();
@@ -21,6 +22,7 @@ export function Dashboard() {
   const [sinVisitar, setSinVisitar] = useState<EstacionSimple[]>([]);
   const [mostrarSinVisitar, setMostrarSinVisitar] = useState(true);
   const [sospechosas, setSospechosas] = useState<ParSospechoso[]>([]);
+  const [misEstacionesHoy, setMisEstacionesHoy] = useState<EstacionAsignadaHoy[]>([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -88,6 +90,46 @@ export function Dashboard() {
         setSospechosas([]);
       }
 
+      // "Tus EBAR de hoy": solo para operadores — combina su asignación por defecto (fecha null)
+      // con las especiales para el día puntual seleccionado (siempre "hoy" en el caso del
+      // operador, ya que el selector de fecha de arriba no se le muestra).
+      if (usuario?.rol === 'operador') {
+        const { data: asignaciones } = await supabase
+          .from('asignaciones_estacion')
+          .select('estacion_id, estaciones_ebar ( id, nombre, codigo, zona )')
+          .eq('operador_id', usuario.id)
+          .or(`fecha.is.null,fecha.eq.${fecha}`);
+
+        const estacionesUnicas = new Map<string, EstacionSimple>();
+        for (const a of (asignaciones as any[]) ?? []) {
+          const est = a.estaciones_ebar;
+          if (est) estacionesUnicas.set(est.id, est);
+        }
+
+        const idsAsignados = [...estacionesUnicas.keys()];
+        const visitasPorEstacion: Record<string, number> = {};
+        if (idsAsignados.length > 0) {
+          const { data: misVisitas } = await supabase
+            .from('visitas')
+            .select('estacion_id')
+            .eq('operador_id', usuario.id)
+            .in('estacion_id', idsAsignados)
+            .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
+            .lte('fecha_hora_llegada', `${fecha}T23:59:59`);
+          for (const v of misVisitas ?? []) {
+            visitasPorEstacion[v.estacion_id] = (visitasPorEstacion[v.estacion_id] ?? 0) + 1;
+          }
+        }
+
+        setMisEstacionesHoy(
+          [...estacionesUnicas.values()]
+            .map((e) => ({ ...e, visitasHoy: visitasPorEstacion[e.id] ?? 0 }))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre)),
+        );
+      } else {
+        setMisEstacionesHoy([]);
+      }
+
       setCargando(false);
     }
 
@@ -136,6 +178,37 @@ export function Dashboard() {
           <Metrica label="Alertas de voltaje" valor={resumen?.alertas_voltaje ?? 0} acento="danger" />
         </div>
       </div>
+
+      {!esAdmin && (
+        <div>
+          <h2 className="text-sm font-semibold text-slate-300 mb-2">
+            Tus EBAR de hoy ({misEstacionesHoy.filter((e) => e.visitasHoy > 0).length}/{misEstacionesHoy.length} visitadas)
+          </h2>
+          {misEstacionesHoy.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Aún no tienes estaciones asignadas para hoy. Habla con tu administrador o supervisor.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {misEstacionesHoy.map((e) => (
+                <Link
+                  key={e.id}
+                  to={`/estaciones/${e.id}/nueva-visita`}
+                  className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-100">{e.nombre}</p>
+                    <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
+                  </div>
+                  <span className={`text-xs flex-shrink-0 ${e.visitasHoy > 0 ? 'text-gauge-ok' : 'text-gauge-warn'}`}>
+                    {e.visitasHoy > 0 ? `${e.visitasHoy} visita${e.visitasHoy > 1 ? 's' : ''} hoy` : 'Sin visitar'}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {sinVisitar.length > 0 && (
         <div>
