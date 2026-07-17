@@ -46,7 +46,13 @@ export function Dashboard() {
         { data: visitasDelDia },
         { data: feriadosAdic },
       ] = await Promise.all([
-        supabase.rpc('rpc_dashboard_resumen', { p_fecha: fecha }),
+        supabase.rpc('rpc_dashboard_resumen', {
+          p_fecha: fecha,
+          // Para un operador, las 5 métricas de arriba se calculan solo con sus visitas y sus
+          // EBAR asignadas (no toda la empresa) — antes mostraba números globales que no tenían
+          // relación con lo que ese operador había hecho.
+          p_operador_id: usuario?.rol === 'operador' ? usuario.id : null,
+        }),
         supabase.from('estaciones_ebar').select('*').neq('estado_actual', 'operativa').eq('activa', true),
         supabase.from('estaciones_ebar').select('id, nombre, codigo, zona').eq('activa', true).order('nombre'),
         supabase.from('visitas').select('estacion_id, operador_id')
