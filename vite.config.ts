@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import fs from 'node:fs';
 
 // Certificado autofirmado (.cert/) solo para probar la cámara desde el celular
@@ -19,7 +20,42 @@ const keyPath = 'C:/ebar-app/.cert/key.pem';
 const tieneCertLocal = !process.env.EBAR_HTTP_LOCAL && fs.existsSync(certPath) && fs.existsSync(keyPath);
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Permite que la app se ABRA sin ninguna señal (no solo que la visita se guarde offline a
+    // medio llenar, que ya funcionaba vía IndexedDB): el service worker deja en el celular una
+    // copia de la app (JS/CSS/HTML) la primera vez que carga con señal, para poder abrirla luego
+    // sin conexión — importante para las EBAR sin señal de datos.
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: {
+        name: 'EBAR Monitor',
+        short_name: 'EBAR Monitor',
+        description: 'Monitoreo de estaciones de bombeo de aguas residuales',
+        lang: 'es',
+        theme_color: '#0B1521',
+        background_color: '#0B1521',
+        display: 'standalone',
+        start_url: '/',
+        icons: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+      workbox: {
+        // Solo cachea los archivos propios de la app (el "cascarón"); las llamadas a Supabase
+        // no pasan por acá, siguen su propio manejo offline ya existente en offline.ts.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        navigateFallback: '/index.html',
+        cleanupOutdatedCaches: true,
+        // El bundle principal pasa los 2 MiB por defecto (incluye pdfmake, para generar los
+        // reportes) — hay que subir el límite o ese archivo se queda sin cachear y la app no
+        // podría abrir sin conexión.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      },
+    }),
+  ],
   server: {
     host: true,
     port: 5173,

@@ -22,6 +22,7 @@ interface EquipoHistorial {
 interface HistorialItem {
   id: string;
   fecha_hora_llegada: string;
+  fecha_hora_salida?: string | null;
   estado_estacion: string;
   nivel_tanque: string;
   operador: string;
@@ -62,6 +63,18 @@ const EQUIPOS_LABELS: { clave: keyof HistorialItem; label: string }[] = [
   { clave: 'tuberia_600_valvulas_aire', label: 'Tub.600 V.aire' },
   { clave: 'tuberia_600_uniones_elastomericas', label: 'Tub.600 Uniones' },
 ];
+
+// Visitas más cortas que esto se resaltan en el historial (no se bloquea nada, es solo para que
+// el supervisor note "visitas relámpago" de un vistazo).
+const VISITA_CORTA_MINUTOS = 3;
+
+function duracionVisita(llegada: string, salida?: string | null): { texto: string; corta: boolean } | null {
+  if (!salida) return null;
+  const minutos = Math.round((new Date(salida).getTime() - new Date(llegada).getTime()) / 60000);
+  if (minutos < 0) return null;
+  const texto = minutos < 60 ? `${minutos} min` : `${Math.floor(minutos / 60)}h ${String(minutos % 60).padStart(2, '0')}min`;
+  return { texto, corta: minutos < VISITA_CORTA_MINUTOS };
+}
 
 export function StationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -331,10 +344,18 @@ export function StationDetail() {
               const propsContenedor = puedeEditar
                 ? { to: `/estaciones/${estacion.id}/visitas/${h.id}/editar` }
                 : {};
+              const duracion = duracionVisita(h.fecha_hora_llegada, h.fecha_hora_salida);
               return (
               <Contenedor key={h.id} className="tarjeta p-3 block hover:border-gauge-ok/50 transition" {...(propsContenedor as any)}>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC', { hour12: false })}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC', { hour12: false })}</span>
+                    {duracion && (
+                      <span className={`text-xs ${duracion.corta ? 'text-gauge-warn' : 'text-slate-500'}`}>
+                        · {duracion.texto}
+                      </span>
+                    )}
+                  </span>
                   <span className="text-xs text-slate-500">{h.operador}{puedeEditar && ' · Editar →'}</span>
                 </div>
                 <div className="flex gap-2 mt-2 flex-wrap">

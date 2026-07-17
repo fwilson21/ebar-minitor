@@ -1,0 +1,42 @@
+CÓMO LLENAR LOS ARCHIVOS DE ESTA CARPETA
+==========================================
+
+1) estaciones_plantilla.csv
+----------------------------
+Una fila por cada EBAR o línea de conducción. Ábrelo con Excel.
+Ya tiene una fila de ejemplo (EBAR-002) — bórrala o edítala, es solo referencia.
+
+Columnas:
+- codigo          (obligatorio) Único, no se puede repetir. Ej: EBAR-003
+- nombre          (obligatorio) Ej: Estación El Pintado
+- zona            (obligatorio) Escribir exactamente: urbana  o  rural
+- tipo            (obligatorio) Escribir exactamente: ebar  o  linea_conduccion
+                  (usa "linea_conduccion" solo para tramos de tubería sin bombas)
+- direccion       (opcional)
+- latitud         (recomendado) Ej: -0.4670  — usa el GPS del celular parado en la estación,
+- longitud        (recomendado) Ej: -76.9870   o Google Maps (clic derecho sobre el punto exacto)
+- descripcion     (opcional)
+
+Sin latitud/longitud, el bloqueo por GPS no funciona en esa estación — cualquiera
+podría registrar visitas ahí sin estar físicamente en el sitio.
+
+2) bombas_plantilla.csv (opcional)
+------------------------------------
+Solo si quieres dejar cargados de una vez los datos de placa de cada bomba
+(marca, modelo, potencia, voltaje/amperaje nominal). Si no te interesa esto
+todavía, no hace falta llenar este archivo — las bombas se pueden crear vacías
+desde la app ("Gestión de bombas" en la página de cada estación) y completar
+después.
+
+Columnas:
+- codigo_estacion   (obligatorio) Debe coincidir EXACTO con un "codigo" del otro archivo
+- numero_bomba      (obligatorio) 1, 2, 3 o 4
+- marca             (opcional)
+- modelo            (opcional)
+- potencia_hp       (opcional) número, ej: 15
+- voltaje_nominal   (opcional) número, ej: 220
+- amperaje_nominal  (opcional) número, ej: 42
+- fecha_instalacion (opcional) formato AAAA-MM-DD, ej: 2020-06-15
+
+Cuando termines de llenarlos, guárdalos (mantén el formato .csv) y avísame —
+con eso te genero el SQL para cargarlos todos de una vez en Supabase.
