@@ -20,6 +20,8 @@ export function Asignaciones() {
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
 
+  const [todasAsignaciones, setTodasAsignaciones] = useState<AsignacionEstacion[]>([]);
+
   const [asignacionesDefault, setAsignacionesDefault] = useState<Set<string>>(new Set());
   const [seleccionDefault, setSeleccionDefault] = useState<Set<string>>(new Set());
 
@@ -35,18 +37,25 @@ export function Asignaciones() {
 
   useEffect(() => {
     async function cargarBase() {
-      const [{ data: ops }, { data: est }, { data: feriados }] = await Promise.all([
+      const [{ data: ops }, { data: est }, { data: feriados }, { data: asigTodas }] = await Promise.all([
         supabase.from('usuarios').select('*').eq('rol', 'operador').eq('activo', true).order('nombre_completo'),
         supabase.from('estaciones_ebar').select('*').eq('activa', true).order('nombre'),
         supabase.from('feriados_adicionales').select('id, fecha, descripcion').order('fecha'),
+        supabase.from('asignaciones_estacion').select('*'),
       ]);
       setOperadores((ops as Usuario[]) ?? []);
       setEstaciones((est as EstacionEbar[]) ?? []);
       setFeriadosAdicionales((feriados as FeriadoAdicional[]) ?? []);
+      setTodasAsignaciones((asigTodas as AsignacionEstacion[]) ?? []);
       setCargando(false);
     }
     cargarBase();
   }, []);
+
+  async function cargarTodasAsignaciones() {
+    const { data } = await supabase.from('asignaciones_estacion').select('*');
+    setTodasAsignaciones((data as AsignacionEstacion[]) ?? []);
+  }
 
   async function agregarFeriado() {
     if (!nuevaFechaFeriado || !nuevaDescripcionFeriado.trim()) return;
@@ -132,6 +141,7 @@ export function Asignaciones() {
         if (error) throw error;
       }
       setAsignacionesDefault(new Set(seleccionDefault));
+      await cargarTodasAsignaciones();
       setMensaje('Asignación por defecto guardada.');
     } catch (err: any) {
       setMensaje(`No se pudo guardar: ${err.message ?? err}`);
@@ -156,6 +166,7 @@ export function Asignaciones() {
       // 23505 = ya existía esa estación asignada para ese operador en esa fecha: no es un error real.
       if (error && error.code !== '23505') throw error;
       await cargarAsignaciones(operadorId);
+      await cargarTodasAsignaciones();
       setMensaje('Asignación especial agregada.');
     } catch (err: any) {
       setMensaje(`No se pudo agregar: ${err.message ?? err}`);
@@ -167,13 +178,20 @@ export function Asignaciones() {
   async function quitarEspecial(id: string) {
     setGuardando(true);
     const { error } = await supabase.from('asignaciones_estacion').delete().eq('id', id);
-    if (!error) setAsignacionesEspeciales((prev) => prev.filter((a) => a.id !== id));
+    if (!error) {
+      setAsignacionesEspeciales((prev) => prev.filter((a) => a.id !== id));
+      await cargarTodasAsignaciones();
+    }
     setGuardando(false);
   }
 
   function nombreEstacion(estacionId: string): string {
     const e = estaciones.find((x) => x.id === estacionId);
     return e ? `${e.codigo} — ${e.nombre}` : estacionId;
+  }
+
+  function codigoEstacion(estacionId: string): string {
+    return estaciones.find((x) => x.id === estacionId)?.codigo ?? '?';
   }
 
   if (cargando) return <p className="text-slate-400">Cargando…</p>;
@@ -186,6 +204,44 @@ export function Asignaciones() {
           Elige qué estaciones visita cada operador por defecto, y agrega asignaciones extra para un día puntual
           (fines de semana, feriados, refuerzos).
         </p>
+      </div>
+
+      <div className="tarjeta p-4 space-y-3">
+        <div>
+          <h2 className="text-base font-semibold">Resumen de asignaciones</h2>
+          <p className="text-xs text-slate-500">Qué EBAR tiene cada operador, por defecto y para días puntuales.</p>
+        </div>
+        {operadores.length === 0 ? (
+          <p className="text-sm text-slate-500">No hay operadores activos.</p>
+        ) : (
+          <div className="space-y-3">
+            {operadores.map((o) => {
+              const deEsteOperador = todasAsignaciones.filter((a) => a.operador_id === o.id);
+              const porDefecto = deEsteOperador.filter((a) => a.fecha === null);
+              const especiales = deEsteOperador
+                .filter((a) => a.fecha !== null)
+                .sort((a, b) => a.fecha!.localeCompare(b.fecha!));
+              return (
+                <div key={o.id} className="border-b border-panel-600/40 pb-3 last:border-0 last:pb-0">
+                  <p className="text-sm font-medium text-slate-100">{o.nombre_completo}</p>
+                  <p className="text-xs text-slate-400">
+                    Por defecto:{' '}
+                    {porDefecto.length > 0 ? porDefecto.map((a) => codigoEstacion(a.estacion_id)).join(', ') : 'Ninguna'}
+                  </p>
+                  {especiales.length > 0 && (
+                    <div className="text-xs text-slate-500 mt-1">
+                      {especiales.map((a) => (
+                        <p key={a.id}>
+                          {a.fecha} · {codigoEstacion(a.estacion_id)}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div>
