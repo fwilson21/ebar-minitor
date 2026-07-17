@@ -39,21 +39,19 @@ export function Stations() {
         setSinConexion(true);
       }
       // Un operador solo ve en esta lista las EBAR que tiene asignadas hoy (por defecto o
-      // especial) — mismo criterio de transición que el bloqueo de VisitForm: si todavía no
-      // tiene NINGUNA asignación cargada, no se filtra nada (se sigue mostrando todo, para no
-      // dejarlo sin ver nada mientras se le está asignando).
+      // especial) — si todavía no tiene ninguna, no ve ninguna estación: la asignación la
+      // controla exclusivamente el administrador/supervisor desde "Asignar". Si no hay señal
+      // para verificarlo (la consulta falla y devuelve null), no se filtra nada — la lista ya
+      // viene de la copia guardada en el dispositivo tal cual.
       if (usuario?.rol === 'operador') {
         const hoy = new Date().toISOString().slice(0, 10);
-        const [{ count: totalAsignaciones }, { data: asignadasHoy }] = await Promise.all([
-          supabase.from('asignaciones_estacion').select('id', { count: 'exact', head: true }).eq('operador_id', usuario.id),
-          supabase
-            .from('asignaciones_estacion')
-            .select('estacion_id')
-            .eq('operador_id', usuario.id)
-            .or(`fecha.is.null,fecha.eq.${hoy}`),
-        ]);
-        if ((totalAsignaciones ?? 0) > 0) {
-          const idsAsignados = new Set((asignadasHoy ?? []).map((a) => a.estacion_id));
+        const { data: asignadasHoy } = await supabase
+          .from('asignaciones_estacion')
+          .select('estacion_id')
+          .eq('operador_id', usuario.id)
+          .or(`fecha.is.null,fecha.eq.${hoy}`);
+        if (asignadasHoy !== null) {
+          const idsAsignados = new Set(asignadasHoy.map((a) => a.estacion_id));
           lista = lista.filter((e) => idsAsignados.has(e.id));
         }
       }
@@ -140,7 +138,9 @@ export function Stations() {
         <p className="text-slate-400">
           {sinConexion
             ? 'No hay ninguna estación guardada todavía en este dispositivo. Conéctate al menos una vez para poder verlas sin señal.'
-            : 'No se encontraron estaciones.'}
+            : usuario?.rol === 'operador'
+              ? 'Todavía no tienes estaciones asignadas. Habla con tu administrador o supervisor.'
+              : 'No se encontraron estaciones.'}
         </p>
       ) : (
         <div className="space-y-2">

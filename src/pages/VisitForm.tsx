@@ -84,11 +84,10 @@ export function VisitForm() {
 
   const [estacion, setEstacion] = useState<EstacionEbar | null>(null);
   const [bombas, setBombas] = useState<Bomba[]>([]);
-  // Bloqueo por asignación: `aplica` es false si el operador todavía no tiene NINGUNA fila en
-  // asignaciones_estacion (para no dejarlo sin poder trabajar mientras el administrador está
-  // terminando de cargar las asignaciones de todos) — en ese caso no se bloquea nada, igual que
-  // antes de que existiera esta funcionalidad.
-  const [asignacion, setAsignacion] = useState<{ aplica: boolean; asignadaHoy: boolean } | null>(null);
+  // Bloqueo por asignación: la asignación la controla exclusivamente el administrador/supervisor
+  // desde "Asignar" — si el operador no tiene la estación asignada hoy (por defecto o especial),
+  // no puede registrar la visita, tenga o no otras asignaciones cargadas.
+  const [asignacion, setAsignacion] = useState<{ asignadaHoy: boolean } | null>(null);
   const [registrosBombas, setRegistrosBombas] = useState<Record<string, RegistroBombaInput>>({});
   const [bombasSeleccionadas, setBombasSeleccionadas] = useState<Set<string>>(new Set());
   const [cargandoDatos, setCargandoDatos] = useState(true);
@@ -334,24 +333,20 @@ export function VisitForm() {
       setBombas(lista);
 
       // Solo aplica a operadores registrando una visita NUEVA (no al editar una ya guardada, ni
-      // a admin/supervisor). Si no hay señal para consultar esto, no se bloquea nada — la
-      // verificación necesita datos frescos, y el registro offline ya es una función que no se
-      // le quiere quitar al operador por no poder chequear esto puntualmente.
+      // a admin/supervisor).
       if (usuario?.rol === 'operador' && !modoEdicion) {
         const hoy = new Date().toISOString().slice(0, 10);
-        const [{ count: totalAsignaciones }, { data: asignadaHoyData }] = await Promise.all([
-          supabase.from('asignaciones_estacion').select('id', { count: 'exact', head: true }).eq('operador_id', usuario.id),
-          supabase
-            .from('asignaciones_estacion')
-            .select('id')
-            .eq('operador_id', usuario.id)
-            .eq('estacion_id', estacionId)
-            .or(`fecha.is.null,fecha.eq.${hoy}`),
-        ]);
-        setAsignacion({
-          aplica: (totalAsignaciones ?? 0) > 0,
-          asignadaHoy: (asignadaHoyData?.length ?? 0) > 0,
-        });
+        const { data: asignadaHoyData } = await supabase
+          .from('asignaciones_estacion')
+          .select('id')
+          .eq('operador_id', usuario.id)
+          .eq('estacion_id', estacionId)
+          .or(`fecha.is.null,fecha.eq.${hoy}`);
+        // Si no hay señal, la consulta falla y `asignadaHoyData` queda null — ahí no se bloquea
+        // nada (no se puede verificar, y no se le quita el registro offline al operador por
+        // esto). Si la consulta sí respondió (aunque sea con 0 filas), ya se puede confiar: sin
+        // asignación para hoy, se bloquea.
+        setAsignacion(asignadaHoyData === null ? null : { asignadaHoy: asignadaHoyData.length > 0 });
       } else {
         setAsignacion(null);
       }
@@ -776,7 +771,7 @@ export function VisitForm() {
     );
   }
 
-  if (asignacion?.aplica && !asignacion.asignadaHoy) {
+  if (asignacion && !asignacion.asignadaHoy) {
     return (
       <div className="tarjeta p-6 border-2 border-gauge-danger/60 bg-gauge-danger/10 text-center space-y-3">
         <p className="text-4xl">🚫</p>
