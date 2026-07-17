@@ -27,7 +27,22 @@ export default defineConfig({
     // copia de la app (JS/CSS/HTML) la primera vez que carga con señal, para poder abrirla luego
     // sin conexión — importante para las EBAR sin señal de datos.
     VitePWA({
+      // Service worker escrito a mano (src/sw.ts) en vez de autogenerado — necesario para poder
+      // agregar el listener de Background Sync (sincronizar visitas pendientes en segundo plano
+      // en Android, ver src/lib/syncMotor.ts).
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
+      injectManifest: {
+        // Solo cachea los archivos propios de la app (el "cascarón"); las llamadas a Supabase
+        // no pasan por acá, siguen su propio manejo offline ya existente en offline.ts. El
+        // bundle principal pasa los 2 MiB por defecto (incluye pdfmake, para generar los
+        // reportes) — hay que subir el límite o ese archivo se queda sin cachear y la app no
+        // podría abrir sin conexión.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      },
       manifest: {
         name: 'EBAR Monitor',
         short_name: 'EBAR Monitor',
@@ -42,17 +57,6 @@ export default defineConfig({
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
           { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
-      },
-      workbox: {
-        // Solo cachea los archivos propios de la app (el "cascarón"); las llamadas a Supabase
-        // no pasan por acá, siguen su propio manejo offline ya existente en offline.ts.
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallback: '/index.html',
-        cleanupOutdatedCaches: true,
-        // El bundle principal pasa los 2 MiB por defecto (incluye pdfmake, para generar los
-        // reportes) — hay que subir el límite o ese archivo se queda sin cachear y la app no
-        // podría abrir sin conexión.
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
     }),
   ],

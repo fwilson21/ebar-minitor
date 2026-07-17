@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { obtenerIdDispositivo } from '../lib/dispositivo';
+import { guardarSesionEspejo, limpiarSesionEspejo } from '../lib/offlineDB';
 import type { Usuario } from '../lib/types';
 
 interface AuthState {
@@ -28,6 +30,22 @@ function resolverEmailLogin(entrada: string): string {
   return valor.includes('@') ? valor : `${valor.toLowerCase()}@${DOMINIO_USUARIO_INTERNO}`;
 }
 
+// El service worker (Background Sync, ver sw.ts) no tiene acceso a localStorage, donde
+// supabase-js guarda la sesión real — se mantiene esta copia del token en IndexedDB
+// (compartida con el service worker) para que pueda autenticarse al sincronizar en segundo
+// plano en Android. Se actualiza en cada cambio de sesión (login, refresco automático, logout).
+function espejarSesion(session: Session | null) {
+  if (session) {
+    guardarSesionEspejo({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_at: session.expires_at,
+    });
+  } else {
+    limpiarSesionEspejo();
+  }
+}
+
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -50,11 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
+      espejarSesion(data.session);
       if (data.session?.user) cargarPerfil(data.session.user.id).finally(() => setCargando(false));
       else setCargando(false);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      espejarSesion(session);
       if (session?.user) cargarPerfil(session.user.id);
       else setUsuario(null);
     });

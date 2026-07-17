@@ -1,319 +1,107 @@
-import Dexie, { type Table } from 'dexie';
 import { supabase } from './supabase';
-import type { FotoLocal, VisitaInput } from './types';
+import { ejecutarSincronizacion, type AdaptadorSync } from './syncMotor';
+
+export {
+  offlineDB,
+  obtenerPendientes,
+  guardarBorradorVisita,
+  obtenerBorradorVisita,
+  eliminarBorradorVisita,
+  type VisitaPendiente,
+  type BorradorVisita,
+} from './offlineDB';
+
+import {
+  encolarVisita as encolarVisitaDB,
+  encolarEdicionVisita as encolarEdicionVisitaDB,
+  contarPendientes,
+} from './offlineDB';
+import type { VisitaInput } from './types';
+
+export { contarPendientes };
 
 // ----------------------------------------------------------------------------
-// Base de datos local (IndexedDB) para soportar el modo offline básico.
-// Los operadores en campo a menudo pierden señal dentro de cámaras de bombeo
-// o zonas rurales; toda visita se guarda primero aquí y se sincroniza cuando
-// vuelve la conexión.
+// Sincronización de visitas pendientes (modo offline básico). Los operadores en
+// campo a menudo pierden señal dentro de cámaras de bombeo o zonas rurales;
+// toda visita se guarda primero en IndexedDB y se sincroniza cuando vuelve la
+// conexión — en primer plano (este archivo, usando supabase-js) o en segundo
+// plano en Android vía Background Sync (ver sw.ts, que reusa la misma lógica
+// de syncMotor.ts con un adaptador basado en fetch crudo).
 // ----------------------------------------------------------------------------
 
-export interface VisitaPendiente {
-  cliente_uuid: string;
-  payload: VisitaInput;
-  intentos: number;
-  ultimo_error?: string;
-  creado_en: string;
-  /** Si está presente, esta entrada es una edición de una visita ya existente (no una nueva). */
-  visita_id?: string;
-}
+const TAG_SINCRONIZACION = 'sync-visitas';
 
-// Borrador de una visita en curso: el operador puede pausar el registro (ej. para
-// ir a limpiar válvulas sin el celular) y continuar más tarde donde quedó, en el
-// mismo dispositivo. Se guarda TODO el estado del formulario (incluidas fotos ya
-// tomadas, como Blob) — no es lo mismo que `visitas_pendientes`, que es una visita
-// ya finalizada esperando sincronizar con el servidor.
-export interface BorradorVisita {
-  clave: string; // `visita:${estacion_id}:${visita_id ?? 'nueva'}`
-  estacion_id: string;
-  visita_id?: string;
-  actualizado_en: string;
-  datos: unknown;
-}
-
-class OfflineDB extends Dexie {
-  visitas_pendientes!: Table<VisitaPendiente, string>;
-  borradores_visita!: Table<BorradorVisita, string>;
-
-  constructor() {
-    super('ebar_monitor_offline');
-    this.version(1).stores({
-      visitas_pendientes: 'cliente_uuid, creado_en',
-    });
-    this.version(2).stores({
-      visitas_pendientes: 'cliente_uuid, creado_en',
-      borradores_visita: 'clave, actualizado_en',
-    });
+/** Le pide al navegador que dispare una sincronización en segundo plano en cuanto haya señal,
+ * incluso si el operador no vuelve a abrir la app (solo Android/Chrome — en el resto de
+ * navegadores esto simplemente no hace nada, y sigue cubierto por `iniciarAutoSincronizacion`). */
+async function pedirSincronizacionEnSegundoPlano() {
+  if (!('serviceWorker' in navigator) || !('SyncManager' in window)) return;
+  try {
+    const registro = await navigator.serviceWorker.ready;
+    await (registro as ServiceWorkerRegistration & { sync: { register(tag: string): Promise<void> } }).sync.register(
+      TAG_SINCRONIZACION,
+    );
+  } catch {
+    // Background Sync no disponible o denegado: sin problema, los otros mecanismos
+    // (evento 'online', reenfoque, intervalo) siguen cubriendo la sincronización.
   }
-}
-
-export const offlineDB = new OfflineDB();
-
-export async function guardarBorradorVisita(clave: string, estacionId: string, visitaId: string | undefined, datos: unknown) {
-  await offlineDB.borradores_visita.put({ clave, estacion_id: estacionId, visita_id: visitaId, datos, actualizado_en: new Date().toISOString() });
-}
-
-export async function obtenerBorradorVisita(clave: string): Promise<BorradorVisita | undefined> {
-  return offlineDB.borradores_visita.get(clave);
-}
-
-export async function eliminarBorradorVisita(clave: string) {
-  await offlineDB.borradores_visita.delete(clave);
 }
 
 export async function encolarVisita(payload: VisitaInput) {
-  await offlineDB.visitas_pendientes.put({
-    cliente_uuid: payload.cliente_uuid,
-    payload,
-    intentos: 0,
-    creado_en: new Date().toISOString(),
-  });
+  await encolarVisitaDB(payload);
+  await pedirSincronizacionEnSegundoPlano();
 }
 
-/** Encola la edición de una visita ya existente (identificada por su id real en la BD). */
 export async function encolarEdicionVisita(visitaId: string, payload: VisitaInput) {
-  await offlineDB.visitas_pendientes.put({
-    cliente_uuid: payload.cliente_uuid,
-    visita_id: visitaId,
-    payload,
-    intentos: 0,
-    creado_en: new Date().toISOString(),
-  });
+  await encolarEdicionVisitaDB(visitaId, payload);
+  await pedirSincronizacionEnSegundoPlano();
 }
 
-export async function contarPendientes(): Promise<number> {
-  return offlineDB.visitas_pendientes.count();
-}
+const adaptadorSupabase: AdaptadorSync = {
+  async upsertVisitaNueva(visita, clienteUuid) {
+    const { data, error } = await supabase
+      .from('visitas')
+      .upsert({ ...visita, cliente_uuid: clienteUuid }, { onConflict: 'cliente_uuid' })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return data.id;
+  },
 
-export async function obtenerPendientes(): Promise<VisitaPendiente[]> {
-  return offlineDB.visitas_pendientes.orderBy('creado_en').toArray();
-}
+  async actualizarVisita(visitaId, visita) {
+    const { error } = await supabase.from('visitas').update(visita).eq('id', visitaId);
+    if (error) throw error;
+  },
+
+  async upsertRegistrosBombas(registros) {
+    const { error } = await supabase.from('registros_bombas').upsert(registros, { onConflict: 'visita_id,bomba_id' });
+    if (error) throw error;
+  },
+
+  async borrarRegistrosBombasNoSeleccionados(visitaId, idsSeleccionados) {
+    let borrado = supabase.from('registros_bombas').delete().eq('visita_id', visitaId);
+    if (idsSeleccionados.length) {
+      borrado = borrado.not('bomba_id', 'in', `(${idsSeleccionados.join(',')})`);
+    }
+    const { error } = await borrado;
+    if (error) throw error;
+  },
+
+  async subirFotoADrive(visitaId, { base64, contentType, descripcion }) {
+    const { error } = await supabase.functions.invoke('upload-to-drive', {
+      body: { visita_id: visitaId, file_base64: base64, content_type: contentType, descripcion },
+    });
+    if (error) throw error;
+  },
+};
 
 /**
- * Intenta enviar todas las visitas pendientes al backend.
- * Usa `cliente_uuid` como clave de idempotencia (columna única en `visitas`)
- * para que reintentos no creen duplicados.
+ * Intenta enviar todas las visitas pendientes al backend, desde el hilo principal (página
+ * abierta), usando el cliente supabase-js normal. Usa `cliente_uuid` como clave de idempotencia
+ * (columna única en `visitas`) para que reintentos no creen duplicados.
  */
 export async function sincronizarPendientes(): Promise<{ ok: number; fallidas: number }> {
-  const pendientes = await offlineDB.visitas_pendientes.toArray();
-  let ok = 0;
-  let fallidas = 0;
-
-  for (const item of pendientes) {
-    try {
-      const {
-        id: _idPayload, cliente_uuid: _clienteUuidPayload,
-        bombas, fotos, lineas_impulsion, guias_izado, valvulas_compuerta, valvulas_check, valvula_aire,
-        camara_rejilla, camara_valvula_compuerta,
-        tablero_distribucion, variador,
-        descarga_emergencia, tuberia_400_valvulas_aire, tuberia_400_uniones_elastomericas,
-        tuberia_600_valvulas_aire, tuberia_600_uniones_elastomericas, cerramiento_seguridad,
-        jardineras, patios_maniobras, ...visita
-      } = item.payload;
-
-      // Columnas JSONB: estado/observaciones/números afectados/tiene (las fotos van a la tabla fotos)
-      const aJsonb = (eq: typeof lineas_impulsion) =>
-        eq
-          ? {
-              estado: eq.estado,
-              observaciones: eq.observaciones ?? null,
-              numeros_afectados: eq.numeros_afectados ?? null,
-              tiene: eq.tiene ?? null,
-            }
-          : null;
-      const equiposParaBD = {
-        lineas_impulsion: aJsonb(lineas_impulsion),
-        guias_izado: aJsonb(guias_izado),
-        valvulas_compuerta: aJsonb(valvulas_compuerta),
-        valvulas_check: aJsonb(valvulas_check),
-        valvula_aire: aJsonb(valvula_aire),
-        camara_rejilla: aJsonb(camara_rejilla),
-        camara_valvula_compuerta: aJsonb(camara_valvula_compuerta),
-        tablero_distribucion: aJsonb(tablero_distribucion),
-        variador: aJsonb(variador),
-        descarga_emergencia: aJsonb(descarga_emergencia),
-        tuberia_400_valvulas_aire: aJsonb(tuberia_400_valvulas_aire),
-        tuberia_400_uniones_elastomericas: aJsonb(tuberia_400_uniones_elastomericas),
-        tuberia_600_valvulas_aire: aJsonb(tuberia_600_valvulas_aire),
-        tuberia_600_uniones_elastomericas: aJsonb(tuberia_600_uniones_elastomericas),
-      };
-
-      let visitaId: string;
-      if (item.visita_id) {
-        // Edición de una visita existente: actualizar por id real, sin tocar cliente_uuid.
-        const { error: errorUpdate } = await supabase
-          .from('visitas')
-          .update({ ...visita, ...equiposParaBD })
-          .eq('id', item.visita_id);
-        if (errorUpdate) throw errorUpdate;
-        visitaId = item.visita_id;
-      } else {
-        const { data: visitaInsertada, error: errorVisita } = await supabase
-          .from('visitas')
-          .upsert({ ...visita, cliente_uuid: item.cliente_uuid, ...equiposParaBD }, { onConflict: 'cliente_uuid' })
-          .select('id')
-          .single();
-        if (errorVisita) throw errorVisita;
-        visitaId = visitaInsertada.id;
-      }
-
-      const registrosBombas = bombas.map((b) => ({
-        bomba_id: b.bomba_id,
-        numero_bomba: b.numero_bomba,
-        estado: b.estado,
-        voltaje: b.voltaje,
-        amperaje: b.amperaje,
-        horas_operacion_acumuladas: b.horas_operacion_acumuladas,
-        observaciones: b.observaciones,
-        visita_id: visitaId,
-      }));
-      if (registrosBombas.length) {
-        const { error: errorBombas } = await supabase
-          .from('registros_bombas')
-          .upsert(registrosBombas, { onConflict: 'visita_id,bomba_id' });
-        if (errorBombas) throw errorBombas;
-      }
-      // Al editar: si el operador deseleccionó una bomba que antes tenía registro
-      // (ver selector en VisitForm), el upsert de arriba no la toca — hay que
-      // borrar explícitamente su fila para que no siga apareciendo en reportes.
-      if (item.visita_id) {
-        let borrado = supabase.from('registros_bombas').delete().eq('visita_id', visitaId);
-        const idsSeleccionados = registrosBombas.map((b) => b.bomba_id);
-        if (idsSeleccionados.length) {
-          borrado = borrado.not('bomba_id', 'in', `(${idsSeleccionados.join(',')})`);
-        }
-        const { error: errorBorrado } = await borrado;
-        if (errorBorrado) throw errorBorrado;
-      }
-
-      // Fotos de cada sección de equipo (descripcion identifica la sección en Drive)
-      const seccionesEquipo = [
-        { datos: lineas_impulsion, nombre: 'lineas_impulsion' },
-        { datos: guias_izado, nombre: 'guias_izado' },
-        { datos: valvulas_compuerta, nombre: 'valvulas_compuerta' },
-        { datos: valvulas_check, nombre: 'valvulas_check' },
-        { datos: valvula_aire, nombre: 'valvula_aire' },
-        { datos: camara_rejilla, nombre: 'camara_rejilla' },
-        { datos: camara_valvula_compuerta, nombre: 'camara_valvula_compuerta' },
-        { datos: tablero_distribucion, nombre: 'tablero_distribucion' },
-        { datos: variador, nombre: 'variador' },
-        { datos: descarga_emergencia, nombre: 'descarga_emergencia' },
-        { datos: tuberia_400_valvulas_aire, nombre: 'tuberia_400_valvulas_aire' },
-        { datos: tuberia_400_uniones_elastomericas, nombre: 'tuberia_400_uniones_elastomericas' },
-        { datos: tuberia_600_valvulas_aire, nombre: 'tuberia_600_valvulas_aire' },
-        { datos: tuberia_600_uniones_elastomericas, nombre: 'tuberia_600_uniones_elastomericas' },
-        { datos: cerramiento_seguridad, nombre: 'cerramiento_seguridad' },
-        { datos: jardineras, nombre: 'jardineras' },
-        { datos: patios_maniobras, nombre: 'patios_maniobras' },
-      ] as const;
-
-      // Se juntan todas las fotos pendientes (generales + por sección + por bomba) en una sola
-      // lista y se suben en paralelo (con tope de concurrencia): antes se subían de a una en
-      // serie, y con internet rápido pero muchas fotos (una visita completa puede tener 20-30)
-      // el cuello de botella era la latencia de cada ida y vuelta a la Edge Function, no el ancho
-      // de banda — subir 20 fotos secuenciales podía tardar más de medio minuto solo en eso.
-      const fotosPorSubir: Array<{ foto: FotoLocal; descripcion?: string }> = [
-        ...fotos.map((foto) => ({ foto, descripcion: undefined })),
-        ...seccionesEquipo.flatMap(({ datos, nombre }) =>
-          datos ? datos.fotos.map((foto) => ({ foto, descripcion: nombre })) : []
-        ),
-        ...bombas.flatMap((b) => (b.fotos ?? []).map((foto) => ({ foto, descripcion: `bomba_${b.numero_bomba}` }))),
-      ].filter(({ foto }) => foto.estado_subida !== 'subida' && foto.blob);
-
-      await subirEnParalelo(fotosPorSubir, 4, ({ foto, descripcion }) => subirFotoADrive(visitaId, { ...foto, descripcion }));
-
-      await offlineDB.visitas_pendientes.delete(item.cliente_uuid);
-      ok += 1;
-    } catch (err: any) {
-      fallidas += 1;
-      await offlineDB.visitas_pendientes.update(item.cliente_uuid, {
-        intentos: item.intentos + 1,
-        ultimo_error: err?.message ?? String(err),
-      });
-    }
-  }
-
-  return { ok, fallidas };
-}
-
-/** Ejecuta `tarea` sobre cada elemento de `items` con un máximo de `concurrencia` a la vez. */
-async function subirEnParalelo<T>(items: T[], concurrencia: number, tarea: (item: T) => Promise<void>): Promise<void> {
-  let indice = 0;
-  async function trabajador() {
-    while (indice < items.length) {
-      await tarea(items[indice++]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrencia, items.length) }, trabajador));
-}
-
-/**
- * Sube una foto a Google Drive a través de la Edge Function `upload-to-drive`.
- * La función recibe el archivo en base64 y devuelve el file_id / url pública de Drive,
- * que luego se inserta en la tabla `fotos`.
- */
-async function subirFotoADrive(visitaId: string, foto: { id: string; blob?: Blob; descripcion?: string }) {
-  if (!foto.blob) return;
-
-  const { base64, contentType } = await prepararBlobParaSubida(foto.blob);
-
-  const { data, error } = await supabase.functions.invoke('upload-to-drive', {
-    body: {
-      visita_id: visitaId,
-      file_base64: base64,
-      content_type: contentType,
-      descripcion: foto.descripcion ?? null,
-    },
-  });
-
-  if (error) throw error;
-}
-
-async function prepararBlobParaSubida(blob: Blob): Promise<{ base64: string; contentType: string }> {
-  let blobParaSubir = blob;
-  const contentType = blob.type || 'image/jpeg';
-
-  if (contentType.startsWith('image/')) {
-    const sizeMb = blob.size / (1024 * 1024);
-    if (sizeMb > 1) {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const imageBitmap = await createImageBitmap(blob);
-        const maxWidth = 1200;
-        const scale = Math.min(1, maxWidth / imageBitmap.width);
-        canvas.width = Math.max(1, Math.floor(imageBitmap.width * scale));
-        canvas.height = Math.max(1, Math.floor(imageBitmap.height * scale));
-        ctx.drawImage(imageBitmap, 0, 0, canvas.width, canvas.height);
-
-        const comprimido = await new Promise<Blob | null>((resolve) => {
-          canvas.toBlob(resolve, 'image/jpeg', 0.75);
-        });
-
-        if (comprimido) {
-          blobParaSubir = comprimido;
-        }
-      }
-    }
-  }
-
-  return {
-    base64: await blobToBase64(blobParaSubir),
-    contentType: blobParaSubir.type || contentType,
-  };
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      resolve(result.split(',')[1]); // quitar el prefijo data:...;base64,
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  return ejecutarSincronizacion(adaptadorSupabase);
 }
 
 /**
@@ -321,8 +109,10 @@ function blobToBase64(blob: Blob): Promise<string> {
  * operador tenga que tocar el botón "Sincronizar ahora" (ese botón queda solo como respaldo
  * manual). Además del evento `online`, se reintenta cuando la pestaña vuelve a primer plano
  * (`visibilitychange`/`focus`) — el navegador puede pausar o retrasar mucho el intervalo
- * mientras la pantalla está bloqueada o la app en segundo plano, así que sin esto la
- * sincronización podía tardar en notarse hasta que el operador volvía a abrir la app.
+ * mientras la pantalla está bloqueada o la app en segundo plano. En Android, la sincronización
+ * real en segundo plano (sin que el operador mire el celular) la cubre Background Sync
+ * (`pedirSincronizacionEnSegundoPlano` + `sw.ts`); esto de acá es el respaldo en primer plano
+ * que además es lo único disponible en iPhone (no soporta Background Sync).
  */
 export function iniciarAutoSincronizacion(onResultado?: (r: { ok: number; fallidas: number }) => void) {
   const intentar = async () => {
