@@ -56,11 +56,43 @@ export function Dashboard() {
       ]);
 
       setResumen(resumenData as DashboardResumen);
-      const listaConProblemas = (estaciones as EstacionEbar[]) ?? [];
+
+      // Para operadores: sus EBAR asignadas hoy (por defecto o especial) filtran "Requieren
+      // atención" y "Pendientes de visita", además de armar "Tus EBAR de hoy" más abajo — mismo
+      // criterio de transición que en Stations.tsx/VisitForm: si todavía no tiene NINGUNA
+      // asignación cargada, no se filtra nada (sigue viendo todo, sin quedarse sin información
+      // mientras el administrador termina de asignar a todos).
+      let idsAsignadosHoy: Set<string> | null = null;
+      const estacionesAsignadasInfo = new Map<string, EstacionSimple>();
+      if (usuario?.rol === 'operador') {
+        const [{ count: totalAsignaciones }, { data: asignaciones }] = await Promise.all([
+          supabase.from('asignaciones_estacion').select('id', { count: 'exact', head: true }).eq('operador_id', usuario.id),
+          supabase
+            .from('asignaciones_estacion')
+            .select('estacion_id, estaciones_ebar ( id, nombre, codigo, zona )')
+            .eq('operador_id', usuario.id)
+            .or(`fecha.is.null,fecha.eq.${fecha}`),
+        ]);
+        for (const a of (asignaciones as any[]) ?? []) {
+          const est = a.estaciones_ebar;
+          if (est) estacionesAsignadasInfo.set(est.id, est);
+        }
+        if ((totalAsignaciones ?? 0) > 0) {
+          idsAsignadosHoy = new Set(estacionesAsignadasInfo.keys());
+        }
+      }
+
+      const listaConProblemas = ((estaciones as EstacionEbar[]) ?? []).filter(
+        (e) => !idsAsignadosHoy || idsAsignadosHoy.has(e.id),
+      );
       setEstacionesConProblemas(listaConProblemas);
 
       const idsConVisita = new Set((visitasDelDia ?? []).map((v: any) => v.estacion_id));
-      setSinVisitar(((todasEstaciones ?? []) as EstacionSimple[]).filter((e) => !idsConVisita.has(e.id)));
+      setSinVisitar(
+        ((todasEstaciones ?? []) as EstacionSimple[]).filter(
+          (e) => !idsConVisita.has(e.id) && (!idsAsignadosHoy || idsAsignadosHoy.has(e.id)),
+        ),
+      );
 
       // "Mínimo de 2 visitas" (ver más abajo) solo aplica en días regulares: ni sábado/domingo,
       // ni feriado (calculado + agregados a mano en feriados_adicionales).
@@ -151,23 +183,11 @@ export function Dashboard() {
         setBajoMinimo([]);
       }
 
-      // "Tus EBAR de hoy": solo para operadores — combina su asignación por defecto (fecha null)
-      // con las especiales para el día puntual seleccionado (siempre "hoy" en el caso del
-      // operador, ya que el selector de fecha de arriba no se le muestra).
+      // "Tus EBAR de hoy": solo para operadores — reutiliza estacionesAsignadasInfo (ya cargado
+      // arriba, combina asignación por defecto + especial de hoy) y le agrega cuántas visitas
+      // lleva registradas hoy este mismo operador en cada una.
       if (usuario?.rol === 'operador') {
-        const { data: asignaciones } = await supabase
-          .from('asignaciones_estacion')
-          .select('estacion_id, estaciones_ebar ( id, nombre, codigo, zona )')
-          .eq('operador_id', usuario.id)
-          .or(`fecha.is.null,fecha.eq.${fecha}`);
-
-        const estacionesUnicas = new Map<string, EstacionSimple>();
-        for (const a of (asignaciones as any[]) ?? []) {
-          const est = a.estaciones_ebar;
-          if (est) estacionesUnicas.set(est.id, est);
-        }
-
-        const idsAsignados = [...estacionesUnicas.keys()];
+        const idsAsignados = [...estacionesAsignadasInfo.keys()];
         const visitasPorEstacion: Record<string, number> = {};
         if (idsAsignados.length > 0) {
           const { data: misVisitas } = await supabase
@@ -183,7 +203,7 @@ export function Dashboard() {
         }
 
         setMisEstacionesHoy(
-          [...estacionesUnicas.values()]
+          [...estacionesAsignadasInfo.values()]
             .map((e) => ({ ...e, visitasHoy: visitasPorEstacion[e.id] ?? 0 }))
             .sort((a, b) => a.nombre.localeCompare(b.nombre)),
         );
