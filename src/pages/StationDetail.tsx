@@ -14,6 +14,17 @@ import { leerCacheLocal } from '../lib/cacheLocal';
 const VISITAS_EN_PDF = 30;
 const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 
+// La gestión de bombas (solo administrador) no funciona sin conexión — a diferencia de registrar
+// una visita, no hay ninguna cola offline para esto (es una acción puntual, no algo que un
+// administrador necesite hacer en el sitio sin señal). Sin conexión, supabase-js devuelve el
+// error crudo de fetch ("TypeError: Failed to fetch"); esto lo traduce a un mensaje claro.
+function mensajeErrorBombas(error: { message?: string }): string {
+  if (!navigator.onLine || error.message?.includes('Failed to fetch')) {
+    return 'no tienes conexión a internet. Esta acción necesita señal.';
+  }
+  return error.message ?? 'error desconocido';
+}
+
 interface EquipoHistorial {
   estado: string;
   observaciones?: string | null;
@@ -147,7 +158,7 @@ export function StationDetail() {
     setMensajeBombas(null);
     const { error } = await supabase.from('bombas').insert({ estacion_id: id, numero_bomba: numero });
     if (error) {
-      setMensajeBombas(`No se pudo agregar la bomba: ${error.message}`);
+      setMensajeBombas(`No se pudo agregar la bomba: ${mensajeErrorBombas(error)}`);
     } else {
       const { data } = await supabase.from('bombas').select('*').eq('estacion_id', id).order('numero_bomba');
       const lista = (data as Bomba[]) ?? [];
@@ -169,7 +180,7 @@ export function StationDetail() {
     setMensajeBombas(null);
     const { error } = await supabase.from('bombas').update({ activa: !bomba.activa }).eq('id', bomba.id);
     if (error) {
-      setMensajeBombas(`No se pudo actualizar la bomba: ${error.message}`);
+      setMensajeBombas(`No se pudo actualizar la bomba: ${mensajeErrorBombas(error)}`);
     } else {
       const { data } = await supabase.from('bombas').select('*').eq('estacion_id', id).order('numero_bomba');
       const lista = (data as Bomba[]) ?? [];
