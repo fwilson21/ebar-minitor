@@ -212,6 +212,13 @@ export function VisitForm() {
     salir();
   }
 
+  // Solo para "Editar visita": descarta los cambios hechos en esta pantalla y vuelve a la
+  // estación, sin pasar por el modal de "datos sin guardar" (el botón ya es esa confirmación).
+  function salirSinGuardar() {
+    guardadoRef.current = true;
+    navigate(`/estaciones/${estacionId}`);
+  }
+
   const snapshotInicialRef = useRef<string | null>(null);
   useEffect(() => {
     if (!cargandoDatos && snapshotInicialRef.current === null) {
@@ -1028,9 +1035,26 @@ export function VisitForm() {
 
       {mensaje && <p className="text-sm text-gauge-ok">{mensaje}</p>}
 
-      {pasoConfirmacion === 0 && (
+      {pasoConfirmacion === 0 && modoEdicion && !hayCambios && (
+        <button type="button" onClick={() => navigate(`/estaciones/${estacionId}`)} className="boton-secundario w-full">
+          Salir
+        </button>
+      )}
+
+      {pasoConfirmacion === 0 && modoEdicion && hayCambios && (
+        <div className="flex gap-2">
+          <button type="button" onClick={salirSinGuardar} className="boton-secundario flex-1">
+            Salir sin guardar
+          </button>
+          <button onClick={manejarClickGuardar} disabled={guardando} className="boton-primario flex-1">
+            {guardando ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </div>
+      )}
+
+      {pasoConfirmacion === 0 && !modoEdicion && (
         <button onClick={manejarClickGuardar} disabled={guardando} className="boton-primario w-full">
-          {guardando ? 'Guardando…' : modoEdicion ? 'Guardar cambios' : 'Guardar visita'}
+          {guardando ? 'Guardando…' : 'Guardar visita'}
         </button>
       )}
 

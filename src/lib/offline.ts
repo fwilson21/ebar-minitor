@@ -316,7 +316,14 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-/** Registra listeners para sincronizar automáticamente al recuperar conexión. */
+/**
+ * Registra listeners para sincronizar automáticamente al recuperar conexión, sin que el
+ * operador tenga que tocar el botón "Sincronizar ahora" (ese botón queda solo como respaldo
+ * manual). Además del evento `online`, se reintenta cuando la pestaña vuelve a primer plano
+ * (`visibilitychange`/`focus`) — el navegador puede pausar o retrasar mucho el intervalo
+ * mientras la pantalla está bloqueada o la app en segundo plano, así que sin esto la
+ * sincronización podía tardar en notarse hasta que el operador volvía a abrir la app.
+ */
 export function iniciarAutoSincronizacion(onResultado?: (r: { ok: number; fallidas: number }) => void) {
   const intentar = async () => {
     if (!navigator.onLine) return;
@@ -326,13 +333,21 @@ export function iniciarAutoSincronizacion(onResultado?: (r: { ok: number; fallid
     onResultado?.(resultado);
   };
 
+  const alVolverVisible = () => {
+    if (document.visibilityState === 'visible') intentar();
+  };
+
   window.addEventListener('online', intentar);
+  window.addEventListener('focus', intentar);
+  document.addEventListener('visibilitychange', alVolverVisible);
   // también reintentar periódicamente por si la conexión es intermitente sin disparar el evento
   const interval = setInterval(intentar, 60_000);
   intentar();
 
   return () => {
     window.removeEventListener('online', intentar);
+    window.removeEventListener('focus', intentar);
+    document.removeEventListener('visibilitychange', alVolverVisible);
     clearInterval(interval);
   };
 }
