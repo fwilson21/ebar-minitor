@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { AsignacionEstacion, EstacionEbar, Usuario } from '../lib/types';
 import { calcularFeriados } from '../lib/feriadosEcuador';
+import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
 
 interface FeriadoAdicional {
   id: string;
@@ -193,6 +194,29 @@ export function Asignaciones() {
   function codigoEstacion(estacionId: string): string {
     return estaciones.find((x) => x.id === estacionId)?.codigo ?? '?';
   }
+
+  // Le avisa al header (botón "Salir") si hay cambios sin guardar en esta pantalla: la
+  // asignación por defecto marcada pero no guardada, o una asignación especial / feriado a
+  // medio llenar (fecha + al menos una estación, o fecha + descripción, ya elegidas pero sin
+  // tocar "Agregar" todavía).
+  useEffect(() => {
+    const seleccionDefaultDistinta =
+      seleccionDefault.size !== asignacionesDefault.size ||
+      [...seleccionDefault].some((id) => !asignacionesDefault.has(id));
+    const hayPendienteEspecial = !!fechaEspecial && seleccionEspecial.size > 0;
+    const hayPendienteFeriado = !!nuevaFechaFeriado && nuevaDescripcionFeriado.trim().length > 0;
+
+    registrarFormularioActivo({
+      hayCambios: seleccionDefaultDistinta || hayPendienteEspecial || hayPendienteFeriado,
+      guardar: async () => {
+        if (seleccionDefaultDistinta) await guardarDefault();
+        if (hayPendienteEspecial) await agregarEspecial();
+        if (hayPendienteFeriado) await agregarFeriado();
+      },
+    });
+    return () => desregistrarFormularioActivo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seleccionDefault, asignacionesDefault, fechaEspecial, seleccionEspecial, nuevaFechaFeriado, nuevaDescripcionFeriado]);
 
   if (cargando) return <p className="text-slate-400">Cargando…</p>;
 

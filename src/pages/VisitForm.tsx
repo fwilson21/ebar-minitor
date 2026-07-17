@@ -257,7 +257,7 @@ export function VisitForm() {
   useEffect(() => {
     registrarFormularioActivo({
       hayCambios,
-      guardarBorrador: async () => {
+      guardar: async () => {
         if (!estacionId) return;
         await guardarBorradorVisita(claveBorrador(), estacionId, visitaId, construirBorrador());
         guardadoRef.current = true;
