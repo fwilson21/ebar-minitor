@@ -19,6 +19,14 @@ export interface Usuario {
   nombre_usuario?: string | null;
 }
 
+export interface AsignacionEstacion {
+  id: string;
+  operador_id: string;
+  estacion_id: string;
+  /** null = asignación por defecto (permanente); con valor = solo para ese día puntual. */
+  fecha: string | null;
+}
+
 export interface EstacionEbar {
   id: string;
   codigo: string;
