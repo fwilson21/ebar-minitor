@@ -92,6 +92,20 @@ export function CalendarioTurnos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [esAdmin]);
 
+  // Feriado decretado de último momento (no calculable de antemano ni ya cargado como fin de
+  // semana/feriado fijo): lo agrega el propio administrador desde el panel del día. Reutiliza la
+  // misma tabla que ya usa /asignaciones para esto, así el resto de la app (mínimo de visitas del
+  // Dashboard, etc.) lo trata como no regular en todos lados, no solo en este calendario.
+  async function declararFeriado(fecha: string, descripcion: string) {
+    const { data, error } = await supabase
+      .from('feriados_adicionales')
+      .insert({ fecha, descripcion, creado_por: usuario!.id })
+      .select('fecha, descripcion')
+      .single();
+    if (error) throw error;
+    setFeriadosAdicionales((prev) => [...prev, data as { fecha: string; descripcion: string }]);
+  }
+
   async function cargarMes(m: string) {
     setCargandoMes(true);
     const [anio, mesNum] = m.split('-').map(Number);
@@ -259,35 +273,38 @@ export function CalendarioTurnos() {
                   <button
                     key={fecha}
                     type="button"
-                    disabled={!motivo}
                     onClick={() => setDiaSeleccionado(fecha)}
-                    className={`aspect-square rounded-lg border text-xs flex flex-col items-center justify-center gap-0.5 transition ${
-                      !motivo
-                        ? 'border-transparent text-slate-600 cursor-default'
-                        : esFeriado
-                          ? 'border-gauge-warn/50 bg-gauge-warn/10 text-gauge-warn hover:bg-gauge-warn/20'
-                          : 'border-panel-500 bg-panel-700/60 text-slate-200 hover:bg-panel-700'
-                    } ${turnosDia.length > 0 ? 'ring-1 ring-gauge-ok' : ''}`}
+                    className={`aspect-square rounded-lg border text-sm font-medium flex flex-col items-center justify-center gap-0.5 transition ${
+                      esFeriado
+                        ? 'border-gauge-warn bg-gauge-warn/20 text-gauge-warn hover:bg-gauge-warn/30'
+                        : motivo === 'Fin de semana'
+                          ? 'border-panel-500 bg-panel-700 text-slate-100 hover:bg-panel-600'
+                          : 'border-panel-600/60 bg-panel-700/40 text-slate-300 hover:bg-panel-700 hover:text-slate-100'
+                    } ${turnosDia.length > 0 ? 'ring-2 ring-gauge-ok' : ''}`}
                   >
                     <span>{Number(fecha.slice(-2))}</span>
-                    {turnosDia.length > 0 && <span className="text-[9px] text-gauge-ok">{turnosDia.length}</span>}
+                    {turnosDia.length > 0 && <span className="text-[10px] font-semibold text-gauge-ok">{turnosDia.length}</span>}
                   </button>
                 );
               })}
             </div>
 
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500 pt-1">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 pt-1">
               <span>
-                <span className="inline-block w-2.5 h-2.5 rounded bg-panel-700/60 border border-panel-500 align-middle mr-1" />
+                <span className="inline-block w-3 h-3 rounded bg-panel-700 border border-panel-500 align-middle mr-1" />
                 Fin de semana
               </span>
               <span>
-                <span className="inline-block w-2.5 h-2.5 rounded bg-gauge-warn/10 border border-gauge-warn/50 align-middle mr-1" />
+                <span className="inline-block w-3 h-3 rounded bg-gauge-warn/20 border border-gauge-warn align-middle mr-1" />
                 Feriado
               </span>
               <span>
-                <span className="inline-block w-2.5 h-2.5 rounded ring-1 ring-gauge-ok align-middle mr-1" />
+                <span className="inline-block w-3 h-3 rounded ring-2 ring-gauge-ok align-middle mr-1" />
                 Con turno asignado
+              </span>
+              <span>
+                <span className="inline-block w-3 h-3 rounded bg-panel-700/40 border border-panel-600/60 align-middle mr-1" />
+                Regular (tocar para declarar feriado)
               </span>
             </div>
           </>
@@ -336,7 +353,7 @@ export function CalendarioTurnos() {
       {diaSeleccionado && (
         <PanelDia
           fecha={diaSeleccionado}
-          motivo={motivoDia(diaSeleccionado, feriadosAdicionalesMap) ?? 'Fin de semana'}
+          motivo={motivoDia(diaSeleccionado, feriadosAdicionalesMap)}
           operadores={operadores}
           estaciones={estaciones}
           asignacionesDefaultPorOperador={asignacionesDefaultPorOperador}
@@ -345,6 +362,7 @@ export function CalendarioTurnos() {
           usuarioId={usuario.id}
           onCerrar={() => setDiaSeleccionado(null)}
           onGuardado={() => cargarMes(mes)}
+          onDeclararFeriado={declararFeriado}
         />
       )}
     </div>
@@ -353,7 +371,8 @@ export function CalendarioTurnos() {
 
 interface PanelDiaProps {
   fecha: string;
-  motivo: string;
+  /** null = día regular, ni fin de semana ni feriado (todavía) — se puede declarar feriado acá mismo. */
+  motivo: string | null;
   operadores: Usuario[];
   estaciones: EstacionEbar[];
   asignacionesDefaultPorOperador: Map<string, Set<string>>;
@@ -362,6 +381,7 @@ interface PanelDiaProps {
   usuarioId: string;
   onCerrar: () => void;
   onGuardado: () => Promise<void>;
+  onDeclararFeriado: (fecha: string, descripcion: string) => Promise<void>;
 }
 
 function PanelDia({
@@ -375,7 +395,31 @@ function PanelDia({
   usuarioId,
   onCerrar,
   onGuardado,
+  onDeclararFeriado,
 }: PanelDiaProps) {
+  const [motivoActual, setMotivoActual] = useState(motivo);
+  const [descripcionFeriado, setDescripcionFeriado] = useState('');
+  const [declarando, setDeclarando] = useState(false);
+  const [mensajeFeriado, setMensajeFeriado] = useState<string | null>(null);
+
+  async function manejarDeclararFeriado() {
+    if (!descripcionFeriado.trim()) {
+      setMensajeFeriado('Escribe un motivo (ej: "Feriado decretado por el Gobierno").');
+      return;
+    }
+    setDeclarando(true);
+    setMensajeFeriado(null);
+    try {
+      await onDeclararFeriado(fecha, descripcionFeriado.trim());
+      setMotivoActual(descripcionFeriado.trim());
+      setDescripcionFeriado('');
+    } catch (err: any) {
+      setMensajeFeriado(`No se pudo declarar: ${err.message ?? err}`);
+    } finally {
+      setDeclarando(false);
+    }
+  }
+
   const estadoInicial = useMemo(() => {
     const m = new Map<string, { turnoId: string; estaciones: Set<string> }>();
     for (const t of turnosDia) {
@@ -521,15 +565,42 @@ function PanelDia({
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[92vw] max-w-md max-h-[85vh] overflow-y-auto p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-semibold text-sm">{formatFechaCorta(fecha)}</h2>
-            <p className="text-xs text-slate-500">{motivo}</p>
+            <h2 className="font-semibold text-sm text-slate-100">{formatFechaCorta(fecha)}</h2>
+            <p className={`text-xs ${motivoActual ? 'text-gauge-warn' : 'text-slate-400'}`}>
+              {motivoActual ?? 'Día regular'}
+            </p>
           </div>
           <button onClick={() => !guardando && onCerrar()} className="text-slate-400 hover:text-slate-100 text-lg leading-none">
             ✕
           </button>
         </div>
 
-        {seleccion.size === 0 && <p className="text-sm text-slate-500">Nadie está de turno este día todavía.</p>}
+        {motivoActual === null && (
+          <div className="border border-gauge-warn/40 bg-gauge-warn/10 rounded-lg p-3 space-y-2">
+            <p className="text-xs text-slate-200">
+              Este día es regular. Si de última hora lo decretaron feriado, declaralo acá para que cuente las horas
+              y le aparezcan las EBAR a quien quede de turno:
+            </p>
+            <input
+              type="text"
+              className="campo"
+              placeholder='Ej: "Feriado decretado por el Gobierno"'
+              value={descripcionFeriado}
+              onChange={(e) => setDescripcionFeriado(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={manejarDeclararFeriado}
+              disabled={declarando}
+              className="boton-secundario w-full text-sm border-gauge-warn/50 text-gauge-warn"
+            >
+              {declarando ? 'Declarando…' : '📌 Declarar este día feriado'}
+            </button>
+            {mensajeFeriado && <p className="text-xs text-gauge-danger">{mensajeFeriado}</p>}
+          </div>
+        )}
+
+        {seleccion.size === 0 && <p className="text-sm text-slate-400">Nadie está de turno este día todavía.</p>}
 
         <div className="space-y-3">
           {[...seleccion.entries()].map(([operadorId, datos]) => (
