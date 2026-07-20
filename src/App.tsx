@@ -9,6 +9,7 @@ import { VisitForm } from './pages/VisitForm';
 import { Reports } from './pages/Reports';
 import { Users } from './pages/Users';
 import { Asignaciones } from './pages/Asignaciones';
+import { CalendarioTurnos } from './pages/CalendarioTurnos';
 
 function RutaProtegida({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useAuth();
@@ -36,6 +37,7 @@ export const routes = createRoutesFromElements(
       <Route path="reportes" element={<Reports />} />
       <Route path="usuarios" element={<Users />} />
       <Route path="asignaciones" element={<Asignaciones />} />
+      <Route path="calendario-turnos" element={<CalendarioTurnos />} />
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </>

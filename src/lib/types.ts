@@ -25,6 +25,16 @@ export interface AsignacionEstacion {
   estacion_id: string;
   /** null = asignación por defecto (permanente); con valor = solo para ese día puntual. */
   fecha: string | null;
+  /** Si vino de un turno de fin de semana/feriado (ver TurnoCalendario), su id. Null si se cargó a mano. */
+  turno_id?: string | null;
+}
+
+export interface TurnoCalendario {
+  id: string;
+  operador_id: string;
+  fecha: string;
+  creado_por?: string | null;
+  created_at?: string;
 }
 
 export interface EstacionEbar {
