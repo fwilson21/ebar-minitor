@@ -12,10 +12,30 @@ import {
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
 
 const DIAS_SEMANA_CORTOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const DIAS_SEMANA_ABREV = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+/** Horas mensuales de turno a partir de las cuales se avisa al administrador (para control de
+ * horas extra/pago). No bloquea nada, solo alerta. */
+const LIMITE_HORAS_MES = 60;
 
 function formatFechaCorta(fechaIso: string): string {
   const d = new Date(`${fechaIso}T12:00:00`);
   return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function formatFechaListado(fechaIso: string): string {
+  const d = new Date(`${fechaIso}T12:00:00`);
+  return `${DIAS_SEMANA_ABREV[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Iniciales cortas para mostrar dentro de una celda chica del calendario (mismo criterio de
+ * "1er nombre + apellido" que nombreCorto() en AppShell.tsx, pero como 2 letras). */
+function iniciales(nombreCompleto: string): string {
+  const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return '?';
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  const indiceApellido = Math.ceil(partes.length / 2);
+  return (partes[0][0] + partes[indiceApellido][0]).toUpperCase();
 }
 
 function mesActualISO(): string {
@@ -165,13 +185,25 @@ export function CalendarioTurnos() {
     const conteo = new Map<string, number>();
     for (const t of turnos) conteo.set(t.operador_id, (conteo.get(t.operador_id) ?? 0) + 1);
     return [...conteo.entries()]
-      .map(([operadorId, dias]) => ({
-        operadorId,
-        nombre: operadores.find((o) => o.id === operadorId)?.nombre_completo ?? '—',
-        dias,
-      }))
+      .map(([operadorId, dias]) => {
+        const horas = dias * 8;
+        return {
+          operadorId,
+          nombre: operadores.find((o) => o.id === operadorId)?.nombre_completo ?? '—',
+          dias,
+          horas,
+          sobrepasaLimite: horas > LIMITE_HORAS_MES,
+        };
+      })
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [turnos, operadores]);
+
+  const algunoSobrepasaLimite = resumenMes.some((r) => r.sobrepasaLimite);
+
+  const turnosOrdenados = useMemo(
+    () => [...turnosPorFecha.entries()].sort(([a], [b]) => a.localeCompare(b)),
+    [turnosPorFecha],
+  );
 
   const celdas = useMemo(() => generarCeldasMes(mes), [mes]);
   const tituloMesLabel = new Date(`${mes}-01T12:00:00`).toLocaleDateString('es-EC', { month: 'long', year: 'numeric' });
@@ -260,7 +292,7 @@ export function CalendarioTurnos() {
           <>
             <div className="grid grid-cols-7 gap-1 text-center">
               {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d) => (
-                <div key={d} className="text-[10px] text-slate-500 font-medium py-1">
+                <div key={d} className="text-xs text-slate-300 font-semibold py-1">
                   {d}
                 </div>
               ))}
@@ -269,6 +301,9 @@ export function CalendarioTurnos() {
                 const motivo = motivoDia(fecha, feriadosAdicionalesMap);
                 const turnosDia = turnosPorFecha.get(fecha) ?? [];
                 const esFeriado = motivo !== null && motivo !== 'Fin de semana';
+                const nombresIniciales = turnosDia
+                  .map((t) => iniciales(operadores.find((o) => o.id === t.operador_id)?.nombre_completo ?? '?'))
+                  .join(' ');
                 return (
                   <button
                     key={fecha}
@@ -283,13 +318,17 @@ export function CalendarioTurnos() {
                     } ${turnosDia.length > 0 ? 'ring-2 ring-gauge-ok' : ''}`}
                   >
                     <span>{Number(fecha.slice(-2))}</span>
-                    {turnosDia.length > 0 && <span className="text-[10px] font-semibold text-gauge-ok">{turnosDia.length}</span>}
+                    {turnosDia.length > 0 && (
+                      <span className="text-[9px] font-bold text-gauge-ok leading-none px-0.5 truncate max-w-full">
+                        {turnosDia.length <= 2 ? nombresIniciales : `${turnosDia.length} turnos`}
+                      </span>
+                    )}
                   </button>
                 );
               })}
             </div>
 
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 pt-1">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300 pt-1">
               <span>
                 <span className="inline-block w-3 h-3 rounded bg-panel-700 border border-panel-500 align-middle mr-1" />
                 Fin de semana
@@ -300,7 +339,7 @@ export function CalendarioTurnos() {
               </span>
               <span>
                 <span className="inline-block w-3 h-3 rounded ring-2 ring-gauge-ok align-middle mr-1" />
-                Con turno asignado
+                Con turno asignado (iniciales del operador)
               </span>
               <span>
                 <span className="inline-block w-3 h-3 rounded bg-panel-700/40 border border-panel-600/60 align-middle mr-1" />
@@ -312,16 +351,50 @@ export function CalendarioTurnos() {
       </div>
 
       <div className="tarjeta p-4 space-y-2">
+        <h2 className="text-base font-semibold">Turnos de este mes</h2>
+        {turnosOrdenados.length === 0 ? (
+          <p className="text-sm text-slate-400">Todavía no hay turnos cargados este mes.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {turnosOrdenados.map(([fecha, lista]) => (
+              <button
+                key={fecha}
+                onClick={() => setDiaSeleccionado(fecha)}
+                className="w-full flex items-center justify-between gap-2 text-sm text-left hover:bg-panel-700/50 rounded px-1.5 py-1 -mx-1.5"
+              >
+                <span className="text-slate-300 flex-shrink-0">{formatFechaListado(fecha)}</span>
+                <span className="text-slate-100 text-right truncate">
+                  {lista.map((t) => operadores.find((o) => o.id === t.operador_id)?.nombre_completo ?? '—').join(', ')}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="tarjeta p-4 space-y-2">
         <h2 className="text-base font-semibold">Resumen del mes</h2>
+        {algunoSobrepasaLimite && (
+          <p className="text-sm text-gauge-danger bg-gauge-danger/10 border border-gauge-danger/40 rounded-lg px-3 py-2">
+            ⚠ {resumenMes.filter((r) => r.sobrepasaLimite).length === 1 ? 'Un operador supera' : 'Algunos operadores superan'} las{' '}
+            {LIMITE_HORAS_MES} horas este mes.
+          </p>
+        )}
         {resumenMes.length === 0 ? (
-          <p className="text-sm text-slate-500">Todavía no hay turnos cargados este mes.</p>
+          <p className="text-sm text-slate-400">Todavía no hay turnos cargados este mes.</p>
         ) : (
           <div className="space-y-1">
             {resumenMes.map((r) => (
-              <div key={r.operadorId} className="flex items-center justify-between text-sm">
-                <span className="text-slate-300">{r.nombre}</span>
-                <span className="text-slate-500">
-                  {r.dias} x 8 = {r.dias * 8} horas
+              <div
+                key={r.operadorId}
+                className={`flex items-center justify-between text-sm gap-2 ${r.sobrepasaLimite ? 'text-gauge-danger' : ''}`}
+              >
+                <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-200'}>
+                  {r.sobrepasaLimite ? '⚠ ' : ''}
+                  {r.nombre}
+                </span>
+                <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-300'}>
+                  {r.dias} x 8 = {r.horas} horas
                 </span>
               </div>
             ))}
@@ -620,7 +693,7 @@ function PanelDia({
                       type="button"
                       onClick={() => toggleEstacion(operadorId, e.id)}
                       className={`text-xs px-2.5 py-1 rounded-full border ${
-                        activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-500'
+                        activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-400'
                       }`}
                     >
                       {e.codigo}
