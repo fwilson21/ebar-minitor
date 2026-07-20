@@ -47,6 +47,14 @@ function formatFechaListado(fechaIso: string): string {
   return `${DIAS_SEMANA_ABREV[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/** Fecha y hora (hasta segundos) de generación, para que el nombre del archivo no se repita si
+ * se genera el PDF del mismo mes varias veces. */
+function timestampArchivo(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
 function mesActualISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -247,7 +255,7 @@ export function CalendarioTurnos() {
         nombre: usuario!.nombre_completo,
         firmaUrl: usuario!.firma_url,
       });
-      const nombre = `calendario_turnos_${mes}.pdf`;
+      const nombre = `calendario_turnos_${mes}_${timestampArchivo()}.pdf`;
       setPdfBlob(blob);
       setPdfNombre(nombre);
       descargarBlob(blob, nombre);

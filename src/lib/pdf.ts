@@ -327,7 +327,7 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
   ].filter(Boolean);
 }
 
-function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null) {
+function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null, espacioVacio = '\n\n') {
   return {
     columns: [
       {
@@ -335,7 +335,7 @@ function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null)
         stack: [
           firmaUrl
             ? { image: firmaUrl, fit: [150, 80], alignment: 'center' }
-            : { text: '\n\n', },
+            : { text: espacioVacio },
           { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 0.5 }] },
           { text: nombre, alignment: 'center', style: 'firmaNombre' },
           { text: etiqueta, alignment: 'center', style: 'firmaEtiqueta' },
@@ -453,7 +453,7 @@ export function generarReporteTurnos(
       widths: ['auto', '*', '*'],
       body: [
         [{ text: 'Fecha', bold: true }, { text: 'Motivo', bold: true }, { text: 'Operador(es) de turno', bold: true }],
-        ...filasOrdenadas.map((f) => [formatFechaConDia(f.fecha), f.motivo, f.operadores.join(', ') || '-']),
+        ...filasOrdenadas.map((f) => [formatFechaConDia(f.fecha), f.motivo, f.operadores.join('\n') || '-']),
       ],
     },
     layout: 'lightHorizontalLines',
@@ -516,7 +516,8 @@ export function generarReporteTurnos(
         : tablaDias,
       { text: 'Resumen del mes', style: 'subtitulo', margin: [0, 0, 0, 4] },
       resumen.length === 0 ? { text: 'Sin datos.', italics: true } : tablaResumen,
-      bloqueFirma(firmante.nombre, 'Administrador', firmante.firmaUrl),
+      { text: '', margin: [0, 30, 0, 0] },
+      bloqueFirma(firmante.nombre, 'Administrador', firmante.firmaUrl, '\n\n\n\n\n'),
     ],
     styles: ESTILOS,
     defaultStyle: { fontSize: 9, color: '#16303F' },
