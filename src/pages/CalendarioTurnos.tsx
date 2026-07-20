@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { AsignacionEstacion, EstacionEbar, TurnoCalendario, Usuario } from '../lib/types';
-import { esFeriadoCalculado, esFinDeSemana, nombreFeriadoCalculado } from '../lib/feriadosEcuador';
+import { calcularFeriados, esFeriadoCalculado, esFinDeSemana, nombreFeriadoCalculado } from '../lib/feriadosEcuador';
 import {
   descargarBlob,
   generarReporteTurnos,
@@ -89,7 +89,7 @@ export function CalendarioTurnos() {
   const [cargandoMes, setCargandoMes] = useState(false);
   const [operadores, setOperadores] = useState<Usuario[]>([]);
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
-  const [feriadosAdicionales, setFeriadosAdicionales] = useState<{ fecha: string; descripcion: string }[]>([]);
+  const [feriadosAdicionales, setFeriadosAdicionales] = useState<{ id: string; fecha: string; descripcion: string }[]>([]);
   const [asignacionesDefault, setAsignacionesDefault] = useState<AsignacionEstacion[]>([]);
   const [turnos, setTurnos] = useState<TurnoCalendario[]>([]);
   const [asignacionesTurno, setAsignacionesTurno] = useState<AsignacionEstacion[]>([]);
@@ -108,12 +108,12 @@ export function CalendarioTurnos() {
       const [{ data: ops }, { data: est }, { data: feriados }, { data: defaults }] = await Promise.all([
         supabase.from('usuarios').select('*').eq('rol', 'operador').eq('activo', true).order('nombre_completo'),
         supabase.from('estaciones_ebar').select('*').eq('activa', true).order('nombre'),
-        supabase.from('feriados_adicionales').select('fecha, descripcion'),
+        supabase.from('feriados_adicionales').select('id, fecha, descripcion').order('fecha'),
         supabase.from('asignaciones_estacion').select('*').is('fecha', null),
       ]);
       setOperadores((ops as Usuario[]) ?? []);
       setEstaciones((est as EstacionEbar[]) ?? []);
-      setFeriadosAdicionales((feriados as { fecha: string; descripcion: string }[]) ?? []);
+      setFeriadosAdicionales((feriados as { id: string; fecha: string; descripcion: string }[]) ?? []);
       setAsignacionesDefault((defaults as AsignacionEstacion[]) ?? []);
       setCargandoBase(false);
     }
@@ -129,10 +129,17 @@ export function CalendarioTurnos() {
     const { data, error } = await supabase
       .from('feriados_adicionales')
       .insert({ fecha, descripcion, creado_por: usuario!.id })
-      .select('fecha, descripcion')
+      .select('id, fecha, descripcion')
       .single();
     if (error) throw error;
-    setFeriadosAdicionales((prev) => [...prev, data as { fecha: string; descripcion: string }]);
+    setFeriadosAdicionales((prev) =>
+      [...prev, data as { id: string; fecha: string; descripcion: string }].sort((a, b) => a.fecha.localeCompare(b.fecha)),
+    );
+  }
+
+  async function quitarFeriado(id: string) {
+    const { error } = await supabase.from('feriados_adicionales').delete().eq('id', id);
+    if (!error) setFeriadosAdicionales((prev) => prev.filter((f) => f.id !== id));
   }
 
   async function cargarMes(m: string) {
@@ -224,6 +231,7 @@ export function CalendarioTurnos() {
 
   const celdas = useMemo(() => generarCeldasMes(mes), [mes]);
   const tituloMesLabel = new Date(`${mes}-01T12:00:00`).toLocaleDateString('es-EC', { month: 'long', year: 'numeric' });
+  const anioVisible = Number(mes.slice(0, 4));
 
   async function manejarGenerarPdf() {
     setGenerandoPdf(true);
@@ -449,6 +457,46 @@ export function CalendarioTurnos() {
                 {mensajeCompartir}
               </p>
             )}
+          </div>
+        )}
+      </div>
+
+      <div className="tarjeta p-4 space-y-3">
+        <div>
+          <h2 className="text-base font-semibold">Feriados</h2>
+          <p className="text-xs text-slate-500">
+            Referencia: el calendario nacional de Ecuador y los locales (cantonización de Francisco de Orellana 30
+            de abril, provincialización de Orellana 30 de julio) se calculan solos. Los feriados de última hora se
+            declaran tocando el día en el calendario de arriba.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-xs text-slate-400 mb-1">Feriados calculados para {anioVisible}:</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">
+            {[...calcularFeriados(anioVisible).entries()]
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([fecha, nombres]) => (
+                <span key={fecha}>
+                  {fecha} — {nombres.join(' + ')}
+                </span>
+              ))}
+          </div>
+        </div>
+
+        {feriadosAdicionales.length > 0 && (
+          <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
+            <p className="text-xs text-slate-400">Feriados de última hora ya declarados:</p>
+            {feriadosAdicionales.map((f) => (
+              <div key={f.id} className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">
+                  {f.fecha} · {f.descripcion}
+                </span>
+                <button onClick={() => quitarFeriado(f.id)} className="text-gauge-danger hover:underline text-xs">
+                  Quitar
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
