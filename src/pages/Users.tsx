@@ -26,6 +26,7 @@ export function Users() {
   const [nuevoUsuario, setNuevoUsuario] = useState('');
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevaPassword, setNuevaPassword] = useState('');
+  const [nuevaCedula, setNuevaCedula] = useState('');
   const [nuevoRol, setNuevoRol] = useState<UserRole>('operador');
   const [invitando, setInvitando] = useState(false);
   const [mensajeInvitar, setMensajeInvitar] = useState<string | null>(null);
@@ -37,6 +38,10 @@ export function Users() {
   const [nuevoNombreUsuario, setNuevoNombreUsuario] = useState('');
   const [mensajeRenombrar, setMensajeRenombrar] = useState<string | null>(null);
   const [guardandoRenombrar, setGuardandoRenombrar] = useState(false);
+  const [editandoCedulaId, setEditandoCedulaId] = useState<string | null>(null);
+  const [cedulaEdicion, setCedulaEdicion] = useState('');
+  const [mensajeCedula, setMensajeCedula] = useState<string | null>(null);
+  const [guardandoCedula, setGuardandoCedula] = useState(false);
 
   useEffect(() => {
     cargar();
@@ -101,7 +106,7 @@ export function Users() {
     setMensajeInvitar(null);
     try {
       const { data, error } = await supabase.functions.invoke('create-user', {
-        body: { usuario: nuevoUsuario, nombre_completo: nuevoNombre, password: nuevaPassword, rol: nuevoRol },
+        body: { usuario: nuevoUsuario, nombre_completo: nuevoNombre, password: nuevaPassword, cedula: nuevaCedula, rol: nuevoRol },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -110,6 +115,7 @@ export function Users() {
       setNuevoUsuario('');
       setNuevoNombre('');
       setNuevaPassword('');
+      setNuevaCedula('');
       setNuevoRol('operador');
       await cargar();
     } catch (err: any) {
@@ -150,6 +156,32 @@ export function Users() {
       setMensajeRenombrar(`No se pudo cambiar: ${err.message ?? err}`);
     } finally {
       setGuardandoRenombrar(false);
+    }
+  }
+
+  function abrirEditarCedula(id: string, actual: string | null | undefined) {
+    setEditandoCedulaId((prev) => (prev === id ? null : id));
+    setCedulaEdicion(actual ?? '');
+    setMensajeCedula(null);
+  }
+
+  async function manejarGuardarCedula(id: string) {
+    if (!/^\d{10}$/.test(cedulaEdicion)) {
+      setMensajeCedula('La cédula debe tener 10 dígitos numéricos.');
+      return;
+    }
+    setGuardandoCedula(true);
+    setMensajeCedula(null);
+    try {
+      const { error } = await supabase.from('usuarios').update({ cedula: cedulaEdicion }).eq('id', id);
+      if (error) throw error;
+      setUsuarios((prev) => prev.map((u) => (u.id === id ? { ...u, cedula: cedulaEdicion } : u)));
+      setMensajeCedula('Cédula actualizada.');
+    } catch (err: any) {
+      const duplicada = err.code === '23505';
+      setMensajeCedula(duplicada ? 'Ya hay otro usuario con esa cédula.' : `No se pudo guardar: ${err.message ?? err}`);
+    } finally {
+      setGuardandoCedula(false);
     }
   }
 
@@ -220,6 +252,21 @@ export function Users() {
             />
           </div>
           <div>
+            <label className="etiqueta">Cédula</label>
+            <input
+              type="text"
+              required
+              inputMode="numeric"
+              pattern="\d{10}"
+              title="10 dígitos numéricos"
+              className="campo"
+              value={nuevaCedula}
+              onChange={(e) => setNuevaCedula(e.target.value)}
+              placeholder="10 dígitos"
+              maxLength={10}
+            />
+          </div>
+          <div>
             <label className="etiqueta">Contraseña inicial</label>
             <input
               type="text"
@@ -265,6 +312,9 @@ export function Users() {
                 <p className="font-semibold text-slate-100 truncate">{u.nombre_completo}</p>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Usuario: <span className="text-slate-300">{u.nombre_usuario || '(sin registrar)'}</span>
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Cédula: <span className="text-slate-300">{u.cedula || '(sin registrar)'}</span>
                 </p>
                 {u.telefono && (
                   <p className="text-xs text-slate-500 mt-0.5">{u.telefono}</p>
@@ -319,6 +369,15 @@ export function Users() {
                   onClick={() => abrirRenombrar(u.id, u.nombre_usuario)}
                 >
                   ✏️ Usuario
+                </button>
+              )}
+
+              {esAdmin && (
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
+                  onClick={() => abrirEditarCedula(u.id, u.cedula)}
+                >
+                  🪪 Cédula
                 </button>
               )}
 
@@ -399,6 +458,36 @@ export function Users() {
                 {mensajeRenombrar && (
                   <p className={`text-xs ${mensajeRenombrar.startsWith('No se pudo') || mensajeRenombrar.startsWith('Usuario inválido') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
                     {mensajeRenombrar}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {esAdmin && editandoCedulaId === u.id && (
+              <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
+                <label className="etiqueta">Cédula de {u.nombre_completo}</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="campo flex-1"
+                    inputMode="numeric"
+                    pattern="\d{10}"
+                    maxLength={10}
+                    placeholder="10 dígitos"
+                    value={cedulaEdicion}
+                    onChange={(e) => setCedulaEdicion(e.target.value)}
+                  />
+                  <button
+                    className="boton-primario px-4 flex-shrink-0"
+                    disabled={guardandoCedula}
+                    onClick={() => manejarGuardarCedula(u.id)}
+                  >
+                    {guardandoCedula ? '…' : 'Guardar'}
+                  </button>
+                </div>
+                {mensajeCedula && (
+                  <p className={`text-xs ${mensajeCedula.startsWith('No se pudo') || mensajeCedula.startsWith('Ya hay') || mensajeCedula.startsWith('La cédula') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+                    {mensajeCedula}
                   </p>
                 )}
               </div>

@@ -6,6 +6,7 @@ import { calcularFeriados, esFeriadoCalculado, esFinDeSemana, nombreFeriadoCalcu
 import {
   descargarBlob,
   generarReporteTurnos,
+  type CedulaOperadorReporte,
   type FilaTurnoReporte,
   type ResumenOperadorReporte,
 } from '../lib/pdf';
@@ -13,7 +14,6 @@ import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/
 import { nombreCorto } from '../lib/nombres';
 
 const DIAS_SEMANA_CORTOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const DIAS_SEMANA_ABREV = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 /** Horas mensuales de turno a partir de las cuales se avisa al administrador (para control de
  * horas extra/pago). No bloquea nada, solo alerta. */
@@ -40,11 +40,6 @@ function compararPorOrdenOperador(nombreA: string, nombreB: string): number {
 function formatFechaCorta(fechaIso: string): string {
   const d = new Date(`${fechaIso}T12:00:00`);
   return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-}
-
-function formatFechaListado(fechaIso: string): string {
-  const d = new Date(`${fechaIso}T12:00:00`);
-  return `${DIAS_SEMANA_ABREV[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 /** Fecha y hora (hasta segundos) de generación, para que el nombre del archivo no se repita si
@@ -232,11 +227,6 @@ export function CalendarioTurnos() {
 
   const algunoSobrepasaLimite = resumenMes.some((r) => r.sobrepasaLimite);
 
-  const turnosOrdenados = useMemo(
-    () => [...turnosPorFecha.entries()].sort(([a], [b]) => a.localeCompare(b)),
-    [turnosPorFecha],
-  );
-
   const celdas = useMemo(() => generarCeldasMes(mes), [mes]);
   const tituloMesLabel = new Date(`${mes}-01T12:00:00`).toLocaleDateString('es-EC', { month: 'long', year: 'numeric' });
   const anioVisible = Number(mes.slice(0, 4));
@@ -251,7 +241,11 @@ export function CalendarioTurnos() {
         operadores: lista.map((t) => nombreOperadorPorId(t.operador_id)),
       }));
       const resumen: ResumenOperadorReporte[] = resumenMes.map((r) => ({ nombre: r.nombre, dias: r.dias }));
-      const blob = await generarReporteTurnos(tituloMesLabel, filas, resumen, {
+      const cedulas: CedulaOperadorReporte[] = resumenMes.map((r) => ({
+        nombre: r.nombre,
+        cedula: operadores.find((o) => o.id === r.operadorId)?.cedula || 'Sin registrar',
+      }));
+      const blob = await generarReporteTurnos(tituloMesLabel, filas, resumen, cedulas, {
         nombre: usuario!.nombre_completo,
         firmaUrl: usuario!.firma_url,
       });
@@ -393,32 +387,6 @@ export function CalendarioTurnos() {
       </div>
 
       <div className="tarjeta p-4 space-y-2">
-        <h2 className="text-base font-semibold">Turnos de este mes</h2>
-        {turnosOrdenados.length === 0 ? (
-          <p className="text-sm text-slate-400">Todavía no hay turnos cargados este mes.</p>
-        ) : (
-          <div className="divide-y divide-panel-600/40">
-            {turnosOrdenados.map(([fecha, lista]) => (
-              <button
-                key={fecha}
-                onClick={() => setDiaSeleccionado(fecha)}
-                className="w-full text-left hover:bg-panel-700/40 rounded px-1.5 py-2 -mx-1.5"
-              >
-                <p className="text-xs text-slate-400 mb-1">{formatFechaListado(fecha)}</p>
-                <div className="space-y-0.5">
-                  {lista.map((t) => (
-                    <p key={t.id} className="text-sm text-slate-100">
-                      {nombreOperadorPorId(t.operador_id)}
-                    </p>
-                  ))}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="tarjeta p-4 space-y-2">
         <h2 className="text-base font-semibold">Resumen del mes</h2>
         {algunoSobrepasaLimite && (
           <p className="text-sm text-gauge-danger bg-gauge-danger/10 border border-gauge-danger/40 rounded-lg px-3 py-2">
@@ -481,13 +449,13 @@ export function CalendarioTurnos() {
 
         <div>
           <p className="text-xs text-slate-400 mb-1">Feriados calculados para {anioVisible}:</p>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">
+          <div className="space-y-0.5 text-xs text-slate-300">
             {[...calcularFeriados(anioVisible).entries()]
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([fecha, nombres]) => (
-                <span key={fecha}>
+                <p key={fecha}>
                   {fecha} — {nombres.join(' + ')}
-                </span>
+                </p>
               ))}
           </div>
         </div>
