@@ -429,6 +429,11 @@ export interface ResumenOperadorReporte {
   dias: number;
 }
 
+export interface CedulaOperadorReporte {
+  nombre: string;
+  cedula: string;
+}
+
 const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
 function formatFechaConDia(fechaIso: string): string {
@@ -444,6 +449,7 @@ export function generarReporteTurnos(
   tituloMes: string,
   filas: FilaTurnoReporte[],
   resumen: ResumenOperadorReporte[],
+  cedulas: CedulaOperadorReporte[],
   firmante: { nombre: string; firmaUrl?: string | null },
 ): Promise<Blob> {
   const filasOrdenadas = [...filas].sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -458,6 +464,20 @@ export function generarReporteTurnos(
     },
     layout: 'lightHorizontalLines',
     margin: [0, 4, 0, 16],
+  };
+
+  // Va al pie de la tabla de días (una fila por operador), no reordenada — mismo orden que ya
+  // decidió quien llama.
+  const tablaCedulas = {
+    table: {
+      widths: ['*', 'auto'],
+      body: [
+        [{ text: 'Operador', bold: true }, { text: 'Cédula', bold: true }],
+        ...cedulas.map((c) => [c.nombre, c.cedula]),
+      ],
+    },
+    layout: 'lightHorizontalLines',
+    margin: [0, 0, 0, 16],
   };
 
   // El orden de `resumen` ya viene decidido por quien llama (orden preferido de operadores, no
@@ -514,11 +534,13 @@ export function generarReporteTurnos(
       filasOrdenadas.length === 0
         ? { text: 'No hay turnos cargados este mes.', italics: true, margin: [0, 0, 0, 16] }
         : tablaDias,
+      cedulas.length > 0 ? { text: 'Cédulas de los operadores de turno', style: 'subtitulo', margin: [0, 0, 0, 4] } : null,
+      cedulas.length > 0 ? tablaCedulas : null,
       { text: 'Resumen del mes', style: 'subtitulo', margin: [0, 0, 0, 4] },
       resumen.length === 0 ? { text: 'Sin datos.', italics: true } : tablaResumen,
       { text: '', margin: [0, 30, 0, 0] },
       bloqueFirma(firmante.nombre, 'Administrador', firmante.firmaUrl, '\n\n\n\n\n'),
-    ],
+    ].filter(Boolean),
     styles: ESTILOS,
     defaultStyle: { fontSize: 9, color: '#16303F' },
   };

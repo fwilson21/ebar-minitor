@@ -17,6 +17,7 @@ export interface Usuario {
   firma_url?: string | null;
   device_id?: string | null;
   nombre_usuario?: string | null;
+  cedula?: string | null;
 }
 
 export interface AsignacionEstacion {

@@ -22,6 +22,7 @@ interface Payload {
   usuario: string;
   nombre_completo: string;
   password: string;
+  cedula: string;
   rol?: 'operador' | 'supervisor' | 'administrador';
 }
 
@@ -62,15 +63,18 @@ Deno.serve(async (req) => {
       return json({ error: 'Solo un administrador puede crear usuarios.' }, 403);
     }
 
-    const { usuario: nombreUsuario, nombre_completo, password, rol }: Payload = await req.json();
-    if (!nombreUsuario || !nombre_completo || !password) {
-      return json({ error: 'Usuario, nombre completo y contraseña son requeridos.' }, 400);
+    const { usuario: nombreUsuario, nombre_completo, password, cedula, rol }: Payload = await req.json();
+    if (!nombreUsuario || !nombre_completo || !password || !cedula) {
+      return json({ error: 'Usuario, nombre completo, contraseña y cédula son requeridos.' }, 400);
     }
     if (!/^[a-z0-9._-]{3,30}$/.test(nombreUsuario)) {
       return json({ error: 'El usuario debe tener 3-30 caracteres: minúsculas, números, puntos, guiones o guiones bajos.' }, 400);
     }
     if (password.length < 6) {
       return json({ error: 'La contraseña debe tener al menos 6 caracteres.' }, 400);
+    }
+    if (!/^\d{10}$/.test(cedula)) {
+      return json({ error: 'La cédula debe tener 10 dígitos numéricos.' }, 400);
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey);
@@ -88,12 +92,19 @@ Deno.serve(async (req) => {
     }
 
     // El trigger handle_new_auth_user crea la fila en `usuarios` con rol 'operador' por defecto;
-    // acá se completa el nombre de usuario (para poder mostrarlo luego en la pantalla de Usuarios)
-    // y se ajusta el rol si no es el operador por defecto.
-    await supabaseAdmin
+    // acá se completa el nombre de usuario (para poder mostrarlo luego en la pantalla de Usuarios),
+    // la cédula, y se ajusta el rol si no es el operador por defecto.
+    const { error: errorActualizar } = await supabaseAdmin
       .from('usuarios')
-      .update({ nombre_usuario: nombreUsuario, ...(rol && rol !== 'operador' ? { rol } : {}) })
+      .update({ nombre_usuario: nombreUsuario, cedula, ...(rol && rol !== 'operador' ? { rol } : {}) })
       .eq('id', creado.user.id);
+    if (errorActualizar) {
+      const cedulaDuplicada = errorActualizar.message.toLowerCase().includes('cedula');
+      return json(
+        { error: cedulaDuplicada ? `Ya existe un usuario con la cédula ${cedula}.` : errorActualizar.message },
+        400,
+      );
+    }
 
     return json({ ok: true, id: creado.user.id });
   } catch (err) {
