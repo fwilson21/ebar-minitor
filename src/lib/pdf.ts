@@ -418,6 +418,113 @@ export function generarReporteVisitas(
   });
 }
 
+export interface FilaTurnoReporte {
+  fecha: string; // ISO (YYYY-MM-DD)
+  motivo: string; // 'Fin de semana' o nombre del feriado
+  operadores: string[]; // nombres de quienes están de turno ese día
+}
+
+export interface ResumenOperadorReporte {
+  nombre: string;
+  dias: number;
+}
+
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+function formatFechaConDia(fechaIso: string): string {
+  const d = new Date(`${fechaIso}T12:00:00`);
+  const dia = String(d.getDate()).padStart(2, '0');
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  return `${DIAS_SEMANA[d.getDay()]} ${dia}/${mes}/${d.getFullYear()}`;
+}
+
+/** Calendario de turnos de fin de semana/feriado: lista cronológica de días cubiertos + resumen
+ * de días/horas por operador (mismo cálculo "días × 8 horas" que se llevaba a mano en Excel). */
+export function generarReporteTurnos(
+  tituloMes: string,
+  filas: FilaTurnoReporte[],
+  resumen: ResumenOperadorReporte[],
+): Promise<Blob> {
+  const filasOrdenadas = [...filas].sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  const tablaDias = {
+    table: {
+      widths: ['auto', '*', '*'],
+      body: [
+        [{ text: 'Fecha', bold: true }, { text: 'Motivo', bold: true }, { text: 'Operador(es) de turno', bold: true }],
+        ...filasOrdenadas.map((f) => [formatFechaConDia(f.fecha), f.motivo, f.operadores.join(', ') || '-']),
+      ],
+    },
+    layout: 'lightHorizontalLines',
+    margin: [0, 4, 0, 16],
+  };
+
+  const resumenOrdenado = [...resumen].sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  const tablaResumen = {
+    table: {
+      widths: ['*', 'auto', 'auto'],
+      body: [
+        [{ text: 'Operador', bold: true }, { text: 'Días de turno', bold: true }, { text: 'Horas', bold: true }],
+        ...resumenOrdenado.map((r) => [r.nombre, String(r.dias), `${r.dias} x 8 = ${r.dias * 8}`]),
+      ],
+    },
+    layout: 'lightHorizontalLines',
+  };
+
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: 'A4',
+    pageOrientation: 'portrait',
+    pageMargins: [40, 100, 40, 100],
+    background: (_currentPage, pageSize) => ({
+      image: MEMBRETE_FONDO_BASE64,
+      width: pageSize.width,
+      height: pageSize.height,
+    }),
+    footer: (currentPage: number, pageCount: number) => ({
+      margin: [40, 12, 40, 25],
+      stack: [
+        {
+          columns: [
+            {
+              width: '55%',
+              margin: [95, 0, 0, 0],
+              stack: [
+                { text: 'www.orellana.gob.ec', fontSize: 7, bold: true, color: '#16303F' },
+                { text: 'Francisco de Orellana – Ecuador', fontSize: 7, color: '#16303F' },
+                { text: 'Calle Napo 11-05 y Uquillas', fontSize: 7, color: '#16303F' },
+              ],
+            },
+            {
+              width: '*',
+              alignment: 'right',
+              stack: [
+                { text: 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO', fontSize: 7, bold: true, color: '#16303F' },
+                { text: 'TELF.: 062-999-060   Ext. 1801', fontSize: 7, color: '#16303F' },
+              ],
+            },
+          ],
+        },
+        { text: `Hoja ${currentPage} de ${pageCount}`, alignment: 'center', fontSize: 7, color: '#16303F', margin: [0, 4, 0, 0] },
+      ],
+    }),
+    content: [
+      encabezado(`Calendario de turnos — ${tituloMes}`),
+      filasOrdenadas.length === 0
+        ? { text: 'No hay turnos cargados este mes.', italics: true, margin: [0, 0, 0, 16] }
+        : tablaDias,
+      { text: 'Resumen del mes', style: 'subtitulo', margin: [0, 0, 0, 4] },
+      resumenOrdenado.length === 0 ? { text: 'Sin datos.', italics: true } : tablaResumen,
+    ],
+    styles: ESTILOS,
+    defaultStyle: { fontSize: 9, color: '#16303F' },
+  };
+
+  return new Promise((resolve) => {
+    pdfMake.createPdf(docDefinition).getBlob((blob: Blob) => resolve(blob));
+  });
+}
+
 export function descargarBlob(blob: Blob, nombreArchivo: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

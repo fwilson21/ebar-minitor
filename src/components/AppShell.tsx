@@ -18,6 +18,7 @@ const NAV_BASE = [
 ];
 const NAV_ADMIN = { to: '/usuarios', label: 'Usuarios', icon: '👥' };
 const NAV_ADMIN_SUPERVISOR = { to: '/asignaciones', label: 'Asignar', icon: '🗺️' };
+const NAV_TURNOS = { to: '/calendario-turnos', label: 'Turnos', icon: '📅' };
 
 // Muestra solo nombre y apellido (no el nombre completo con 2 nombres/2 apellidos que suelen
 // usarse en Ecuador) — para nombres de 4 palabras asume "Nombre1 Nombre2 Apellido1 Apellido2" y
@@ -159,7 +160,7 @@ export function AppShell() {
         {[
           ...NAV_BASE,
           ...(usuario?.rol === 'administrador' || usuario?.rol === 'supervisor' ? [NAV_ADMIN_SUPERVISOR] : []),
-          ...(usuario?.rol === 'administrador' ? [NAV_ADMIN] : []),
+          ...(usuario?.rol === 'administrador' ? [NAV_TURNOS, NAV_ADMIN] : []),
         ].map((item) => (
           <NavLink
             key={item.to}
