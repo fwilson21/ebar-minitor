@@ -10,6 +10,7 @@ import {
   type VisitaPendiente,
 } from '../lib/offline';
 import { guardarCambiosDelFormularioActivo, hayCambiosSinGuardar } from '../lib/formularioActivo';
+import { nombreCorto } from '../lib/nombres';
 
 const NAV_BASE = [
   { to: '/', label: 'Inicio', icon: '📊' },
@@ -19,16 +20,6 @@ const NAV_BASE = [
 const NAV_ADMIN = { to: '/usuarios', label: 'Usuarios', icon: '👥' };
 const NAV_ADMIN_SUPERVISOR = { to: '/asignaciones', label: 'Asignar', icon: '🗺️' };
 const NAV_TURNOS = { to: '/calendario-turnos', label: 'Turnos', icon: '📅' };
-
-// Muestra solo nombre y apellido (no el nombre completo con 2 nombres/2 apellidos que suelen
-// usarse en Ecuador) — para nombres de 4 palabras asume "Nombre1 Nombre2 Apellido1 Apellido2" y
-// se queda con la 1ª y la 3ª; para 3 palabras se queda con la 1ª y la última.
-function nombreCorto(nombreCompleto: string): string {
-  const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
-  if (partes.length <= 2) return partes.join(' ');
-  const indiceApellido = Math.ceil(partes.length / 2);
-  return `${partes[0]} ${partes[indiceApellido]}`;
-}
 
 export function AppShell() {
   const { usuario, logout } = useAuth();
