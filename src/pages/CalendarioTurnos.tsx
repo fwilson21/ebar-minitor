@@ -10,6 +10,7 @@ import {
   type ResumenOperadorReporte,
 } from '../lib/pdf';
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
+import { nombreCorto } from '../lib/nombres';
 
 const DIAS_SEMANA_CORTOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const DIAS_SEMANA_ABREV = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -17,6 +18,24 @@ const DIAS_SEMANA_ABREV = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 /** Horas mensuales de turno a partir de las cuales se avisa al administrador (para control de
  * horas extra/pago). No bloquea nada, solo alerta. */
 const LIMITE_HORAS_MES = 60;
+
+/** Máximo de nombres que se listan dentro de una celda del calendario antes de resumir en "+N más". */
+const MAX_NOMBRES_EN_CELDA = 3;
+
+/** Orden preferido para listar operadores cuando comparten día (pedido explícito del usuario,
+ * no alfabético) — se busca por apellido dentro del nombre completo. Quien no matchee ninguno
+ * queda al final, en orden alfabético entre ellos. */
+const ORDEN_OPERADORES_PREFERIDO = ['lapo', 'caicedo', 'vega', 'zambrano'];
+
+function indiceOrdenOperador(nombreCompleto: string): number {
+  const normalizado = nombreCompleto.toLowerCase();
+  const indice = ORDEN_OPERADORES_PREFERIDO.findIndex((clave) => normalizado.includes(clave));
+  return indice === -1 ? ORDEN_OPERADORES_PREFERIDO.length : indice;
+}
+
+function compararPorOrdenOperador(nombreA: string, nombreB: string): number {
+  return indiceOrdenOperador(nombreA) - indiceOrdenOperador(nombreB) || nombreA.localeCompare(nombreB);
+}
 
 function formatFechaCorta(fechaIso: string): string {
   const d = new Date(`${fechaIso}T12:00:00`);
@@ -26,16 +45,6 @@ function formatFechaCorta(fechaIso: string): string {
 function formatFechaListado(fechaIso: string): string {
   const d = new Date(`${fechaIso}T12:00:00`);
   return `${DIAS_SEMANA_ABREV[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-/** Iniciales cortas para mostrar dentro de una celda chica del calendario (mismo criterio de
- * "1er nombre + apellido" que nombreCorto() en AppShell.tsx, pero como 2 letras). */
-function iniciales(nombreCompleto: string): string {
-  const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
-  if (partes.length === 0) return '?';
-  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
-  const indiceApellido = Math.ceil(partes.length / 2);
-  return (partes[0][0] + partes[indiceApellido][0]).toUpperCase();
 }
 
 function mesActualISO(): string {
@@ -162,14 +171,22 @@ export function CalendarioTurnos() {
     return m;
   }, [asignacionesDefault]);
 
+  function nombreOperadorPorId(id: string): string {
+    return operadores.find((o) => o.id === id)?.nombre_completo ?? '—';
+  }
+
   const turnosPorFecha = useMemo(() => {
     const m = new Map<string, TurnoCalendario[]>();
     for (const t of turnos) {
       if (!m.has(t.fecha)) m.set(t.fecha, []);
       m.get(t.fecha)!.push(t);
     }
+    for (const lista of m.values()) {
+      lista.sort((a, b) => compararPorOrdenOperador(nombreOperadorPorId(a.operador_id), nombreOperadorPorId(b.operador_id)));
+    }
     return m;
-  }, [turnos]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turnos, operadores]);
 
   const asignacionesPorTurno = useMemo(() => {
     const m = new Map<string, Set<string>>();
@@ -195,7 +212,7 @@ export function CalendarioTurnos() {
           sobrepasaLimite: horas > LIMITE_HORAS_MES,
         };
       })
-      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+      .sort((a, b) => compararPorOrdenOperador(a.nombre, b.nombre));
   }, [turnos, operadores]);
 
   const algunoSobrepasaLimite = resumenMes.some((r) => r.sobrepasaLimite);
@@ -215,10 +232,13 @@ export function CalendarioTurnos() {
       const filas: FilaTurnoReporte[] = [...turnosPorFecha.entries()].map(([fecha, lista]) => ({
         fecha,
         motivo: motivoDia(fecha, feriadosAdicionalesMap) ?? 'Fin de semana',
-        operadores: lista.map((t) => operadores.find((o) => o.id === t.operador_id)?.nombre_completo ?? '—'),
+        operadores: lista.map((t) => nombreOperadorPorId(t.operador_id)),
       }));
       const resumen: ResumenOperadorReporte[] = resumenMes.map((r) => ({ nombre: r.nombre, dias: r.dias }));
-      const blob = await generarReporteTurnos(tituloMesLabel, filas, resumen);
+      const blob = await generarReporteTurnos(tituloMesLabel, filas, resumen, {
+        nombre: usuario!.nombre_completo,
+        firmaUrl: usuario!.firma_url,
+      });
       const nombre = `calendario_turnos_${mes}.pdf`;
       setPdfBlob(blob);
       setPdfNombre(nombre);
@@ -301,15 +321,12 @@ export function CalendarioTurnos() {
                 const motivo = motivoDia(fecha, feriadosAdicionalesMap);
                 const turnosDia = turnosPorFecha.get(fecha) ?? [];
                 const esFeriado = motivo !== null && motivo !== 'Fin de semana';
-                const nombresIniciales = turnosDia
-                  .map((t) => iniciales(operadores.find((o) => o.id === t.operador_id)?.nombre_completo ?? '?'))
-                  .join(' ');
                 return (
                   <button
                     key={fecha}
                     type="button"
                     onClick={() => setDiaSeleccionado(fecha)}
-                    className={`aspect-square rounded-lg border text-sm font-medium flex flex-col items-center justify-center gap-0.5 transition ${
+                    className={`min-h-[3.75rem] rounded-lg border text-sm font-medium flex flex-col items-center pt-1 pb-1 gap-0.5 transition overflow-hidden ${
                       esFeriado
                         ? 'border-gauge-warn bg-gauge-warn/20 text-gauge-warn hover:bg-gauge-warn/30'
                         : motivo === 'Fin de semana'
@@ -319,9 +336,18 @@ export function CalendarioTurnos() {
                   >
                     <span>{Number(fecha.slice(-2))}</span>
                     {turnosDia.length > 0 && (
-                      <span className="text-[9px] font-bold text-gauge-ok leading-none px-0.5 truncate max-w-full">
-                        {turnosDia.length <= 2 ? nombresIniciales : `${turnosDia.length} turnos`}
-                      </span>
+                      <div className="flex flex-col items-center leading-tight w-full px-0.5">
+                        {turnosDia.slice(0, MAX_NOMBRES_EN_CELDA).map((t) => (
+                          <span key={t.id} className="text-[8.5px] font-bold text-gauge-ok truncate max-w-full">
+                            {nombreCorto(nombreOperadorPorId(t.operador_id))}
+                          </span>
+                        ))}
+                        {turnosDia.length > MAX_NOMBRES_EN_CELDA && (
+                          <span className="text-[8.5px] font-bold text-gauge-ok">
+                            +{turnosDia.length - MAX_NOMBRES_EN_CELDA} más
+                          </span>
+                        )}
+                      </div>
                     )}
                   </button>
                 );
@@ -339,7 +365,7 @@ export function CalendarioTurnos() {
               </span>
               <span>
                 <span className="inline-block w-3 h-3 rounded ring-2 ring-gauge-ok align-middle mr-1" />
-                Con turno asignado (iniciales del operador)
+                Con turno asignado (nombre del operador)
               </span>
               <span>
                 <span className="inline-block w-3 h-3 rounded bg-panel-700/40 border border-panel-600/60 align-middle mr-1" />
@@ -355,17 +381,21 @@ export function CalendarioTurnos() {
         {turnosOrdenados.length === 0 ? (
           <p className="text-sm text-slate-400">Todavía no hay turnos cargados este mes.</p>
         ) : (
-          <div className="space-y-1.5">
+          <div className="divide-y divide-panel-600/40">
             {turnosOrdenados.map(([fecha, lista]) => (
               <button
                 key={fecha}
                 onClick={() => setDiaSeleccionado(fecha)}
-                className="w-full flex items-center justify-between gap-2 text-sm text-left hover:bg-panel-700/50 rounded px-1.5 py-1 -mx-1.5"
+                className="w-full text-left hover:bg-panel-700/40 rounded px-1.5 py-2 -mx-1.5"
               >
-                <span className="text-slate-300 flex-shrink-0">{formatFechaListado(fecha)}</span>
-                <span className="text-slate-100 text-right truncate">
-                  {lista.map((t) => operadores.find((o) => o.id === t.operador_id)?.nombre_completo ?? '—').join(', ')}
-                </span>
+                <p className="text-xs text-slate-400 mb-1">{formatFechaListado(fecha)}</p>
+                <div className="space-y-0.5">
+                  {lista.map((t) => (
+                    <p key={t.id} className="text-sm text-slate-100">
+                      {nombreOperadorPorId(t.operador_id)}
+                    </p>
+                  ))}
+                </div>
               </button>
             ))}
           </div>

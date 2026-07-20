@@ -327,7 +327,7 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
   ].filter(Boolean);
 }
 
-function bloqueFirma(operadorNombre: string, firmaUrl?: string | null) {
+function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null) {
   return {
     columns: [
       {
@@ -337,8 +337,8 @@ function bloqueFirma(operadorNombre: string, firmaUrl?: string | null) {
             ? { image: firmaUrl, fit: [150, 80], alignment: 'center' }
             : { text: '\n\n', },
           { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 0.5 }] },
-          { text: operadorNombre, alignment: 'center', style: 'firmaNombre' },
-          { text: 'Firma del operador', alignment: 'center', style: 'firmaEtiqueta' },
+          { text: nombre, alignment: 'center', style: 'firmaNombre' },
+          { text: etiqueta, alignment: 'center', style: 'firmaEtiqueta' },
         ],
       },
       { text: '', width: '*' },
@@ -405,7 +405,7 @@ export function generarReporteVisitas(
       encabezado(titulo),
       ...visitas.flatMap((v) => [
         ...bloqueVisita(v),
-        bloqueFirma(v.operador_nombre, v.firma_url),
+        bloqueFirma(v.operador_nombre, 'Firma del operador', v.firma_url),
         { text: '', pageBreak: visitas.indexOf(v) < visitas.length - 1 ? 'after' : undefined },
       ]),
     ],
@@ -444,6 +444,7 @@ export function generarReporteTurnos(
   tituloMes: string,
   filas: FilaTurnoReporte[],
   resumen: ResumenOperadorReporte[],
+  firmante: { nombre: string; firmaUrl?: string | null },
 ): Promise<Blob> {
   const filasOrdenadas = [...filas].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
@@ -459,14 +460,14 @@ export function generarReporteTurnos(
     margin: [0, 4, 0, 16],
   };
 
-  const resumenOrdenado = [...resumen].sort((a, b) => a.nombre.localeCompare(b.nombre));
-
+  // El orden de `resumen` ya viene decidido por quien llama (orden preferido de operadores, no
+  // alfabético) — acá no se reordena de nuevo.
   const tablaResumen = {
     table: {
       widths: ['*', 'auto', 'auto'],
       body: [
         [{ text: 'Operador', bold: true }, { text: 'Días de turno', bold: true }, { text: 'Horas', bold: true }],
-        ...resumenOrdenado.map((r) => [r.nombre, String(r.dias), `${r.dias} x 8 = ${r.dias * 8}`]),
+        ...resumen.map((r) => [r.nombre, String(r.dias), `${r.dias} x 8 = ${r.dias * 8}`]),
       ],
     },
     layout: 'lightHorizontalLines',
@@ -514,7 +515,8 @@ export function generarReporteTurnos(
         ? { text: 'No hay turnos cargados este mes.', italics: true, margin: [0, 0, 0, 16] }
         : tablaDias,
       { text: 'Resumen del mes', style: 'subtitulo', margin: [0, 0, 0, 4] },
-      resumenOrdenado.length === 0 ? { text: 'Sin datos.', italics: true } : tablaResumen,
+      resumen.length === 0 ? { text: 'Sin datos.', italics: true } : tablaResumen,
+      bloqueFirma(firmante.nombre, 'Administrador', firmante.firmaUrl),
     ],
     styles: ESTILOS,
     defaultStyle: { fontSize: 9, color: '#16303F' },
