@@ -54,6 +54,44 @@ export interface EstacionEbar {
   tipo: TipoEstacion;
 }
 
+export interface PlanillaHorasExtras {
+  id: string;
+  operador_id?: string | null;
+  nombre_trabajador: string;
+  cargo_trabajador: string;
+  direccion: string;
+  area: string;
+  fecha_presentacion?: string | null;
+  fecha_desde: string;
+  fecha_hasta: string;
+  jornada_inicio_manana: string;
+  jornada_fin_manana: string;
+  jornada_inicio_tarde: string;
+  jornada_fin_tarde: string;
+  revisado_nombre: string;
+  revisado_cargo: string;
+  aprobado_nombre: string;
+  aprobado_cargo: string;
+  creado_por?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface FilaPlanillaHorasExtras {
+  id: string;
+  planilla_id: string;
+  fecha: string;
+  descripcion_actividades?: string | null;
+  numero_memorando?: string | null;
+  entrada_manana?: string | null;
+  salida_manana?: string | null;
+  entrada_tarde?: string | null;
+  salida_tarde?: string | null;
+  horas_manana?: number | null;
+  horas_tarde?: number | null;
+  horas_extra?: number | null;
+}
+
 export interface Bomba {
   id: string;
   estacion_id: string;
