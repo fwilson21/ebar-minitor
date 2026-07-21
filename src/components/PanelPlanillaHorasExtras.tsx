@@ -355,6 +355,13 @@ function EditorPlanilla({
     setFilas((prev) => prev.filter((f) => f.id !== id));
   }
 
+  // Vuelve a calcular Mañana/Tarde/Extras de todas las filas con la jornada y las reglas actuales
+  // — útil para filas ya guardadas antes de un ajuste en la lógica de cálculo (quedan con el valor
+  // viejo hasta que se recalculan a mano).
+  function recalcularTodas() {
+    setFilas((prev) => prev.map((f) => ({ ...f, ...calcularHorasFila(f, jornada) })));
+  }
+
   const totalHorasExtra = useMemo(() => sumarHorasExtra(filas), [filas]);
 
   async function guardar() {
@@ -625,6 +632,17 @@ function EditorPlanilla({
           + Día
         </button>
       </div>
+
+      {filas.length > 0 && (
+        <button
+          type="button"
+          onClick={recalcularTodas}
+          className="text-xs text-gauge-ok hover:underline"
+          title="Vuelve a calcular Mañana/Tarde/Extras de todas las filas con la jornada de arriba"
+        >
+          🔄 Recalcular horas de todas las filas
+        </button>
+      )}
 
       {filas.length > 0 && (
         <div className="overflow-x-auto border border-panel-600/40 rounded-lg">

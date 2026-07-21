@@ -18,6 +18,15 @@ if ('serviceWorker' in navigator) {
     window.location.reload();
   });
 
+  // El chequeo de actualización "pasivo" del navegador (al registrar/navegar) puede tardar en
+  // notarse si la pestaña se queda abierta un rato — se fuerza un chequeo apenas carga y cada 3
+  // minutos mientras la app siga abierta, para que una planilla/reporte no se genere con el
+  // código viejo por quedarse esperando la próxima recarga completa.
+  navigator.serviceWorker.ready.then((registro) => {
+    registro.update();
+    setInterval(() => registro.update(), 3 * 60 * 1000);
+  });
+
   // El service worker sincroniza en segundo plano (Background Sync, Android) usando su propia
   // copia del token de sesión — si tuvo que renovarlo (venció mientras la app estaba cerrada),
   // avisa acá para que supabase-js en esta pestaña use el mismo token nuevo, en vez de quedarse

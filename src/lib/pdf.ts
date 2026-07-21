@@ -619,7 +619,7 @@ export function generarReportePlanillaHorasExtras(
   const tablaDias = {
     table: {
       headerRows: 1,
-      widths: [55, '*', 70, 34, 34, 34, 34, 34, 34, 34],
+      widths: [55, '*', 170, 34, 34, 34, 34, 34, 34, 34],
       body: [
         [
           { text: 'Fecha', bold: true },
