@@ -568,8 +568,11 @@ function EditorPlanilla({
       <div className="border border-panel-600/40 rounded-lg p-3 space-y-2">
         <p className="text-xs font-semibold text-slate-300">Jornada normal (sin horas extra)</p>
         <p className="text-[11px] text-slate-500">
-          Se usa para prellenar cada día nuevo. Si un día no tiene marcación al medio día, escribe solo la entrada de
-          la mañana y la salida de la tarde en esa fila — las horas se calculan directo entre esas dos.
+          Se usa para prellenar cada día nuevo y como límite del cálculo: si una marcación es más temprano que la
+          jornada no suma de más (ej. entrar antes de las 08:00), pero si es más tarde sí se descuenta — y al revés
+          para la salida (salir después no suma de más, salir antes sí se descuenta). Si un día no tiene marcación al
+          medio día, escribe solo la entrada de la mañana y la salida de la tarde en esa fila: se calcula directo
+          entre esas dos y se descuenta 1 hora de almuerzo.
         </p>
         <div className="grid grid-cols-4 gap-2">
           <div>
