@@ -23,6 +23,7 @@ interface Payload {
   nombre_completo: string;
   password: string;
   cedula: string;
+  cargo: string;
   rol?: 'operador' | 'supervisor' | 'administrador';
 }
 
@@ -63,9 +64,9 @@ Deno.serve(async (req) => {
       return json({ error: 'Solo un administrador puede crear usuarios.' }, 403);
     }
 
-    const { usuario: nombreUsuario, nombre_completo, password, cedula, rol }: Payload = await req.json();
-    if (!nombreUsuario || !nombre_completo || !password || !cedula) {
-      return json({ error: 'Usuario, nombre completo, contraseña y cédula son requeridos.' }, 400);
+    const { usuario: nombreUsuario, nombre_completo, password, cedula, cargo, rol }: Payload = await req.json();
+    if (!nombreUsuario || !nombre_completo || !password || !cedula || !cargo) {
+      return json({ error: 'Usuario, nombre completo, contraseña, cédula y cargo son requeridos.' }, 400);
     }
     if (!/^[a-z0-9._-]{3,30}$/.test(nombreUsuario)) {
       return json({ error: 'El usuario debe tener 3-30 caracteres: minúsculas, números, puntos, guiones o guiones bajos.' }, 400);
@@ -93,10 +94,10 @@ Deno.serve(async (req) => {
 
     // El trigger handle_new_auth_user crea la fila en `usuarios` con rol 'operador' por defecto;
     // acá se completa el nombre de usuario (para poder mostrarlo luego en la pantalla de Usuarios),
-    // la cédula, y se ajusta el rol si no es el operador por defecto.
+    // la cédula, el cargo, y se ajusta el rol si no es el operador por defecto.
     const { error: errorActualizar } = await supabaseAdmin
       .from('usuarios')
-      .update({ nombre_usuario: nombreUsuario, cedula, ...(rol && rol !== 'operador' ? { rol } : {}) })
+      .update({ nombre_usuario: nombreUsuario, cedula, cargo, ...(rol && rol !== 'operador' ? { rol } : {}) })
       .eq('id', creado.user.id);
     if (errorActualizar) {
       const cedulaDuplicada = errorActualizar.message.toLowerCase().includes('cedula');

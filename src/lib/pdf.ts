@@ -613,7 +613,7 @@ export function generarReportePlanillaHorasExtras(
       ],
     },
     layout: 'noBorders',
-    margin: [0, 0, 0, 10] as [number, number, number, number],
+    margin: [0, 0, 0, 20] as [number, number, number, number],
   };
 
   const tablaDias = {
@@ -663,7 +663,7 @@ export function generarReportePlanillaHorasExtras(
     // Margen superior más chico que en los reportes verticales: el membrete de fondo se estira al
     // ancho de la hoja apaisada y queda proporcionalmente más bajo, así que 90pt dejaba un hueco
     // vacío entre el membrete y el título — con 55pt el contenido queda pegado justo debajo.
-    pageMargins: [30, 55, 30, 80],
+    pageMargins: [30, 68, 30, 80],
     background: (_currentPage, pageSize) => ({
       image: MEMBRETE_FONDO_BASE64,
       width: pageSize.width,
