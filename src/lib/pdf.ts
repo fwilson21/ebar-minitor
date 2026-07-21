@@ -660,7 +660,10 @@ export function generarReportePlanillaHorasExtras(
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
     pageOrientation: 'landscape',
-    pageMargins: [30, 90, 30, 90],
+    // Margen superior más chico que en los reportes verticales: el membrete de fondo se estira al
+    // ancho de la hoja apaisada y queda proporcionalmente más bajo, así que 90pt dejaba un hueco
+    // vacío entre el membrete y el título — con 55pt el contenido queda pegado justo debajo.
+    pageMargins: [30, 55, 30, 80],
     background: (_currentPage, pageSize) => ({
       image: MEMBRETE_FONDO_BASE64,
       width: pageSize.width,
@@ -718,13 +721,28 @@ export function generarReportePlanillaHorasExtras(
   });
 }
 
+/** Línea centrada dentro de su columna sin importar el ancho real que le toque (las 3 firmas
+ * usan columnas '*', cuyo ancho en puntos solo lo sabe pdfmake al momento de maquetar) — envolver
+ * el canvas entre dos espaciadores '*' de igual ancho lo centra siempre, en vez de un x1/x2 fijo
+ * que solo queda centrado para un ancho de columna exacto. */
+function lineaCentrada(ancho = 170): any {
+  return {
+    columns: [
+      { text: '', width: '*' },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: ancho, y2: 0, lineWidth: 0.5 }], width: ancho },
+      { text: '', width: '*' },
+    ],
+    margin: [0, 30, 0, 4],
+  };
+}
+
 /** Bloque de firma simple (línea + nombre + rótulo + cargo), usado en la planilla de horas
  * extras — distinto de bloqueFirma() porque acá van 3 firmas lado a lado sin foto de firma. */
 function firmaSimple(nombre: string, rotulo: string, cargo: string): any {
   return {
     width: '*',
     stack: [
-      { canvas: [{ type: 'line', x1: 10, y1: 0, x2: 170, y2: 0, lineWidth: 0.5 }], margin: [0, 30, 0, 4] },
+      lineaCentrada(),
       { text: nombre, alignment: 'center', style: 'firmaNombre' },
       { text: rotulo, alignment: 'center', fontSize: 7, bold: true, color: '#16303F' },
       { text: cargo, alignment: 'center', style: 'firmaEtiqueta' },

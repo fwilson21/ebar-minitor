@@ -25,14 +25,6 @@ function aMinutos(hora?: string | null): number | null {
   return h * 60 + m;
 }
 
-/** Diferencia en horas decimales entre dos horas "HH:MM". Negativa o inválida → 0. */
-function diffHoras(inicio?: string | null, fin?: string | null): number {
-  const a = aMinutos(inicio);
-  const b = aMinutos(fin);
-  if (a === null || b === null || b <= a) return 0;
-  return (b - a) / 60;
-}
-
 /** Horas decimales → "HH:MM" (permite pasar de 24, ej. 42.5 → "42:30", para el total del período). */
 export function formatHoras(horas?: number | null): string {
   if (!horas || horas <= 0) return '00:00';
@@ -43,26 +35,53 @@ export function formatHoras(horas?: number | null): string {
 }
 
 /**
- * Sugiere Mañana/Tarde/Extras para una fila según su horario:
- * - Con las 4 marcaciones (entrada/salida de mañana y tarde): resta directa de cada bloque.
- * - Sin marcación de mediodía (solo entrada de mañana y salida de tarde, ej. 08:00 a 17:00): el
- *   total sale de restar esas dos directamente; Mañana/Tarde se reparten solo para mostrar en la
- *   tabla, usando el corte de la jornada de referencia (jornada_fin_manana) como límite.
+ * Horas de un bloque (mañana o tarde) recortadas contra su jornada de referencia: si la marcación
+ * de entrada es más temprano que la jornada, no cuenta (se toma la hora de la jornada); si es más
+ * tarde, se descuenta (se toma la hora marcada). Simétrico para la salida: si es más tarde que la
+ * jornada no cuenta de más, si es más temprano se descuenta. Negativo → 0.
+ */
+function horasRecortadas(entrada: string, salida: string, refInicio: string, refFin: string): number {
+  const inicioEfectivo = Math.max(aMinutos(entrada)!, aMinutos(refInicio)!);
+  const finEfectivo = Math.min(aMinutos(salida)!, aMinutos(refFin)!);
+  return Math.max(0, finEfectivo - inicioEfectivo) / 60;
+}
+
+/**
+ * Sugiere Mañana/Tarde/Extras para una fila según su horario, recortado contra la jornada normal
+ * del trabajador (ej. 08:00-12:00/13:00-17:00):
+ * - Con marcación completa de un bloque (mañana y/o tarde): cada uno se recorta contra su propia
+ *   jornada de referencia, sin importar si el otro bloque tiene datos o no.
+ * - Sin ninguna marcación de mediodía (solo entrada de la mañana y salida de la tarde, ej. 08:00 a
+ *   17:00): el total sale de recortar esos dos extremos contra la jornada completa, menos 1 hora de
+ *   almuerzo. Mañana/Tarde se reparten solo para mostrar en la tabla, usando el corte de la jornada
+ *   (jornada_fin_manana) como límite.
  */
 export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia) {
   const { entrada_manana, salida_manana, entrada_tarde, salida_tarde } = fila;
+  const tieneManana = !!(entrada_manana && salida_manana);
+  const tieneTarde = !!(entrada_tarde && salida_tarde);
 
-  if (entrada_manana && salida_manana && entrada_tarde && salida_tarde) {
-    const manana = diffHoras(entrada_manana, salida_manana);
-    const tarde = diffHoras(entrada_tarde, salida_tarde);
+  if (tieneManana || tieneTarde) {
+    const manana = tieneManana
+      ? horasRecortadas(entrada_manana!, salida_manana!, jornada.jornada_inicio_manana, jornada.jornada_fin_manana)
+      : 0;
+    const tarde = tieneTarde
+      ? horasRecortadas(entrada_tarde!, salida_tarde!, jornada.jornada_inicio_tarde, jornada.jornada_fin_tarde)
+      : 0;
     return { horas_manana: manana, horas_tarde: tarde, horas_extra: manana + tarde };
   }
 
-  if (entrada_manana && salida_tarde && !salida_manana && !entrada_tarde) {
-    const total = diffHoras(entrada_manana, salida_tarde);
-    const manana = Math.max(0, Math.min(diffHoras(entrada_manana, jornada.jornada_fin_manana), total));
-    const tarde = Math.max(0, total - manana);
-    return { horas_manana: manana, horas_tarde: tarde, horas_extra: total };
+  if (entrada_manana && salida_tarde) {
+    const inicioEfectivo = Math.max(aMinutos(entrada_manana)!, aMinutos(jornada.jornada_inicio_manana)!);
+    const finEfectivo = Math.min(aMinutos(salida_tarde)!, aMinutos(jornada.jornada_fin_tarde)!);
+    const corte = aMinutos(jornada.jornada_fin_manana)!;
+    const mananaBruto = Math.max(0, Math.min(finEfectivo, corte) - inicioEfectivo) / 60;
+    const tardeBruto = Math.max(0, finEfectivo - Math.max(inicioEfectivo, corte)) / 60;
+    // Se descuenta 1 hora de almuerzo (nadie marcó al mediodía, pero igual sale a almorzar):
+    // se resta primero de la tarde y, si no alcanza, el resto de la mañana.
+    const tarde = Math.max(0, tardeBruto - 1);
+    const manana = Math.max(0, mananaBruto - Math.max(0, 1 - tardeBruto));
+    return { horas_manana: manana, horas_tarde: tarde, horas_extra: manana + tarde };
   }
 
   return { horas_manana: 0, horas_tarde: 0, horas_extra: 0 };
