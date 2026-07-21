@@ -1,5 +1,5 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
@@ -21,13 +21,8 @@ const NAV_ADMIN = { to: '/usuarios', label: 'Usuarios', icon: '👥' };
 const NAV_ADMIN_SUPERVISOR = { to: '/asignaciones', label: 'Asignar', icon: '🗺️' };
 const NAV_TURNOS = { to: '/calendario-turnos', label: 'Turnos', icon: '📅' };
 
-/** Umbral en píxeles para considerar un gesto como swipe horizontal (no un tap ni un scroll). */
-const UMBRAL_SWIPE = 40;
-
 export function AppShell() {
   const { usuario, logout } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
   const [pendientes, setPendientes] = useState(0);
   const [enLinea, setEnLinea] = useState(navigator.onLine);
   const [mostrarPanel, setMostrarPanel] = useState(false);
@@ -122,31 +117,6 @@ export function AppShell() {
     ...(usuario?.rol === 'administrador' ? [NAV_TURNOS, NAV_ADMIN] : []),
   ];
 
-  const swipeInicio = useRef<{ x: number; y: number } | null>(null);
-
-  function manejarSwipeInicio(e: React.TouchEvent) {
-    swipeInicio.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  }
-
-  // Desliza el dedo sobre las opciones del menú (Inicio/Estaciones/Reportes/Asignar/Turnos/
-  // Usuarios) para pasar a la pestaña anterior/siguiente sin tener que tocarla directamente.
-  function manejarSwipeFin(e: React.TouchEvent) {
-    const inicio = swipeInicio.current;
-    swipeInicio.current = null;
-    if (!inicio) return;
-    const dx = e.changedTouches[0].clientX - inicio.x;
-    const dy = e.changedTouches[0].clientY - inicio.y;
-    if (Math.abs(dx) < UMBRAL_SWIPE || Math.abs(dx) < Math.abs(dy)) return;
-
-    const indiceActual = navItems.findIndex((item) =>
-      item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to),
-    );
-    if (indiceActual === -1) return;
-    const indiceSiguiente = dx < 0 ? indiceActual + 1 : indiceActual - 1;
-    if (indiceSiguiente < 0 || indiceSiguiente >= navItems.length) return;
-    navigate(navItems[indiceSiguiente].to);
-  }
-
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-panel-800 border-b border-panel-600/60 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
@@ -183,18 +153,18 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      <nav
-        className="fixed bottom-0 left-0 right-0 bg-panel-800 border-t border-panel-600/60 flex justify-around py-2 z-10 touch-pan-y"
-        onTouchStart={manejarSwipeInicio}
-        onTouchEnd={manejarSwipeFin}
-      >
+      {/* overflow-x-auto: en celulares angostos, 6 opciones no entran todas a la vez — se
+          desliza el dedo sobre la cinta para ver/tocar las que quedan fuera de pantalla (ej.
+          "Usuarios" a la derecha). shrink-0 evita que el navegador las achique en vez de dejarlas
+          desplazables. */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-panel-800 border-t border-panel-600/60 flex justify-around overflow-x-auto py-2 z-10">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-lg text-xs ${
+              `flex flex-col items-center gap-0.5 shrink-0 min-w-[4.25rem] px-2 py-1.5 rounded-lg text-xs ${
                 isActive ? 'text-gauge-ok' : 'text-slate-400'
               }`
             }
