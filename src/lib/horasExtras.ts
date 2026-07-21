@@ -96,3 +96,12 @@ export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia)
 export function sumarHorasExtra(filas: Array<{ horas_extra?: number | null }>): number {
   return filas.reduce((acc, f) => acc + (f.horas_extra ?? 0), 0);
 }
+
+/** Inverso de formatHoras: "HH:MM" (o solo "HH") → horas decimales. Texto inválido/vacío → 0. */
+export function parseHorasHHMM(texto: string): number {
+  const match = texto.trim().match(/^(\d{1,3}):?(\d{0,2})$/);
+  if (!match) return 0;
+  const h = Number(match[1] || 0);
+  const m = Math.min(59, Number(match[2] || 0));
+  return redondear2(h + m / 60);
+}

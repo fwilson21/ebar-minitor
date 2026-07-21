@@ -27,6 +27,7 @@ export function Users() {
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevaPassword, setNuevaPassword] = useState('');
   const [nuevaCedula, setNuevaCedula] = useState('');
+  const [nuevoCargo, setNuevoCargo] = useState('');
   const [nuevoRol, setNuevoRol] = useState<UserRole>('operador');
   const [invitando, setInvitando] = useState(false);
   const [mensajeInvitar, setMensajeInvitar] = useState<string | null>(null);
@@ -42,6 +43,10 @@ export function Users() {
   const [cedulaEdicion, setCedulaEdicion] = useState('');
   const [mensajeCedula, setMensajeCedula] = useState<string | null>(null);
   const [guardandoCedula, setGuardandoCedula] = useState(false);
+  const [editandoCargoId, setEditandoCargoId] = useState<string | null>(null);
+  const [cargoEdicion, setCargoEdicion] = useState('');
+  const [mensajeCargo, setMensajeCargo] = useState<string | null>(null);
+  const [guardandoCargo, setGuardandoCargo] = useState(false);
 
   useEffect(() => {
     cargar();
@@ -106,7 +111,14 @@ export function Users() {
     setMensajeInvitar(null);
     try {
       const { data, error } = await supabase.functions.invoke('create-user', {
-        body: { usuario: nuevoUsuario, nombre_completo: nuevoNombre, password: nuevaPassword, cedula: nuevaCedula, rol: nuevoRol },
+        body: {
+          usuario: nuevoUsuario,
+          nombre_completo: nuevoNombre,
+          password: nuevaPassword,
+          cedula: nuevaCedula,
+          cargo: nuevoCargo,
+          rol: nuevoRol,
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -116,6 +128,7 @@ export function Users() {
       setNuevoNombre('');
       setNuevaPassword('');
       setNuevaCedula('');
+      setNuevoCargo('');
       setNuevoRol('operador');
       await cargar();
     } catch (err: any) {
@@ -182,6 +195,31 @@ export function Users() {
       setMensajeCedula(duplicada ? 'Ya hay otro usuario con esa cédula.' : `No se pudo guardar: ${err.message ?? err}`);
     } finally {
       setGuardandoCedula(false);
+    }
+  }
+
+  function abrirEditarCargo(id: string, actual: string | null | undefined) {
+    setEditandoCargoId((prev) => (prev === id ? null : id));
+    setCargoEdicion(actual ?? '');
+    setMensajeCargo(null);
+  }
+
+  async function manejarGuardarCargo(id: string) {
+    if (!cargoEdicion.trim()) {
+      setMensajeCargo('Escribe el cargo/ocupación.');
+      return;
+    }
+    setGuardandoCargo(true);
+    setMensajeCargo(null);
+    try {
+      const { error } = await supabase.from('usuarios').update({ cargo: cargoEdicion.trim() }).eq('id', id);
+      if (error) throw error;
+      setUsuarios((prev) => prev.map((u) => (u.id === id ? { ...u, cargo: cargoEdicion.trim() } : u)));
+      setMensajeCargo('Cargo actualizado.');
+    } catch (err: any) {
+      setMensajeCargo(`No se pudo guardar: ${err.message ?? err}`);
+    } finally {
+      setGuardandoCargo(false);
     }
   }
 
@@ -267,6 +305,17 @@ export function Users() {
             />
           </div>
           <div>
+            <label className="etiqueta">Cargo/Ocupación</label>
+            <input
+              type="text"
+              required
+              className="campo"
+              value={nuevoCargo}
+              onChange={(e) => setNuevoCargo(e.target.value)}
+              placeholder="Ej: Operador de estaciones de bombeo"
+            />
+          </div>
+          <div>
             <label className="etiqueta">Contraseña inicial</label>
             <input
               type="text"
@@ -315,6 +364,9 @@ export function Users() {
                 </p>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Cédula: <span className="text-slate-300">{u.cedula || '(sin registrar)'}</span>
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Cargo: <span className="text-slate-300">{u.cargo || '(sin registrar)'}</span>
                 </p>
                 {u.telefono && (
                   <p className="text-xs text-slate-500 mt-0.5">{u.telefono}</p>
@@ -378,6 +430,15 @@ export function Users() {
                   onClick={() => abrirEditarCedula(u.id, u.cedula)}
                 >
                   🪪 Cédula
+                </button>
+              )}
+
+              {esAdmin && (
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
+                  onClick={() => abrirEditarCargo(u.id, u.cargo)}
+                >
+                  💼 Cargo
                 </button>
               )}
 
@@ -488,6 +549,33 @@ export function Users() {
                 {mensajeCedula && (
                   <p className={`text-xs ${mensajeCedula.startsWith('No se pudo') || mensajeCedula.startsWith('Ya hay') || mensajeCedula.startsWith('La cédula') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
                     {mensajeCedula}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {esAdmin && editandoCargoId === u.id && (
+              <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
+                <label className="etiqueta">Cargo/Ocupación de {u.nombre_completo}</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="campo flex-1"
+                    placeholder="Ej: Operador de estaciones de bombeo"
+                    value={cargoEdicion}
+                    onChange={(e) => setCargoEdicion(e.target.value)}
+                  />
+                  <button
+                    className="boton-primario px-4 flex-shrink-0"
+                    disabled={guardandoCargo}
+                    onClick={() => manejarGuardarCargo(u.id)}
+                  >
+                    {guardandoCargo ? '…' : 'Guardar'}
+                  </button>
+                </div>
+                {mensajeCargo && (
+                  <p className={`text-xs ${mensajeCargo.startsWith('No se pudo') || mensajeCargo.startsWith('Escribe') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+                    {mensajeCargo}
                   </p>
                 )}
               </div>

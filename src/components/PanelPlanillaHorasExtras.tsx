@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
-import { calcularHorasFila, formatHoras, sumarHorasExtra } from '../lib/horasExtras';
+import { calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra } from '../lib/horasExtras';
 import { descargarBlob, generarReportePlanillaHorasExtras, type FilaPlanillaReporte } from '../lib/pdf';
 
 const DIRECCION_DEFAULT = 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO GADMFO';
@@ -53,6 +53,26 @@ function filaDesdeDb(f: FilaPlanillaHorasExtras): FilaEdit {
     horas_tarde: f.horas_tarde ?? 0,
     horas_extra: f.horas_extra ?? 0,
   };
+}
+
+/** Campo de horas en formato "HH:MM" (como el total del PDF) en vez de decimal: mantiene su
+ * propio texto mientras se escribe y solo lo convierte a número al salir del campo, para no
+ * reformatear a mitad de la escritura; si el valor cambia por fuera (recalcular, editar horario),
+ * se resincroniza. */
+function InputHoras({ valor, onCommit, className }: { valor: number; onCommit: (n: number) => void; className?: string }) {
+  const [texto, setTexto] = useState(formatHoras(valor));
+  useEffect(() => setTexto(formatHoras(valor)), [valor]);
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      placeholder="HH:MM"
+      className={className}
+      value={texto}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => onCommit(parseHorasHHMM(texto))}
+    />
+  );
 }
 
 interface Props {
@@ -245,10 +265,15 @@ function EditorPlanilla({
     cargarFilas();
   }, [planilla]);
 
-  // Al elegir un operador registrado en una planilla nueva, prellena cargo/área/dirección/jornada
-  // con los de la última planilla que se le haya generado (si existe) para no volver a escribirlos.
+  // Al elegir un operador registrado en una planilla nueva: el cargo/ocupación sale directo de su
+  // perfil (Usuarios → 💼 Cargo), que manda sobre cualquier valor anterior porque es un dato de la
+  // persona, no de la planilla. Área/dirección/jornada se prellenan con los de la última planilla
+  // que se le haya generado (si existe) solo para no volver a escribirlos, sin forzarlos.
   useEffect(() => {
     if (planilla || !operadorId || operadorId === MANUAL) return;
+    const operador = operadores.find((o) => o.id === operadorId);
+    if (operador?.cargo) setCargoTrabajador(operador.cargo);
+
     async function prellenar() {
       const { data } = await supabase
         .from('planillas_horas_extras')
@@ -259,7 +284,7 @@ function EditorPlanilla({
         .maybeSingle();
       if (!data) return;
       const anterior = data as PlanillaHorasExtras;
-      setCargoTrabajador((v) => v || anterior.cargo_trabajador);
+      if (!operador?.cargo) setCargoTrabajador((v) => v || anterior.cargo_trabajador);
       setArea((v) => v || anterior.area);
       setDireccion((v) => (v === DIRECCION_DEFAULT ? anterior.direccion : v));
       setJornadaInicioManana(anterior.jornada_inicio_manana);
@@ -722,33 +747,24 @@ function EditorPlanilla({
                     />
                   </td>
                   <td className="p-1">
-                    <input
-                      type="number"
-                      step="0.25"
-                      min="0"
+                    <InputHoras
+                      valor={f.horas_manana}
+                      onCommit={(n) => actualizarFila(f.id, { horas_manana: n })}
                       className="campo text-xs py-1 w-16"
-                      value={f.horas_manana}
-                      onChange={(e) => actualizarFila(f.id, { horas_manana: Number(e.target.value) })}
                     />
                   </td>
                   <td className="p-1">
-                    <input
-                      type="number"
-                      step="0.25"
-                      min="0"
+                    <InputHoras
+                      valor={f.horas_tarde}
+                      onCommit={(n) => actualizarFila(f.id, { horas_tarde: n })}
                       className="campo text-xs py-1 w-16"
-                      value={f.horas_tarde}
-                      onChange={(e) => actualizarFila(f.id, { horas_tarde: Number(e.target.value) })}
                     />
                   </td>
                   <td className="p-1">
-                    <input
-                      type="number"
-                      step="0.25"
-                      min="0"
+                    <InputHoras
+                      valor={f.horas_extra}
+                      onCommit={(n) => actualizarFila(f.id, { horas_extra: n })}
                       className="campo text-xs py-1 w-16 font-semibold"
-                      value={f.horas_extra}
-                      onChange={(e) => actualizarFila(f.id, { horas_extra: Number(e.target.value) })}
                     />
                   </td>
                   <td className="p-1">
