@@ -12,6 +12,7 @@ import {
 } from '../lib/pdf';
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
 import { nombreCorto } from '../lib/nombres';
+import { PanelPlanillaHorasExtras } from '../components/PanelPlanillaHorasExtras';
 
 const DIAS_SEMANA_CORTOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
@@ -436,6 +437,8 @@ export function CalendarioTurnos() {
           </div>
         )}
       </div>
+
+      <PanelPlanillaHorasExtras operadores={operadores} usuarioId={usuario.id} />
 
       <div className="tarjeta p-4 space-y-3">
         <div>

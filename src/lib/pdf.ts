@@ -550,6 +550,188 @@ export function generarReporteTurnos(
   });
 }
 
+export interface FilaPlanillaReporte {
+  fecha: string; // ISO (YYYY-MM-DD)
+  descripcion: string;
+  memorando: string;
+  entradaManana: string;
+  salidaManana: string;
+  entradaTarde: string;
+  salidaTarde: string;
+  horasManana: string; // ya formateadas "HH:MM"
+  horasTarde: string;
+  horasExtra: string;
+}
+
+export interface DatosPlanillaReporte {
+  direccion: string;
+  area: string;
+  nombreTrabajador: string;
+  cargoTrabajador: string;
+  fechaPresentacion: string | null; // ISO o null
+  fechaDesde: string; // ISO
+  fechaHasta: string; // ISO
+  revisadoNombre: string;
+  revisadoCargo: string;
+  aprobadoNombre: string;
+  aprobadoCargo: string;
+}
+
+function formatFechaDMY(fechaIso: string): string {
+  const d = new Date(`${fechaIso}T12:00:00`);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+/** Planilla de horas extras (formato de Talento Humano, apaisada) para un trabajador y período:
+ * cabecera con dirección/área/ocupación, tabla de días con horario y horas, y las 3 firmas
+ * (Revisado por / Aprobado por / Trabajador municipal) al pie. */
+export function generarReportePlanillaHorasExtras(
+  datos: DatosPlanillaReporte,
+  filas: FilaPlanillaReporte[],
+  totalHorasExtra: string,
+): Promise<Blob> {
+  const filasOrdenadas = [...filas].sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  const tablaCabecera = {
+    table: {
+      widths: ['auto', '*', 'auto', '*'],
+      body: [
+        ['Dirección:', { text: datos.direccion, colSpan: 3 }, {}, {}],
+        ['Área:', datos.area, 'Ocupación:', datos.cargoTrabajador],
+        [
+          'Nombres y apellidos:',
+          { text: datos.nombreTrabajador, colSpan: 3 },
+          {},
+          {},
+        ],
+        [
+          'Fecha de presentación:',
+          datos.fechaPresentacion ? formatFechaDMY(datos.fechaPresentacion) : '-',
+          'Período:',
+          `${formatFechaDMY(datos.fechaDesde)} al ${formatFechaDMY(datos.fechaHasta)}`,
+        ],
+      ],
+    },
+    layout: 'noBorders',
+    margin: [0, 0, 0, 10] as [number, number, number, number],
+  };
+
+  const tablaDias = {
+    table: {
+      headerRows: 1,
+      widths: [55, '*', 70, 34, 34, 34, 34, 34, 34, 34],
+      body: [
+        [
+          { text: 'Fecha', bold: true },
+          { text: 'Descripción de actividades', bold: true },
+          { text: 'N.º memorando', bold: true },
+          { text: 'Entrada', bold: true },
+          { text: 'Sale', bold: true },
+          { text: 'Entrada', bold: true },
+          { text: 'Sale', bold: true },
+          { text: 'Mañana', bold: true },
+          { text: 'Tarde', bold: true },
+          { text: 'Extras', bold: true },
+        ],
+        ...filasOrdenadas.map((f) => [
+          formatFechaDMY(f.fecha),
+          { text: f.descripcion || '-', fontSize: 7.5 },
+          { text: f.memorando || '-', fontSize: 7.5 },
+          f.entradaManana || '-',
+          f.salidaManana || '-',
+          f.entradaTarde || '-',
+          f.salidaTarde || '-',
+          f.horasManana,
+          f.horasTarde,
+          { text: f.horasExtra, bold: true },
+        ]),
+        [
+          { text: 'TOTAL HORAS', colSpan: 9, bold: true, alignment: 'right' },
+          {}, {}, {}, {}, {}, {}, {}, {},
+          { text: totalHorasExtra, bold: true },
+        ],
+      ],
+    },
+    layout: 'lightHorizontalLines',
+    fontSize: 8,
+    margin: [0, 0, 0, 6] as [number, number, number, number],
+  };
+
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: 'A4',
+    pageOrientation: 'landscape',
+    pageMargins: [30, 90, 30, 90],
+    background: (_currentPage, pageSize) => ({
+      image: MEMBRETE_FONDO_BASE64,
+      width: pageSize.width,
+      height: pageSize.height,
+    }),
+    footer: (currentPage: number, pageCount: number) => ({
+      margin: [30, 10, 30, 20],
+      stack: [
+        {
+          columns: [
+            {
+              width: '40%',
+              margin: [95, 0, 0, 0],
+              stack: [
+                { text: 'www.orellana.gob.ec', fontSize: 7, bold: true, color: '#16303F' },
+                { text: 'Francisco de Orellana – Ecuador', fontSize: 7, color: '#16303F' },
+                { text: 'Calle Napo 11-05 y Uquillas', fontSize: 7, color: '#16303F' },
+              ],
+            },
+            {
+              width: '*',
+              alignment: 'right',
+              stack: [
+                { text: 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO', fontSize: 7, bold: true, color: '#16303F' },
+                { text: 'TELF.: 062-999-060   Ext. 1801', fontSize: 7, color: '#16303F' },
+              ],
+            },
+          ],
+        },
+        { text: `Hoja ${currentPage} de ${pageCount}`, alignment: 'center', fontSize: 7, color: '#16303F', margin: [0, 4, 0, 0] },
+      ],
+    }),
+    content: [
+      encabezado('Planilla de horas extras'),
+      tablaCabecera,
+      filasOrdenadas.length === 0
+        ? { text: 'No hay días cargados en este período.', italics: true, margin: [0, 0, 0, 16] }
+        : tablaDias,
+      { text: 'Nota: en todos los casos se descuenta 1 hora de almuerzo al medio día.', fontSize: 7.5, italics: true, margin: [0, 0, 0, 24] },
+      {
+        columns: [
+          firmaSimple(datos.revisadoNombre, 'REVISADO POR', datos.revisadoCargo),
+          firmaSimple(datos.aprobadoNombre, 'APROBADO POR', datos.aprobadoCargo),
+          firmaSimple(datos.nombreTrabajador, 'TRABAJADOR MUNICIPAL', datos.cargoTrabajador),
+        ],
+        columnGap: 20,
+      },
+    ],
+    styles: ESTILOS,
+    defaultStyle: { fontSize: 9, color: '#16303F' },
+  };
+
+  return new Promise((resolve) => {
+    pdfMake.createPdf(docDefinition).getBlob((blob: Blob) => resolve(blob));
+  });
+}
+
+/** Bloque de firma simple (línea + nombre + rótulo + cargo), usado en la planilla de horas
+ * extras — distinto de bloqueFirma() porque acá van 3 firmas lado a lado sin foto de firma. */
+function firmaSimple(nombre: string, rotulo: string, cargo: string): any {
+  return {
+    width: '*',
+    stack: [
+      { canvas: [{ type: 'line', x1: 10, y1: 0, x2: 170, y2: 0, lineWidth: 0.5 }], margin: [0, 30, 0, 4] },
+      { text: nombre, alignment: 'center', style: 'firmaNombre' },
+      { text: rotulo, alignment: 'center', fontSize: 7, bold: true, color: '#16303F' },
+      { text: cargo, alignment: 'center', style: 'firmaEtiqueta' },
+    ],
+  };
+}
+
 export function descargarBlob(blob: Blob, nombreArchivo: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
