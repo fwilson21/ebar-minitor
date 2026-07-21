@@ -17,6 +17,12 @@ export interface HorarioFila {
   salida_tarde?: string | null;
 }
 
+/** Redondea a 2 decimales — evita el ruido de coma flotante de dividir minutos entre 60
+ * (ej. 230/60 = 3.8333333333333335), que se veía feo en los campos numéricos de la tabla. */
+function redondear2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 /** "08:30" (o "08:30:00") → 510 minutos desde medianoche. Null/vacío → null. */
 function aMinutos(hora?: string | null): number | null {
   if (!hora) return null;
@@ -43,7 +49,7 @@ export function formatHoras(horas?: number | null): string {
 function horasRecortadas(entrada: string, salida: string, refInicio: string, refFin: string): number {
   const inicioEfectivo = Math.max(aMinutos(entrada)!, aMinutos(refInicio)!);
   const finEfectivo = Math.min(aMinutos(salida)!, aMinutos(refFin)!);
-  return Math.max(0, finEfectivo - inicioEfectivo) / 60;
+  return redondear2(Math.max(0, finEfectivo - inicioEfectivo) / 60);
 }
 
 /**
@@ -68,7 +74,7 @@ export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia)
     const tarde = tieneTarde
       ? horasRecortadas(entrada_tarde!, salida_tarde!, jornada.jornada_inicio_tarde, jornada.jornada_fin_tarde)
       : 0;
-    return { horas_manana: manana, horas_tarde: tarde, horas_extra: manana + tarde };
+    return { horas_manana: manana, horas_tarde: tarde, horas_extra: redondear2(manana + tarde) };
   }
 
   if (entrada_manana && salida_tarde) {
@@ -79,9 +85,9 @@ export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia)
     const tardeBruto = Math.max(0, finEfectivo - Math.max(inicioEfectivo, corte)) / 60;
     // Se descuenta 1 hora de almuerzo (nadie marcó al mediodía, pero igual sale a almorzar):
     // se resta primero de la tarde y, si no alcanza, el resto de la mañana.
-    const tarde = Math.max(0, tardeBruto - 1);
-    const manana = Math.max(0, mananaBruto - Math.max(0, 1 - tardeBruto));
-    return { horas_manana: manana, horas_tarde: tarde, horas_extra: manana + tarde };
+    const tarde = redondear2(Math.max(0, tardeBruto - 1));
+    const manana = redondear2(Math.max(0, mananaBruto - Math.max(0, 1 - tardeBruto)));
+    return { horas_manana: manana, horas_tarde: tarde, horas_extra: redondear2(manana + tarde) };
   }
 
   return { horas_manana: 0, horas_tarde: 0, horas_extra: 0 };
