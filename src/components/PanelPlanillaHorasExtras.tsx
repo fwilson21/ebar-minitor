@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
 import { calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
@@ -938,6 +938,14 @@ function EditorPlanilla({
                   if (!validarOrdenHorario({ ...f, [campo]: valor })) enfocarSiguienteHora(e);
                 };
 
+                // Si ese campo de hora quedó con un valor inválido, no deja que el foco se vaya a
+                // otro campo — ni con Tab ni haciendo click en otro lado — hasta que se corrija.
+                const atraparFoco = (error: boolean) => (e: FocusEvent<HTMLInputElement>) => {
+                  if (!error) return;
+                  const el = e.currentTarget;
+                  setTimeout(() => el.focus(), 0);
+                };
+
                 return (
                   <tr key={f.id} className="border-t border-panel-600/30">
                     <td className="p-1">
@@ -970,6 +978,7 @@ function EditorPlanilla({
                         className={clase(errorManana, false)}
                         value={f.entrada_manana}
                         onChange={(e) => manejarCambioHora('entrada_manana', e)}
+                        onBlur={atraparFoco(errorManana)}
                       />
                     </td>
                     <td className="p-1">
@@ -978,6 +987,7 @@ function EditorPlanilla({
                         className={clase(errorManana || errorCruce, pendienteManana && !f.salida_manana)}
                         value={f.salida_manana}
                         onChange={(e) => manejarCambioHora('salida_manana', e)}
+                        onBlur={atraparFoco(errorManana || errorCruce)}
                       />
                     </td>
                     <td className="p-1">
@@ -986,6 +996,7 @@ function EditorPlanilla({
                         className={clase(errorTarde || errorCruce, pendienteTarde && !f.entrada_tarde)}
                         value={f.entrada_tarde}
                         onChange={(e) => manejarCambioHora('entrada_tarde', e)}
+                        onBlur={atraparFoco(errorTarde || errorCruce)}
                       />
                     </td>
                     <td className="p-1">
@@ -994,6 +1005,7 @@ function EditorPlanilla({
                         className={clase(errorTarde, pendienteTarde && !f.salida_tarde)}
                         value={f.salida_tarde}
                         onChange={(e) => manejarCambioHora('salida_tarde', e)}
+                        onBlur={atraparFoco(errorTarde)}
                       />
                     </td>
                     <td className="p-1">
