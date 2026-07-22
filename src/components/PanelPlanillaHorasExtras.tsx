@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
 import { calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
@@ -21,15 +21,32 @@ function formatFechaCorta(fechaIso: string): string {
 
 let temporizadorAvanceHora: ReturnType<typeof setTimeout> | null = null;
 
-/** Al terminar de escribir una hora (type="time" solo entrega .value cuando ya se completaron las
- * dos cifras de la hora y las dos de los minutos — antes de eso .value queda vacío), espera un
- * momento prudente antes de saltar al siguiente campo de hora en pantalla. Si en ese momento llega
- * otro cambio (el operador sigue ajustando ese mismo campo, ej. con las flechitas), se cancela el
- * salto anterior y se reprograma, para no arrancarle el cursor a mitad de una corrección. */
+// Cuenta los dígitos que se van tecleando en cada campo de hora desde que se enfocó — el navegador
+// a veces reporta .value como "completo" apenas se terminan las dos cifras de la hora (asumiendo
+// minutos en 00), lo que adelantaba el salto de cursor antes de poder escribir los minutos. Exigir
+// las 4 cifras tecleadas (2 de hora + 2 de minutos) evita ese salto prematuro.
+const digitosTecleados = new WeakMap<HTMLInputElement, number>();
+
+function reiniciarDigitosHora(e: FocusEvent<HTMLInputElement>) {
+  digitosTecleados.set(e.currentTarget, 0);
+}
+
+function contarDigitoHora(e: KeyboardEvent<HTMLInputElement>) {
+  if (/^[0-9]$/.test(e.key)) {
+    digitosTecleados.set(e.currentTarget, (digitosTecleados.get(e.currentTarget) ?? 0) + 1);
+  }
+}
+
+const avanceHoraProps = { onFocus: reiniciarDigitosHora, onKeyDown: contarDigitoHora };
+
+/** Al terminar de escribir una hora (las 4 cifras: 2 de hora + 2 de minutos), espera un momento
+ * prudente antes de saltar al siguiente campo de hora en pantalla. Si en ese momento llega otro
+ * cambio (el operador sigue ajustando ese mismo campo, ej. con las flechitas), se cancela el salto
+ * anterior y se reprograma, para no arrancarle el cursor a mitad de una corrección. */
 function enfocarSiguienteHora(e: ChangeEvent<HTMLInputElement>) {
   if (temporizadorAvanceHora) clearTimeout(temporizadorAvanceHora);
-  if (!e.target.value) return;
   const el = e.target;
+  if (!el.value || (digitosTecleados.get(el) ?? 0) < 4) return;
   temporizadorAvanceHora = setTimeout(() => {
     const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="time"]'));
     const idx = inputs.indexOf(el);
@@ -191,7 +208,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                       <div className="space-y-2">
                         {planillas.map((p) => (
                           <div key={p.id} className="border border-panel-600/40 rounded-lg p-3 flex items-center justify-between gap-2">
-                            <div className="min-w-0">
+                            <div className="min-w-0 cursor-pointer" onClick={() => setEditando(p)}>
                               <p className="text-sm font-medium text-slate-900 truncate">{p.nombre_trabajador}</p>
                               <p className="text-xs text-slate-600">
                                 {formatFechaCorta(p.fecha_desde)} al {formatFechaCorta(p.fecha_hasta)} · {p.area || 'Sin área'}
@@ -801,6 +818,7 @@ function EditorPlanilla({
                 setJornadaInicioManana(e.target.value);
                 enfocarSiguienteHora(e);
               }}
+              {...avanceHoraProps}
             />
           </div>
           <div>
@@ -813,6 +831,7 @@ function EditorPlanilla({
                 setJornadaFinManana(e.target.value);
                 enfocarSiguienteHora(e);
               }}
+              {...avanceHoraProps}
             />
           </div>
           <div>
@@ -825,6 +844,7 @@ function EditorPlanilla({
                 setJornadaInicioTarde(e.target.value);
                 enfocarSiguienteHora(e);
               }}
+              {...avanceHoraProps}
             />
           </div>
           <div>
@@ -837,6 +857,7 @@ function EditorPlanilla({
                 setJornadaFinTarde(e.target.value);
                 enfocarSiguienteHora(e);
               }}
+              {...avanceHoraProps}
             />
           </div>
         </div>
@@ -979,6 +1000,7 @@ function EditorPlanilla({
                         value={f.entrada_manana}
                         onChange={(e) => manejarCambioHora('entrada_manana', e)}
                         onBlur={atraparFoco(errorManana)}
+                        {...avanceHoraProps}
                       />
                     </td>
                     <td className="p-1">
@@ -988,6 +1010,7 @@ function EditorPlanilla({
                         value={f.salida_manana}
                         onChange={(e) => manejarCambioHora('salida_manana', e)}
                         onBlur={atraparFoco(errorManana || errorCruce)}
+                        {...avanceHoraProps}
                       />
                     </td>
                     <td className="p-1">
@@ -997,6 +1020,7 @@ function EditorPlanilla({
                         value={f.entrada_tarde}
                         onChange={(e) => manejarCambioHora('entrada_tarde', e)}
                         onBlur={atraparFoco(errorTarde || errorCruce)}
+                        {...avanceHoraProps}
                       />
                     </td>
                     <td className="p-1">
@@ -1006,6 +1030,7 @@ function EditorPlanilla({
                         value={f.salida_tarde}
                         onChange={(e) => manejarCambioHora('salida_tarde', e)}
                         onBlur={atraparFoco(errorTarde)}
+                        {...avanceHoraProps}
                       />
                     </td>
                     <td className="p-1">
