@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
 import { calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
@@ -21,37 +21,28 @@ function formatFechaCorta(fechaIso: string): string {
 
 let temporizadorAvanceHora: ReturnType<typeof setTimeout> | null = null;
 
-// Cuenta los dígitos que se van tecleando en cada campo de hora desde que se enfocó — el navegador
-// a veces reporta .value como "completo" apenas se terminan las dos cifras de la hora (asumiendo
-// minutos en 00), lo que adelantaba el salto de cursor antes de poder escribir los minutos. Exigir
-// las 4 cifras tecleadas (2 de hora + 2 de minutos) evita ese salto prematuro.
-const digitosTecleados = new WeakMap<HTMLInputElement, number>();
-
-function reiniciarDigitosHora(e: FocusEvent<HTMLInputElement>) {
-  digitosTecleados.set(e.currentTarget, 0);
-}
-
-function contarDigitoHora(e: KeyboardEvent<HTMLInputElement>) {
-  if (/^[0-9]$/.test(e.key)) {
-    digitosTecleados.set(e.currentTarget, (digitosTecleados.get(e.currentTarget) ?? 0) + 1);
+/** Cancela cualquier salto de cursor pendiente. Se llama en cada tecla, aunque no se vaya a
+ * reprogramar uno nuevo — si no, un salto agendado por una hora anterior podía disparar mientras el
+ * operador ya estaba corrigiendo otro campo, sintiéndose como si el cursor "rebotara" solo. */
+function cancelarAvanceHora() {
+  if (temporizadorAvanceHora) {
+    clearTimeout(temporizadorAvanceHora);
+    temporizadorAvanceHora = null;
   }
 }
 
-const avanceHoraProps = { onFocus: reiniciarDigitosHora, onKeyDown: contarDigitoHora };
-
-/** Al terminar de escribir una hora (las 4 cifras: 2 de hora + 2 de minutos), espera un momento
- * prudente antes de saltar al siguiente campo de hora en pantalla. Si en ese momento llega otro
- * cambio (el operador sigue ajustando ese mismo campo, ej. con las flechitas), se cancela el salto
- * anterior y se reprograma, para no arrancarle el cursor a mitad de una corrección. */
+/** Al terminar de escribir una hora (type="time" solo entrega .value cuando ya se completaron las
+ * dos cifras de la hora y las dos de los minutos — antes de eso .value queda vacío), espera un
+ * momento prudente antes de saltar al siguiente campo de hora en pantalla. */
 function enfocarSiguienteHora(e: ChangeEvent<HTMLInputElement>) {
-  if (temporizadorAvanceHora) clearTimeout(temporizadorAvanceHora);
+  cancelarAvanceHora();
   const el = e.target;
-  if (!el.value || (digitosTecleados.get(el) ?? 0) < 4) return;
+  if (!el.value) return;
   temporizadorAvanceHora = setTimeout(() => {
     const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="time"]'));
     const idx = inputs.indexOf(el);
     if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
-  }, 350);
+  }, 400);
 }
 
 interface FilaEdit {
@@ -818,7 +809,6 @@ function EditorPlanilla({
                 setJornadaInicioManana(e.target.value);
                 enfocarSiguienteHora(e);
               }}
-              {...avanceHoraProps}
             />
           </div>
           <div>
@@ -831,7 +821,6 @@ function EditorPlanilla({
                 setJornadaFinManana(e.target.value);
                 enfocarSiguienteHora(e);
               }}
-              {...avanceHoraProps}
             />
           </div>
           <div>
@@ -844,7 +833,6 @@ function EditorPlanilla({
                 setJornadaInicioTarde(e.target.value);
                 enfocarSiguienteHora(e);
               }}
-              {...avanceHoraProps}
             />
           </div>
           <div>
@@ -857,7 +845,6 @@ function EditorPlanilla({
                 setJornadaFinTarde(e.target.value);
                 enfocarSiguienteHora(e);
               }}
-              {...avanceHoraProps}
             />
           </div>
         </div>
@@ -956,6 +943,10 @@ function EditorPlanilla({
                 ) => {
                   const valor = e.target.value;
                   actualizarFila(f.id, { [campo]: valor });
+                  // Siempre se cancela un salto pendiente de una hora anterior, aunque este cambio
+                  // no programe uno nuevo — si no, ese salto viejo podía disparar mientras se está
+                  // corrigiendo otro campo distinto, dando la sensación de quedar en un bucle.
+                  cancelarAvanceHora();
                   if (!validarOrdenHorario({ ...f, [campo]: valor })) enfocarSiguienteHora(e);
                 };
 
@@ -1000,7 +991,6 @@ function EditorPlanilla({
                         value={f.entrada_manana}
                         onChange={(e) => manejarCambioHora('entrada_manana', e)}
                         onBlur={atraparFoco(errorManana)}
-                        {...avanceHoraProps}
                       />
                     </td>
                     <td className="p-1">
@@ -1010,7 +1000,6 @@ function EditorPlanilla({
                         value={f.salida_manana}
                         onChange={(e) => manejarCambioHora('salida_manana', e)}
                         onBlur={atraparFoco(errorManana || errorCruce)}
-                        {...avanceHoraProps}
                       />
                     </td>
                     <td className="p-1">
@@ -1020,7 +1009,6 @@ function EditorPlanilla({
                         value={f.entrada_tarde}
                         onChange={(e) => manejarCambioHora('entrada_tarde', e)}
                         onBlur={atraparFoco(errorTarde || errorCruce)}
-                        {...avanceHoraProps}
                       />
                     </td>
                     <td className="p-1">
@@ -1030,7 +1018,6 @@ function EditorPlanilla({
                         value={f.salida_tarde}
                         onChange={(e) => manejarCambioHora('salida_tarde', e)}
                         onBlur={atraparFoco(errorTarde)}
-                        {...avanceHoraProps}
                       />
                     </td>
                     <td className="p-1">
