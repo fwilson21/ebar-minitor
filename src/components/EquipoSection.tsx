@@ -15,7 +15,7 @@ const ESTADOS: OpcionEstado[] = [
   { value: 'requiere_mantenimiento', label: 'Requiere mtto.', claseActiva: 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn' },
 ];
 
-const CLASE_INACTIVA = 'bg-panel-900 border-panel-600 text-slate-300';
+const CLASE_INACTIVA = 'bg-panel-900 border-panel-600 text-slate-700';
 
 interface Props {
   titulo: string;
@@ -91,7 +91,7 @@ export function EquipoSection({
 
   return (
     <div className="tarjeta p-4 space-y-3">
-      <h3 className="text-base font-bold uppercase tracking-wide text-slate-200">{titulo}</h3>
+      <h3 className="text-base font-bold uppercase tracking-wide text-slate-800">{titulo}</h3>
 
       {tieneSelector && (
         <div>
@@ -110,7 +110,7 @@ export function EquipoSection({
               type="button"
               onClick={() => elegirTiene(false)}
               className={`flex-1 rounded-lg px-2 py-2 text-xs border transition ${
-                valor.tiene === false ? 'bg-panel-700 border-panel-600 text-slate-200' : CLASE_INACTIVA
+                valor.tiene === false ? 'bg-panel-700 border-panel-600 text-slate-800' : CLASE_INACTIVA
               }`}
             >
               No tiene
@@ -236,7 +236,7 @@ export function EquipoSection({
                     ✕
                   </button>
                   {foto.estado_subida === 'pendiente' && (
-                    <span className="absolute bottom-1 left-1 text-[10px] bg-gauge-warn/90 text-panel-900 px-1.5 rounded">
+                    <span className="absolute bottom-1 left-1 text-[10px] bg-gauge-warn/90 text-white px-1.5 rounded">
                       Pendiente
                     </span>
                   )}

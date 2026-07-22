@@ -13,7 +13,7 @@ import { CalendarioTurnos } from './pages/CalendarioTurnos';
 
 function RutaProtegida({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useAuth();
-  if (cargando) return <p className="p-6 text-slate-400">Cargando…</p>;
+  if (cargando) return <p className="p-6 text-slate-600">Cargando…</p>;
   if (!usuario) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }

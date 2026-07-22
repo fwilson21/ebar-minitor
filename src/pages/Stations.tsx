@@ -124,7 +124,7 @@ export function Stations() {
             key={z}
             onClick={() => setFiltroZona(z)}
             className={`text-sm px-3 py-1.5 rounded-full border ${
-              filtroZona === z ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-400'
+              filtroZona === z ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-600'
             }`}
           >
             {z === 'todas' ? 'Todas' : z === 'urbana' ? 'Urbanas' : 'Rurales'}
@@ -133,9 +133,9 @@ export function Stations() {
       </div>
 
       {cargando ? (
-        <p className="text-slate-400">Cargando…</p>
+        <p className="text-slate-600">Cargando…</p>
       ) : filtradas.length === 0 ? (
-        <p className="text-slate-400">
+        <p className="text-slate-600">
           {sinConexion
             ? 'No hay ninguna estación guardada todavía en este dispositivo. Conéctate al menos una vez para poder verlas sin señal.'
             : usuario?.rol === 'operador'
@@ -231,7 +231,7 @@ function FormularioNuevaEstacion({ onCreada }: { onCreada: () => void }) {
               type="button"
               onClick={() => setZona(z)}
               className={`flex-1 rounded-lg px-3 py-2 text-sm border capitalize ${
-                zona === z ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-300'
+                zona === z ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-700'
               }`}
             >
               {z}

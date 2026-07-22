@@ -213,8 +213,8 @@ export function StationDetail() {
     }
   }
 
-  if (cargando) return <p className="text-slate-400">Cargando…</p>;
-  if (!estacion) return <p className="text-slate-400">Estación no encontrada.</p>;
+  if (cargando) return <p className="text-slate-600">Cargando…</p>;
+  if (!estacion) return <p className="text-slate-600">Estación no encontrada.</p>;
 
   const operadoresDisponibles = Array.from(new Set(historial.map((h) => h.operador))).sort();
   const historialFiltrado = historial.filter((h) => {
@@ -229,11 +229,11 @@ export function StationDetail() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-lg font-bold">{estacion.nombre}</h1>
-            <p className="text-sm text-slate-400 lectura">{estacion.codigo}</p>
+            <p className="text-sm text-slate-600 lectura">{estacion.codigo}</p>
           </div>
           <EstadoBadge estado={estacion.estado_actual} />
         </div>
-        <p className="text-sm text-slate-400 mt-2">{estacion.direccion}</p>
+        <p className="text-sm text-slate-600 mt-2">{estacion.direccion}</p>
         {estacion.descripcion && <p className="text-sm text-slate-500 mt-1">{estacion.descripcion}</p>}
         {estacion.latitud && estacion.longitud && (
           <a
@@ -261,7 +261,7 @@ export function StationDetail() {
 
       {esAdmin && estacion.tipo !== 'linea_conduccion' && (
         <div className="tarjeta p-4 space-y-2">
-          <h2 className="text-sm font-semibold text-slate-300">Gestión de bombas</h2>
+          <h2 className="text-sm font-semibold text-slate-700">Gestión de bombas</h2>
           <div className="flex gap-2 flex-wrap">
             {[1, 2, 3, 4].map((numero) => {
               const bomba = bombasAdmin.find((b) => b.numero_bomba === numero);
@@ -304,7 +304,7 @@ export function StationDetail() {
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-slate-300">Historial de visitas</h2>
+          <h2 className="text-sm font-semibold text-slate-700">Historial de visitas</h2>
           {historial.length > 0 && (
             <button
               type="button"
@@ -339,7 +339,7 @@ export function StationDetail() {
             {(filtroMes || filtroOperador) && (
               <button
                 type="button"
-                className="text-xs text-slate-400 hover:text-slate-200 flex-shrink-0"
+                className="text-xs text-slate-600 hover:text-slate-800 flex-shrink-0"
                 onClick={() => { setFiltroMes(''); setFiltroOperador(''); }}
               >
                 Limpiar
@@ -381,7 +381,7 @@ export function StationDetail() {
                       className={`text-xs lectura px-2 py-1 rounded border ${
                         b.voltaje_fuera_rango
                           ? 'border-gauge-danger/50 text-gauge-danger bg-gauge-danger/10'
-                          : 'border-panel-600 text-slate-400'
+                          : 'border-panel-600 text-slate-600'
                       }`}
                     >
                       B{b.numero_bomba}: {b.voltaje ?? '-'}V / {b.amperaje ?? '-'}A
@@ -415,12 +415,12 @@ export function StationDetail() {
                     </span>
                   )}
                   {h.descarga_emergencia?.tiene === false && (
-                    <span className="text-xs px-2 py-0.5 rounded border border-panel-600 text-slate-400">
+                    <span className="text-xs px-2 py-0.5 rounded border border-panel-600 text-slate-600">
                       Sin descarga de emergencia
                     </span>
                   )}
                   {h.camara_valvula_compuerta?.tiene === false && (
-                    <span className="text-xs px-2 py-0.5 rounded border border-panel-600 text-slate-400">
+                    <span className="text-xs px-2 py-0.5 rounded border border-panel-600 text-slate-600">
                       Cámara de llegada sin compuerta
                     </span>
                   )}
@@ -458,7 +458,7 @@ export function StationDetail() {
         )}
       </div>
       {estacion.tipo !== 'linea_conduccion' && (
-        <p className="text-xs text-slate-600">Rango de voltaje de referencia: {VOLTAJE_MIN}–{VOLTAJE_MAX}V.</p>
+        <p className="text-xs text-slate-500">Rango de voltaje de referencia: {VOLTAJE_MIN}–{VOLTAJE_MAX}V.</p>
       )}
     </div>
   );
@@ -475,9 +475,9 @@ function UltimaVisitaResumen({ visita }: { visita: HistorialItem }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600">
           Última visita:{' '}
-          <span className="text-slate-200">
+          <span className="text-slate-800">
             {new Date(visita.fecha_hora_llegada).toLocaleDateString('es-EC', {
               day: 'numeric', month: 'short', year: 'numeric',
             })}

@@ -12,7 +12,7 @@ const ROL_LABEL: Record<UserRole, string> = {
 const ROL_CLASE: Record<UserRole, string> = {
   administrador: 'bg-gauge-ok/15 text-gauge-ok border-gauge-ok/40',
   supervisor: 'bg-gauge-warn/15 text-gauge-warn border-gauge-warn/40',
-  operador: 'bg-panel-600/60 text-slate-400 border-panel-600',
+  operador: 'bg-panel-600/60 text-slate-600 border-panel-600',
 };
 
 export function Users() {
@@ -245,7 +245,7 @@ export function Users() {
     }
   }
 
-  if (cargando) return <p className="text-slate-400">Cargando…</p>;
+  if (cargando) return <p className="text-slate-600">Cargando…</p>;
 
   return (
     <div className="space-y-4">
@@ -358,15 +358,15 @@ export function Users() {
           <div key={u.id} className={`tarjeta p-4 ${!u.activo ? 'opacity-50' : ''}`}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-100 truncate">{u.nombre_completo}</p>
+                <p className="font-semibold text-slate-900 truncate">{u.nombre_completo}</p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Usuario: <span className="text-slate-300">{u.nombre_usuario || '(sin registrar)'}</span>
+                  Usuario: <span className="text-slate-700">{u.nombre_usuario || '(sin registrar)'}</span>
                 </p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Cédula: <span className="text-slate-300">{u.cedula || '(sin registrar)'}</span>
+                  Cédula: <span className="text-slate-700">{u.cedula || '(sin registrar)'}</span>
                 </p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Cargo: <span className="text-slate-300">{u.cargo || '(sin registrar)'}</span>
+                  Cargo: <span className="text-slate-700">{u.cargo || '(sin registrar)'}</span>
                 </p>
                 {u.telefono && (
                   <p className="text-xs text-slate-500 mt-0.5">{u.telefono}</p>
@@ -408,7 +408,7 @@ export function Users() {
 
               {esAdmin && (
                 <button
-                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirReset(u.id)}
                 >
                   🔑 Contraseña
@@ -417,7 +417,7 @@ export function Users() {
 
               {esAdmin && (
                 <button
-                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirRenombrar(u.id, u.nombre_usuario)}
                 >
                   ✏️ Usuario
@@ -426,7 +426,7 @@ export function Users() {
 
               {esAdmin && (
                 <button
-                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirEditarCedula(u.id, u.cedula)}
                 >
                   🪪 Cédula
@@ -435,7 +435,7 @@ export function Users() {
 
               {esAdmin && (
                 <button
-                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirEditarCargo(u.id, u.cargo)}
                 >
                   💼 Cargo
@@ -444,7 +444,7 @@ export function Users() {
 
               {esAdmin && u.rol === 'operador' && u.device_id && (
                 <button
-                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-400 hover:text-slate-100"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   disabled={guardando === u.id}
                   onClick={() => liberarDispositivo(u.id)}
                 >

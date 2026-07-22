@@ -35,7 +35,7 @@ export function Login() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <form onSubmit={manejarSubmit} className="tarjeta w-full max-w-sm p-6">
         <h1 className="text-xl font-bold mb-1">EBAR · Monitor</h1>
-        <p className="text-sm text-slate-400 mb-6">Gestión de estaciones de bombeo de aguas residuales</p>
+        <p className="text-sm text-slate-600 mb-6">Gestión de estaciones de bombeo de aguas residuales</p>
 
         <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${estaConfiguradoSupabase() ? 'border-gauge-ok/40 bg-gauge-ok/10 text-gauge-ok' : 'border-gauge-warn/40 bg-gauge-warn/10 text-gauge-warn'}`}>
           {estaConfiguradoSupabase() ? 'Conectado a Supabase' : 'Falta configurar Supabase para usar el backend real'}
@@ -66,7 +66,7 @@ export function Login() {
           <button
             type="button"
             onClick={() => setMostrarPassword((v) => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-600 hover:text-slate-800"
           >
             {mostrarPassword ? 'Ocultar' : 'Mostrar'}
           </button>
