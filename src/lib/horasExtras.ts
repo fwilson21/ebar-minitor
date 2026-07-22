@@ -75,6 +75,39 @@ export function validarOrdenHorario(fila: HorarioFila): string | null {
   return null;
 }
 
+const TOLERANCIA_ALMUERZO_MIN = 15;
+
+export interface AvisoAlmuerzo {
+  mensaje: string;
+  salidaManana: boolean;
+  entradaTarde: boolean;
+}
+
+/**
+ * Avisa (sin bloquear) cuando la salida a almorzar o el regreso se alejan bastante de la jornada
+ * normal (jornada_fin_manana / jornada_inicio_tarde) — con más de 15 minutos de diferencia —, aunque
+ * el orden de las horas sea válido, para que el operador confirme que no es un error de tipeo antes
+ * de dar por buena una fila con un almuerzo mucho más largo de lo normal.
+ */
+export function avisoAlmuerzoLargo(fila: HorarioFila, jornada: JornadaReferencia): AvisoAlmuerzo | null {
+  const { salida_manana, entrada_tarde } = fila;
+  const finManana = aMinutos(jornada.jornada_fin_manana)!;
+  const inicioTarde = aMinutos(jornada.jornada_inicio_tarde)!;
+
+  const salidaTardia = !!salida_manana && aMinutos(salida_manana)! > finManana + TOLERANCIA_ALMUERZO_MIN;
+  const entradaTardia = !!entrada_tarde && aMinutos(entrada_tarde)! > inicioTarde + TOLERANCIA_ALMUERZO_MIN;
+  if (!salidaTardia && !entradaTardia) return null;
+
+  const partes: string[] = [];
+  if (salidaTardia) partes.push(`salió a almorzar a las ${salida_manana} (jornada: ${jornada.jornada_fin_manana})`);
+  if (entradaTardia) partes.push(`volvió a las ${entrada_tarde} (jornada: ${jornada.jornada_inicio_tarde})`);
+  return {
+    mensaje: `Almuerzo más largo de lo normal: ${partes.join(' y ')}. Revisa que esté bien.`,
+    salidaManana: salidaTardia,
+    entradaTarde: entradaTardia,
+  };
+}
+
 export interface ResultadoHoras {
   horas_manana: number | null;
   horas_tarde: number | null;
