@@ -78,6 +78,13 @@ export interface PlanillaHorasExtras {
   updated_at?: string;
 }
 
+export interface ConfiguracionPlanillaHorasExtras {
+  revisado_nombre: string;
+  revisado_cargo: string;
+  aprobado_nombre: string;
+  aprobado_cargo: string;
+}
+
 export interface FilaPlanillaHorasExtras {
   id: string;
   planilla_id: string;
