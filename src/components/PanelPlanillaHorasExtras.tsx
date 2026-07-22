@@ -871,21 +871,21 @@ function EditorPlanilla({
                     <InputHoras
                       valor={f.horas_manana}
                       onCommit={(n) => actualizarFila(f.id, { horas_manana: n })}
-                      className="campo text-xs py-1 w-16"
+                      className="campo text-xs py-1"
                     />
                   </td>
                   <td className="p-1">
                     <InputHoras
                       valor={f.horas_tarde}
                       onCommit={(n) => actualizarFila(f.id, { horas_tarde: n })}
-                      className="campo text-xs py-1 w-16"
+                      className="campo text-xs py-1"
                     />
                   </td>
                   <td className="p-1">
                     <InputHoras
                       valor={f.horas_extra}
                       onCommit={(n) => actualizarFila(f.id, { horas_extra: n })}
-                      className="campo text-xs py-1 w-16 font-semibold"
+                      className="campo text-xs py-1 font-semibold"
                     />
                   </td>
                   <td className="p-1">

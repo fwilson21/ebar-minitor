@@ -54,30 +54,51 @@ function horasRecortadas(entrada: string, salida: string, refInicio: string, ref
   return redondear2(Math.max(0, finEfectivo - inicioEfectivo) / 60);
 }
 
+/** Duración de un bloque completo de la jornada de referencia (ej. 08:00 a 12:00 → 4 horas). */
+function duracionJornada(inicio: string, fin: string): number {
+  return redondear2(Math.max(0, aMinutos(fin)! - aMinutos(inicio)!) / 60);
+}
+
 /**
  * Sugiere Mañana/Tarde/Extras para una fila según su horario, recortado contra la jornada normal
  * del trabajador (ej. 08:00-12:00/13:00-17:00):
- * - Con marcación completa de un bloque (mañana y/o tarde): cada uno se recorta contra su propia
- *   jornada de referencia, sin importar si el otro bloque tiene datos o no.
+ * - Con marcación completa de un bloque (mañana y/o tarde): se recorta contra su propia jornada de
+ *   referencia.
+ * - Si el otro bloque quedó a medias (solo entrada o solo salida, ej. no marcó la salida a
+ *   almorzar): no se sabe su hora exacta, así que se asume la jornada normal completa de ese bloque
+ *   (ej. 4 horas) y se suma al bloque que sí está completo — y viceversa.
+ * - Si el otro bloque no tiene ningún dato: queda en null (se muestra como "-"), sin sumar nada.
  * - Sin ninguna marcación de mediodía (solo entrada de la mañana y salida de la tarde, ej. 08:00 a
  *   17:00): no se sabe cuánto corresponde a mañana y cuánto a tarde, así que no se reparte — Mañana
- *   y Tarde quedan en null (se muestran como "-") y el total (recortando esos dos extremos contra la
- *   jornada completa, menos 1 hora de almuerzo) va solo en Extras.
- * Un bloque sin marcación propia (ej. solo hay tarde) también queda en null, no en 0: 0 significa
- * "se sabe que fue cero", null significa "no hay dato para ese bloque".
+ *   y Tarde quedan en null y el total (recortando esos dos extremos contra la jornada completa,
+ *   menos 1 hora de almuerzo) va solo en Extras.
  */
 export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia) {
   const { entrada_manana, salida_manana, entrada_tarde, salida_tarde } = fila;
   const tieneManana = !!(entrada_manana && salida_manana);
   const tieneTarde = !!(entrada_tarde && salida_tarde);
+  const algoManana = !!(entrada_manana || salida_manana);
+  const algoTarde = !!(entrada_tarde || salida_tarde);
 
   if (tieneManana || tieneTarde) {
-    const manana = tieneManana
-      ? horasRecortadas(entrada_manana!, salida_manana!, jornada.jornada_inicio_manana, jornada.jornada_fin_manana)
-      : null;
-    const tarde = tieneTarde
-      ? horasRecortadas(entrada_tarde!, salida_tarde!, jornada.jornada_inicio_tarde, jornada.jornada_fin_tarde)
-      : null;
+    let manana: number | null;
+    if (tieneManana) {
+      manana = horasRecortadas(entrada_manana!, salida_manana!, jornada.jornada_inicio_manana, jornada.jornada_fin_manana);
+    } else if (tieneTarde && algoManana) {
+      manana = duracionJornada(jornada.jornada_inicio_manana, jornada.jornada_fin_manana);
+    } else {
+      manana = null;
+    }
+
+    let tarde: number | null;
+    if (tieneTarde) {
+      tarde = horasRecortadas(entrada_tarde!, salida_tarde!, jornada.jornada_inicio_tarde, jornada.jornada_fin_tarde);
+    } else if (tieneManana && algoTarde) {
+      tarde = duracionJornada(jornada.jornada_inicio_tarde, jornada.jornada_fin_tarde);
+    } else {
+      tarde = null;
+    }
+
     return { horas_manana: manana, horas_tarde: tarde, horas_extra: redondear2((manana ?? 0) + (tarde ?? 0)) };
   }
 
