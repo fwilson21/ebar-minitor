@@ -19,13 +19,22 @@ function formatFechaCorta(fechaIso: string): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-/** Al terminar de escribir una hora (type="time" solo entrega .value cuando está completa), salta
- * el cursor al siguiente campo de hora del formulario, en el orden en que aparecen en pantalla. */
+let temporizadorAvanceHora: ReturnType<typeof setTimeout> | null = null;
+
+/** Al terminar de escribir una hora (type="time" solo entrega .value cuando ya se completaron las
+ * dos cifras de la hora y las dos de los minutos — antes de eso .value queda vacío), espera un
+ * momento prudente antes de saltar al siguiente campo de hora en pantalla. Si en ese momento llega
+ * otro cambio (el operador sigue ajustando ese mismo campo, ej. con las flechitas), se cancela el
+ * salto anterior y se reprograma, para no arrancarle el cursor a mitad de una corrección. */
 function enfocarSiguienteHora(e: ChangeEvent<HTMLInputElement>) {
+  if (temporizadorAvanceHora) clearTimeout(temporizadorAvanceHora);
   if (!e.target.value) return;
-  const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="time"]'));
-  const idx = inputs.indexOf(e.target);
-  if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+  const el = e.target;
+  temporizadorAvanceHora = setTimeout(() => {
+    const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="time"]'));
+    const idx = inputs.indexOf(el);
+    if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+  }, 350);
 }
 
 interface FilaEdit {
@@ -912,10 +921,22 @@ function EditorPlanilla({
 
                 const clase = (error: boolean, falta: boolean) =>
                   error
-                    ? 'campo text-xs py-1 border-2 border-gauge-danger bg-gauge-danger/10 focus:ring-gauge-danger/60'
+                    ? 'campo text-xs py-1 border-2 border-gauge-danger bg-gauge-danger/10 text-gauge-danger focus:ring-gauge-danger/60'
                     : falta
                     ? 'campo text-xs py-1 border-gauge-warn bg-gauge-warn/10'
                     : 'campo text-xs py-1';
+
+                // Actualiza el campo de hora y, salvo que ese cambio deje la fila con un horario
+                // fuera de orden (ver validarOrdenHorario), avanza al siguiente campo. Si queda
+                // inválido, el cursor se queda ahí — no se sigue de largo hasta corregirlo.
+                const manejarCambioHora = (
+                  campo: 'entrada_manana' | 'salida_manana' | 'entrada_tarde' | 'salida_tarde',
+                  e: ChangeEvent<HTMLInputElement>,
+                ) => {
+                  const valor = e.target.value;
+                  actualizarFila(f.id, { [campo]: valor });
+                  if (!validarOrdenHorario({ ...f, [campo]: valor })) enfocarSiguienteHora(e);
+                };
 
                 return (
                   <tr key={f.id} className="border-t border-panel-600/30">
@@ -948,10 +969,7 @@ function EditorPlanilla({
                         type="time" lang="en-GB"
                         className={clase(errorManana, false)}
                         value={f.entrada_manana}
-                        onChange={(e) => {
-                          actualizarFila(f.id, { entrada_manana: e.target.value });
-                          enfocarSiguienteHora(e);
-                        }}
+                        onChange={(e) => manejarCambioHora('entrada_manana', e)}
                       />
                     </td>
                     <td className="p-1">
@@ -959,10 +977,7 @@ function EditorPlanilla({
                         type="time" lang="en-GB"
                         className={clase(errorManana || errorCruce, pendienteManana && !f.salida_manana)}
                         value={f.salida_manana}
-                        onChange={(e) => {
-                          actualizarFila(f.id, { salida_manana: e.target.value });
-                          enfocarSiguienteHora(e);
-                        }}
+                        onChange={(e) => manejarCambioHora('salida_manana', e)}
                       />
                     </td>
                     <td className="p-1">
@@ -970,10 +985,7 @@ function EditorPlanilla({
                         type="time" lang="en-GB"
                         className={clase(errorTarde || errorCruce, pendienteTarde && !f.entrada_tarde)}
                         value={f.entrada_tarde}
-                        onChange={(e) => {
-                          actualizarFila(f.id, { entrada_tarde: e.target.value });
-                          enfocarSiguienteHora(e);
-                        }}
+                        onChange={(e) => manejarCambioHora('entrada_tarde', e)}
                       />
                     </td>
                     <td className="p-1">
@@ -981,10 +993,7 @@ function EditorPlanilla({
                         type="time" lang="en-GB"
                         className={clase(errorTarde, pendienteTarde && !f.salida_tarde)}
                         value={f.salida_tarde}
-                        onChange={(e) => {
-                          actualizarFila(f.id, { salida_tarde: e.target.value });
-                          enfocarSiguienteHora(e);
-                        }}
+                        onChange={(e) => manejarCambioHora('salida_tarde', e)}
                       />
                     </td>
                     <td className="p-1">
