@@ -518,6 +518,15 @@ function EditorPlanilla({
   }
 
   const totalHorasExtra = useMemo(() => sumarHorasExtra(filas), [filas]);
+  // Se recalcula en cada cambio de filas: en cuanto se corrige la hora mal digitada, la fila deja
+  // de aparecer aquí sola, sin necesidad de tocar Guardar ni Generar PDF.
+  const erroresOrden = useMemo(
+    () =>
+      filas
+        .map((f) => ({ fecha: f.fecha, error: validarOrdenHorario(f) }))
+        .filter((r): r is { fecha: string; error: string } => !!r.error),
+    [filas],
+  );
 
   async function guardar() {
     if (!nombreTrabajador.trim()) {
@@ -903,7 +912,7 @@ function EditorPlanilla({
 
                 const clase = (error: boolean, falta: boolean) =>
                   error
-                    ? 'campo text-xs py-1 border-gauge-danger'
+                    ? 'campo text-xs py-1 border-gauge-danger bg-gauge-danger/10'
                     : falta
                     ? 'campo text-xs py-1 border-gauge-warn bg-gauge-warn/10'
                     : 'campo text-xs py-1';
@@ -1020,6 +1029,16 @@ function EditorPlanilla({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {erroresOrden.length > 0 && (
+        <div className="border border-gauge-danger/50 bg-gauge-danger/10 rounded-lg p-2 space-y-0.5">
+          {erroresOrden.map((e, i) => (
+            <p key={i} className="text-xs text-gauge-danger">
+              ⚠ {formatFechaCorta(e.fecha)}: {e.error}
+            </p>
+          ))}
         </div>
       )}
 
