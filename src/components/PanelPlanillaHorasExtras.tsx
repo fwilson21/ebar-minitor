@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
-import { calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
+import { avisoAlmuerzoLargo, calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
 import { abrirBlob, descargarBlob, generarReportePlanillaHorasExtras, type FilaPlanillaReporte } from '../lib/pdf';
 
 const DIRECCION_DEFAULT = 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO GADMFO';
@@ -544,6 +544,15 @@ function EditorPlanilla({
         .filter((r): r is { fecha: string; error: string } => !!r.error),
     [filas],
   );
+  // Aviso, no bloquea: un almuerzo mucho más largo que el de la Jornada normal no es un dato
+  // inválido (el orden de las horas está bien), pero vale la pena que el operador lo confirme.
+  const avisosAlmuerzo = useMemo(
+    () =>
+      filas
+        .map((f) => ({ fecha: f.fecha, aviso: avisoAlmuerzoLargo(f, jornada) }))
+        .filter((r): r is { fecha: string; aviso: NonNullable<ReturnType<typeof avisoAlmuerzoLargo>> } => !!r.aviso),
+    [filas, jornada],
+  );
 
   async function guardar() {
     if (!nombreTrabajador.trim()) {
@@ -926,6 +935,7 @@ function EditorPlanilla({
                 const errorTarde = tieneTarde && f.salida_tarde <= f.entrada_tarde;
                 const errorCruce = !!(f.salida_manana && f.entrada_tarde && f.entrada_tarde < f.salida_manana);
                 const ordenError = errorManana || errorTarde || errorCruce;
+                const aviso = avisoAlmuerzoLargo(f, jornada);
 
                 const clase = (error: boolean, falta: boolean) =>
                   error
@@ -1004,21 +1014,23 @@ function EditorPlanilla({
                     <td className="p-1">
                       <input
                         type="time" lang="en-GB"
-                        className={clase(errorManana || errorCruce, pendienteManana && !f.salida_manana)}
+                        className={clase(errorManana || errorCruce, (pendienteManana && !f.salida_manana) || !!aviso?.salidaManana)}
                         value={f.salida_manana}
                         onChange={(e) => manejarCambioHora('salida_manana', e)}
                         onBlur={atraparFoco(errorManana || errorCruce)}
                         onKeyDown={bloquearTabSiError(errorManana || errorCruce)}
+                        title={aviso?.salidaManana ? aviso.mensaje : undefined}
                       />
                     </td>
                     <td className="p-1">
                       <input
                         type="time" lang="en-GB"
-                        className={clase(errorTarde || errorCruce, pendienteTarde && !f.entrada_tarde)}
+                        className={clase(errorTarde || errorCruce, (pendienteTarde && !f.entrada_tarde) || !!aviso?.entradaTarde)}
                         value={f.entrada_tarde}
                         onChange={(e) => manejarCambioHora('entrada_tarde', e)}
                         onBlur={atraparFoco(errorTarde || errorCruce)}
                         onKeyDown={bloquearTabSiError(errorTarde || errorCruce)}
+                        title={aviso?.entradaTarde ? aviso.mensaje : undefined}
                       />
                     </td>
                     <td className="p-1">
@@ -1081,6 +1093,16 @@ function EditorPlanilla({
           {erroresOrden.map((e, i) => (
             <p key={i} className="text-xs text-gauge-danger">
               ⚠ {formatFechaCorta(e.fecha)}: {e.error}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {avisosAlmuerzo.length > 0 && (
+        <div className="border border-gauge-warn/50 bg-gauge-warn/10 rounded-lg p-2 space-y-0.5">
+          {avisosAlmuerzo.map((a, i) => (
+            <p key={i} className="text-xs text-gauge-warn">
+              ⚠ {formatFechaCorta(a.fecha)}: {a.aviso.mensaje}
             </p>
           ))}
         </div>
