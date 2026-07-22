@@ -912,7 +912,7 @@ function EditorPlanilla({
 
                 const clase = (error: boolean, falta: boolean) =>
                   error
-                    ? 'campo text-xs py-1 border-gauge-danger bg-gauge-danger/10'
+                    ? 'campo text-xs py-1 border-2 border-gauge-danger bg-gauge-danger/10 focus:ring-gauge-danger/60'
                     : falta
                     ? 'campo text-xs py-1 border-gauge-warn bg-gauge-warn/10'
                     : 'campo text-xs py-1';
