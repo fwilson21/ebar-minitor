@@ -452,11 +452,23 @@ function EditorPlanilla({
     }
   }
 
-  // Mañana/Tarde/Extras no se recalculan solas al editar el horario — el operador las escribe a
-  // mano para no arrastrar un número mal calculado sin darse cuenta. Para eso está el botón
-  // "Recalcular horas de todas las filas", que sí las sugiere, pero solo cuando se pide explícitamente.
+  // Mañana/Tarde/Extras se calculan solas en cuanto el operador escribe Entrada/Sale (nunca antes:
+  // una fila nueva empieza en blanco, sin horario ni horas de ejemplo — ver nuevaFila). Si edita
+  // Mañana/Tarde/Extras directamente en vez de tocar el horario, ese valor a mano se respeta.
   function actualizarFila(id: string, cambios: Partial<FilaEdit>) {
-    setFilas((prev) => prev.map((f) => (f.id === id ? { ...f, ...cambios } : f)));
+    setFilas((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const actualizada = { ...f, ...cambios };
+        const horarioCambio =
+          'entrada_manana' in cambios || 'salida_manana' in cambios || 'entrada_tarde' in cambios || 'salida_tarde' in cambios;
+        if (horarioCambio) {
+          const horas = calcularHorasFila(actualizada, jornada);
+          return { ...actualizada, ...horas };
+        }
+        return actualizada;
+      }),
+    );
   }
 
   function quitarFila(id: string) {
