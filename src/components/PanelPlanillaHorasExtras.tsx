@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
 import { calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
@@ -950,11 +950,18 @@ function EditorPlanilla({
                   if (!validarOrdenHorario({ ...f, [campo]: valor })) enfocarSiguienteHora(e);
                 };
 
-                // Si ese campo de hora quedó con un valor inválido, no deja que el foco se vaya a
-                // otro campo — ni con Tab ni haciendo click en otro lado — hasta que se corrija.
+                // Si ese campo de hora quedó con un valor inválido, no deja que el foco se vaya a otro campo — ni
+                // con Tab ni haciendo click en otro lado — hasta que se corrija. El Tab se corta antes de que
+                // llegue a moverse (más confiable); para el clic, que solo se puede atajar después de que ya
+                // pasó, se recupera el foco de una y también un instante después, por si el navegador no lo
+                // respeta de inmediato.
+                const bloquearTabSiError = (error: boolean) => (e: KeyboardEvent<HTMLInputElement>) => {
+                  if (error && e.key === 'Tab') e.preventDefault();
+                };
                 const atraparFoco = (error: boolean) => (e: FocusEvent<HTMLInputElement>) => {
                   if (!error) return;
                   const el = e.currentTarget;
+                  el.focus();
                   setTimeout(() => el.focus(), 0);
                 };
 
@@ -991,6 +998,7 @@ function EditorPlanilla({
                         value={f.entrada_manana}
                         onChange={(e) => manejarCambioHora('entrada_manana', e)}
                         onBlur={atraparFoco(errorManana)}
+                        onKeyDown={bloquearTabSiError(errorManana)}
                       />
                     </td>
                     <td className="p-1">
@@ -1000,6 +1008,7 @@ function EditorPlanilla({
                         value={f.salida_manana}
                         onChange={(e) => manejarCambioHora('salida_manana', e)}
                         onBlur={atraparFoco(errorManana || errorCruce)}
+                        onKeyDown={bloquearTabSiError(errorManana || errorCruce)}
                       />
                     </td>
                     <td className="p-1">
@@ -1009,6 +1018,7 @@ function EditorPlanilla({
                         value={f.entrada_tarde}
                         onChange={(e) => manejarCambioHora('entrada_tarde', e)}
                         onBlur={atraparFoco(errorTarde || errorCruce)}
+                        onKeyDown={bloquearTabSiError(errorTarde || errorCruce)}
                       />
                     </td>
                     <td className="p-1">
@@ -1018,6 +1028,7 @@ function EditorPlanilla({
                         value={f.salida_tarde}
                         onChange={(e) => manejarCambioHora('salida_tarde', e)}
                         onBlur={atraparFoco(errorTarde)}
+                        onKeyDown={bloquearTabSiError(errorTarde)}
                       />
                     </td>
                     <td className="p-1">
