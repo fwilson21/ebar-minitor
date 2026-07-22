@@ -396,21 +396,19 @@ function EditorPlanilla({
       : nombreManual;
 
   function nuevaFila(fecha: string): FilaEdit {
-    const horario = {
-      entrada_manana: jornadaInicioManana,
-      salida_manana: jornadaFinManana,
-      entrada_tarde: jornadaInicioTarde,
-      salida_tarde: jornadaFinTarde,
-    };
-    const horas = calcularHorasFila(horario, jornada);
     return {
       id: `tmp-${fecha}-${Math.random().toString(36).slice(2)}`,
       esNueva: true,
       fecha,
       descripcion_actividades: descripcionDefault,
       numero_memorando: memorandoDefault,
-      ...horario,
-      ...horas,
+      entrada_manana: jornadaInicioManana,
+      salida_manana: jornadaFinManana,
+      entrada_tarde: jornadaInicioTarde,
+      salida_tarde: jornadaFinTarde,
+      horas_manana: null,
+      horas_tarde: null,
+      horas_extra: null,
     };
   }
 
@@ -454,20 +452,11 @@ function EditorPlanilla({
     }
   }
 
+  // Mañana/Tarde/Extras no se recalculan solas al editar el horario — el operador las escribe a
+  // mano para no arrastrar un número mal calculado sin darse cuenta. Para eso está el botón
+  // "Recalcular horas de todas las filas", que sí las sugiere, pero solo cuando se pide explícitamente.
   function actualizarFila(id: string, cambios: Partial<FilaEdit>) {
-    setFilas((prev) =>
-      prev.map((f) => {
-        if (f.id !== id) return f;
-        const actualizada = { ...f, ...cambios };
-        const horarioCambio =
-          'entrada_manana' in cambios || 'salida_manana' in cambios || 'entrada_tarde' in cambios || 'salida_tarde' in cambios;
-        if (horarioCambio) {
-          const horas = calcularHorasFila(actualizada, jornada);
-          return { ...actualizada, ...horas };
-        }
-        return actualizada;
-      }),
-    );
+    setFilas((prev) => prev.map((f) => (f.id === id ? { ...f, ...cambios } : f)));
   }
 
   function quitarFila(id: string) {
@@ -798,13 +787,13 @@ function EditorPlanilla({
                 <th className="p-1.5">Fecha</th>
                 <th className="p-1.5 min-w-[160px]">Descripción</th>
                 <th className="p-1.5 min-w-[120px]">N.º memorando</th>
-                <th className="p-1.5">Entrada</th>
-                <th className="p-1.5">Sale</th>
-                <th className="p-1.5">Entrada</th>
-                <th className="p-1.5">Sale</th>
-                <th className="p-1.5">Mañana</th>
-                <th className="p-1.5">Tarde</th>
-                <th className="p-1.5">Extras</th>
+                <th className="p-1.5 w-28">Entrada</th>
+                <th className="p-1.5 w-28">Sale</th>
+                <th className="p-1.5 w-28">Entrada</th>
+                <th className="p-1.5 w-28">Sale</th>
+                <th className="p-1.5 w-28">Mañana</th>
+                <th className="p-1.5 w-28">Tarde</th>
+                <th className="p-1.5 w-28">Extras</th>
                 <th className="p-1.5"></th>
               </tr>
             </thead>
