@@ -10,7 +10,7 @@ const MAX_FOTOS = 3;
 
 const ESTADOS: { value: EstadoBomba; label: string; claseActiva: string }[] = [
   { value: 'encendida', label: 'Encendida', claseActiva: 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' },
-  { value: 'apagada', label: 'Apagada', claseActiva: 'bg-panel-700 border-panel-600 text-slate-200' },
+  { value: 'apagada', label: 'Apagada', claseActiva: 'bg-panel-700 border-panel-600 text-slate-800' },
   { value: 'en_falla', label: 'En falla', claseActiva: 'bg-gauge-danger/15 border-gauge-danger text-gauge-danger' },
   {
     value: 'retirado_para_mantenimiento',
@@ -84,7 +84,7 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
                 type="button"
                 onClick={() => set('estado', valor.estado === e.value ? '' : e.value)}
                 className={`rounded-lg px-3 py-2 text-sm border transition ${
-                  valor.estado === e.value ? e.claseActiva : 'bg-panel-900 border-panel-600 text-slate-300'
+                  valor.estado === e.value ? e.claseActiva : 'bg-panel-900 border-panel-600 text-slate-700'
                 }`}
               >
                 {e.label}
@@ -203,7 +203,7 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
                       ✕
                     </button>
                     {foto.estado_subida === 'pendiente' && (
-                      <span className="absolute bottom-1 left-1 text-[10px] bg-gauge-warn/90 text-panel-900 px-1.5 rounded">
+                      <span className="absolute bottom-1 left-1 text-[10px] bg-gauge-warn/90 text-white px-1.5 rounded">
                         Pendiente
                       </span>
                     )}

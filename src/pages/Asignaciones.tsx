@@ -195,7 +195,7 @@ export function Asignaciones() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seleccionDefault, asignacionesDefault, fechaEspecial, seleccionEspecial]);
 
-  if (cargando) return <p className="text-slate-400">Cargando…</p>;
+  if (cargando) return <p className="text-slate-600">Cargando…</p>;
 
   const asignacionesEspecialesFiltradas = hayFiltro
     ? soloLaUltimaPorEstacion(
@@ -207,7 +207,7 @@ export function Asignaciones() {
     <div className="space-y-5">
       <div>
         <h1 className="text-lg font-bold">Asignación de EBAR a operadores</h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-slate-600">
           Elige qué estaciones visita cada operador por defecto, y agrega asignaciones extra para un día puntual
           (fines de semana, feriados, refuerzos).
         </p>
@@ -253,8 +253,8 @@ export function Asignaciones() {
                 : [];
               return (
                 <div key={o.id} className="border-b border-panel-600/40 pb-3 last:border-0 last:pb-0">
-                  <p className="text-sm font-medium text-slate-100">{o.nombre_completo}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-sm font-medium text-slate-900">{o.nombre_completo}</p>
+                  <p className="text-xs text-slate-600">
                     Por defecto:{' '}
                     {porDefecto.length > 0 ? porDefecto.map((a) => codigoEstacion(a.estacion_id)).join(', ') : 'Ninguna'}
                   </p>
@@ -294,7 +294,7 @@ export function Asignaciones() {
         <p className={`text-sm ${mensaje.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>{mensaje}</p>
       )}
 
-      {operadorId && cargandoAsignaciones && <p className="text-slate-400">Cargando asignaciones…</p>}
+      {operadorId && cargandoAsignaciones && <p className="text-slate-600">Cargando asignaciones…</p>}
 
       {operadorId && !cargandoAsignaciones && (
         <>
@@ -312,7 +312,7 @@ export function Asignaciones() {
                     type="button"
                     onClick={() => alternar(seleccionDefault, setSeleccionDefault, e.id)}
                     className={`text-sm px-3 py-1.5 rounded-full border ${
-                      activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-400'
+                      activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-600'
                     }`}
                   >
                     {e.codigo}
@@ -352,7 +352,7 @@ export function Asignaciones() {
                     type="button"
                     onClick={() => alternar(seleccionEspecial, setSeleccionEspecial, e.id)}
                     className={`text-sm px-3 py-1.5 rounded-full border ${
-                      activo ? 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn' : 'border-panel-600 text-slate-400'
+                      activo ? 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn' : 'border-panel-600 text-slate-600'
                     }`}
                   >
                     {e.codigo}
@@ -375,7 +375,7 @@ export function Asignaciones() {
                 {asignacionesEspecialesFiltradas.length > 0 ? (
                   asignacionesEspecialesFiltradas.map((a) => (
                     <div key={a.id} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-300">
+                      <span className="text-slate-700">
                         {a.fecha} · {nombreEstacion(a.estacion_id)}
                       </span>
                       <button

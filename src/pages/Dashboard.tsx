@@ -237,7 +237,7 @@ export function Dashboard() {
         year: 'numeric',
       })}`;
 
-  if (cargando) return <p className="text-slate-400">Cargando…</p>;
+  if (cargando) return <p className="text-slate-600">Cargando…</p>;
 
   return (
     <div className="space-y-6">
@@ -265,7 +265,7 @@ export function Dashboard() {
 
       {!esAdmin && (
         <div>
-          <h2 className="text-sm font-semibold text-slate-300 mb-2">
+          <h2 className="text-sm font-semibold text-slate-700 mb-2">
             Tus EBAR de hoy (
             {misEstacionesHoy.filter((e) => e.visitasHoy >= (esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1)).length}/
             {misEstacionesHoy.length} {esRegular ? `con ${MINIMO_VISITAS_DIA_REGULAR} visitas` : 'visitadas'})
@@ -292,7 +292,7 @@ export function Dashboard() {
                     className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
                   >
                     <div>
-                      <p className="text-sm font-medium text-slate-100">{e.nombre}</p>
+                      <p className="text-sm font-medium text-slate-900">{e.nombre}</p>
                       <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
                     </div>
                     <span className={`text-xs flex-shrink-0 ${color}`}>
@@ -316,7 +316,7 @@ export function Dashboard() {
             className="flex items-center justify-between w-full mb-2"
             onClick={() => setMostrarSinVisitar((v) => !v)}
           >
-            <h2 className="text-sm font-semibold text-slate-300">
+            <h2 className="text-sm font-semibold text-slate-700">
               Pendientes de visita ({sinVisitar.length})
             </h2>
             <span className="text-xs text-slate-500">{mostrarSinVisitar ? '▲ ocultar' : '▼ ver'}</span>
@@ -330,7 +330,7 @@ export function Dashboard() {
                   className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
                 >
                   <div>
-                    <p className="text-sm font-medium text-slate-100">{e.nombre}</p>
+                    <p className="text-sm font-medium text-slate-900">{e.nombre}</p>
                     <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
                   </div>
                   <span className="text-xs text-gauge-ok flex-shrink-0">+ Visita →</span>
@@ -343,7 +343,7 @@ export function Dashboard() {
 
       {estacionesConProblemas.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-slate-300 mb-2">Requieren atención</h2>
+          <h2 className="text-sm font-semibold text-slate-700 mb-2">Requieren atención</h2>
           <div className="space-y-2">
             {estacionesConProblemas.map((e) => (
               <StationCard key={e.id} estacion={e} ultimaVisita={ultimasVisitas[e.id]} />
@@ -354,14 +354,14 @@ export function Dashboard() {
 
       {esAdmin && sospechosas.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-slate-300 mb-2">
+          <h2 className="text-sm font-semibold text-slate-700 mb-2">
             ⚠️ Visitas con horario sospechoso ({sospechosas.length})
           </h2>
           <div className="space-y-2">
             {sospechosas.map((s, i) => (
               <div key={i} className="tarjeta p-3 border border-gauge-warn/40">
-                <p className="text-sm font-medium text-slate-100">{s.operador_nombre}</p>
-                <p className="text-xs text-slate-400">
+                <p className="text-sm font-medium text-slate-900">{s.operador_nombre}</p>
+                <p className="text-xs text-slate-600">
                   {s.visitaAnterior.estacion_nombre} → {s.visitaSiguiente.estacion_nombre}
                   {' · '}
                   {s.km.toFixed(1)} km en {Math.round(s.minutos)} min
@@ -377,7 +377,7 @@ export function Dashboard() {
 
       {esAdmin && bajoMinimo.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-slate-300 mb-2">
+          <h2 className="text-sm font-semibold text-slate-700 mb-2">
             ⚠️ Por debajo del mínimo de {MINIMO_VISITAS_DIA_REGULAR} visitas ({bajoMinimo.length})
           </h2>
           <div className="space-y-2">
@@ -387,8 +387,8 @@ export function Dashboard() {
                 className="tarjeta p-3 border border-gauge-warn/40 flex items-center justify-between"
               >
                 <div>
-                  <p className="text-sm font-medium text-slate-100">{b.operador_nombre}</p>
-                  <p className="text-xs text-slate-400">{b.estacion_codigo} — {b.estacion_nombre}</p>
+                  <p className="text-sm font-medium text-slate-900">{b.operador_nombre}</p>
+                  <p className="text-xs text-slate-600">{b.estacion_codigo} — {b.estacion_nombre}</p>
                 </div>
                 <span className="text-xs text-gauge-warn flex-shrink-0">
                   {b.visitas}/{MINIMO_VISITAS_DIA_REGULAR}
@@ -426,7 +426,7 @@ function Metrica({
 }) {
   return (
     <div className="tarjeta p-4">
-      <p className="text-xs text-slate-400 mb-1">{label}</p>
+      <p className="text-xs text-slate-600 mb-1">{label}</p>
       <p className={`text-3xl font-bold lectura ${COLOR_ACENTO[acento]}`}>{valor}</p>
     </div>
   );

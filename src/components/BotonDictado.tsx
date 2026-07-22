@@ -56,7 +56,7 @@ export function BotonDictado({ valorActual, onTexto }: Props) {
       className={`absolute top-1.5 right-1.5 w-7 h-7 rounded-md border flex items-center justify-center transition ${
         escuchando
           ? 'bg-gauge-danger/15 border-gauge-danger text-gauge-danger animate-pulse'
-          : 'bg-panel-900/80 border-panel-600 text-slate-300'
+          : 'bg-panel-900/80 border-panel-600 text-slate-700'
       }`}
     >
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

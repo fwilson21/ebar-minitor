@@ -273,7 +273,7 @@ export function Reports() {
         </p>
       </div>
 
-      {mensaje && <p className="text-sm text-slate-300">{mensaje}</p>}
+      {mensaje && <p className="text-sm text-slate-700">{mensaje}</p>}
     </div>
   );
 }

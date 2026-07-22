@@ -137,13 +137,13 @@ export function AppShell() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-400 truncate max-w-[7rem] sm:max-w-none">
+          <span className="text-sm text-slate-600 truncate max-w-[7rem] sm:max-w-none">
             {usuario?.nombre_completo ? nombreCorto(usuario.nombre_completo) : ''}
           </span>
-          <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-400 hover:text-slate-100">
+          <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-600 hover:text-slate-900">
             🔑
           </button>
-          <button onClick={manejarClickSalir} className="text-sm text-slate-400 hover:text-slate-100">
+          <button onClick={manejarClickSalir} className="text-sm text-slate-600 hover:text-slate-900">
             Salir
           </button>
         </div>
@@ -165,7 +165,7 @@ export function AppShell() {
             end={item.to === '/'}
             className={({ isActive }) =>
               `flex flex-col items-center gap-0.5 shrink-0 min-w-[4.25rem] px-2 py-1.5 rounded-lg text-xs ${
-                isActive ? 'text-gauge-ok' : 'text-slate-400'
+                isActive ? 'text-gauge-ok' : 'text-slate-600'
               }`
             }
           >
@@ -193,7 +193,7 @@ export function AppShell() {
           <div className="fixed inset-0 bg-black/50 z-20" onClick={() => !guardandoYSaliendo && setMostrarConfirmarSalir(false)} />
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[90vw] max-w-sm p-4 space-y-3">
             <h2 className="font-semibold text-sm">Tienes datos sin guardar</h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600">
               Tienes cambios sin guardar en esta pantalla. ¿Qué quieres hacer antes de salir?
             </p>
             <div className="flex flex-col gap-2 pt-1">
@@ -274,7 +274,7 @@ function ModalCambiarPassword({ onCerrar }: { onCerrar: () => void }) {
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[90vw] max-w-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-sm">Cambiar contraseña</h2>
-          <button onClick={onCerrar} className="text-slate-400 hover:text-slate-100 text-lg leading-none">✕</button>
+          <button onClick={onCerrar} className="text-slate-600 hover:text-slate-900 text-lg leading-none">✕</button>
         </div>
 
         <div>
@@ -347,7 +347,7 @@ function PanelPendientes({
           <h2 className="font-semibold text-sm">
             Visitas pendientes de sincronizar ({pendientes.length})
           </h2>
-          <button onClick={onCerrar} className="text-slate-400 hover:text-slate-100 text-lg leading-none">✕</button>
+          <button onClick={onCerrar} className="text-slate-600 hover:text-slate-900 text-lg leading-none">✕</button>
         </div>
 
         <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2">
@@ -357,7 +357,7 @@ function PanelPendientes({
             pendientes.map((p) => (
               <div key={p.cliente_uuid} className="tarjeta p-3 space-y-1">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-slate-300">
+                  <p className="text-xs text-slate-700">
                     {new Date(p.creado_en).toLocaleString('es-EC', {
                       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
                     })}

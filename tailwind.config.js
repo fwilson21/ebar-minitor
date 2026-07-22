@@ -5,16 +5,17 @@ export default {
     extend: {
       colors: {
         panel: {
-          900: '#0B1521',
-          800: '#10202F',
-          700: '#16303F',
-          600: '#1E4254'
+          900: '#EEF2F5',
+          800: '#FFFFFF',
+          700: '#DCE4E9',
+          600: '#C7D2D9',
+          500: '#A8B9C4'
         },
         gauge: {
-          ok: '#2DD4BF',
-          warn: '#F5A524',
-          danger: '#F2495C',
-          idle: '#5B7184'
+          ok: '#0E7A54',
+          warn: '#B45309',
+          danger: '#BE123C',
+          idle: '#64748B'
         }
       },
       fontFamily: {

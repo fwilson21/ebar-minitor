@@ -30,10 +30,10 @@ export function StationCard({ estacion, ultimaVisita }: { estacion: EstacionEbar
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-semibold text-slate-100 truncate">{estacion.nombre}</h3>
+          <h3 className="font-semibold text-slate-900 truncate">{estacion.nombre}</h3>
           <span className="text-xs text-slate-500 lectura">{estacion.codigo}</span>
         </div>
-        <p className="text-sm text-slate-400 truncate">{estacion.direccion ?? 'Sin dirección registrada'}</p>
+        <p className="text-sm text-slate-600 truncate">{estacion.direccion ?? 'Sin dirección registrada'}</p>
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-2">
             <EstadoBadge estado={estacion.estado_actual} />

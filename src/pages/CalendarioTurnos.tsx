@@ -289,18 +289,18 @@ export function CalendarioTurnos() {
   if (usuario.rol !== 'administrador') {
     return (
       <div className="tarjeta p-4">
-        <p className="text-sm text-slate-400">Esta pantalla es exclusiva del administrador.</p>
+        <p className="text-sm text-slate-600">Esta pantalla es exclusiva del administrador.</p>
       </div>
     );
   }
 
-  if (cargandoBase) return <p className="text-slate-400">Cargando…</p>;
+  if (cargandoBase) return <p className="text-slate-600">Cargando…</p>;
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-lg font-bold">Calendario de turnos</h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-slate-600">
           Marca qué operador está de turno cada sábado, domingo o feriado. Ese día le van a aparecer automáticamente
           sus EBAR a atender.
         </p>
@@ -318,12 +318,12 @@ export function CalendarioTurnos() {
         </div>
 
         {cargandoMes ? (
-          <p className="text-slate-400 text-sm">Cargando…</p>
+          <p className="text-slate-600 text-sm">Cargando…</p>
         ) : (
           <>
             <div className="grid grid-cols-7 gap-1 text-center">
               {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d) => (
-                <div key={d} className="text-xs text-slate-300 font-semibold py-1">
+                <div key={d} className="text-xs text-slate-700 font-semibold py-1">
                   {d}
                 </div>
               ))}
@@ -341,8 +341,8 @@ export function CalendarioTurnos() {
                       esFeriado
                         ? 'border-gauge-warn bg-gauge-warn/20 text-gauge-warn hover:bg-gauge-warn/30'
                         : motivo === 'Fin de semana'
-                          ? 'border-panel-500 bg-panel-700 text-slate-100 hover:bg-panel-600'
-                          : 'border-panel-600/60 bg-panel-700/40 text-slate-300 hover:bg-panel-700 hover:text-slate-100'
+                          ? 'border-panel-500 bg-panel-700 text-slate-900 hover:bg-panel-600'
+                          : 'border-panel-600/60 bg-panel-700/40 text-slate-700 hover:bg-panel-700 hover:text-slate-900'
                     } ${turnosDia.length > 0 ? 'ring-2 ring-gauge-ok' : ''}`}
                   >
                     <span>{Number(fecha.slice(-2))}</span>
@@ -365,7 +365,7 @@ export function CalendarioTurnos() {
               })}
             </div>
 
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300 pt-1">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 pt-1">
               <span>
                 <span className="inline-block w-3 h-3 rounded bg-panel-700 border border-panel-500 align-middle mr-1" />
                 Fin de semana
@@ -396,7 +396,7 @@ export function CalendarioTurnos() {
           </p>
         )}
         {resumenMes.length === 0 ? (
-          <p className="text-sm text-slate-400">Todavía no hay turnos cargados este mes.</p>
+          <p className="text-sm text-slate-600">Todavía no hay turnos cargados este mes.</p>
         ) : (
           <div className="space-y-1">
             {resumenMes.map((r) => (
@@ -404,11 +404,11 @@ export function CalendarioTurnos() {
                 key={r.operadorId}
                 className={`flex items-center justify-between text-sm gap-2 ${r.sobrepasaLimite ? 'text-gauge-danger' : ''}`}
               >
-                <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-200'}>
+                <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-800'}>
                   {r.sobrepasaLimite ? '⚠ ' : ''}
                   {r.nombre}
                 </span>
-                <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-300'}>
+                <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-700'}>
                   {r.dias} x 8 = {r.horas} horas
                 </span>
               </div>
@@ -451,8 +451,8 @@ export function CalendarioTurnos() {
         </div>
 
         <div>
-          <p className="text-xs text-slate-400 mb-1">Feriados calculados para {anioVisible}:</p>
-          <div className="space-y-0.5 text-xs text-slate-300">
+          <p className="text-xs text-slate-600 mb-1">Feriados calculados para {anioVisible}:</p>
+          <div className="space-y-0.5 text-xs text-slate-700">
             {[...calcularFeriados(anioVisible).entries()]
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([fecha, nombres]) => (
@@ -465,10 +465,10 @@ export function CalendarioTurnos() {
 
         {feriadosAdicionales.length > 0 && (
           <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
-            <p className="text-xs text-slate-400">Feriados de última hora ya declarados:</p>
+            <p className="text-xs text-slate-600">Feriados de última hora ya declarados:</p>
             {feriadosAdicionales.map((f) => (
               <div key={f.id} className="flex items-center justify-between text-sm">
-                <span className="text-slate-300">
+                <span className="text-slate-700">
                   {f.fecha} · {f.descripcion}
                 </span>
                 <button onClick={() => quitarFeriado(f.id)} className="text-gauge-danger hover:underline text-xs">
@@ -695,19 +695,19 @@ function PanelDia({
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[92vw] max-w-md max-h-[85vh] overflow-y-auto p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-semibold text-sm text-slate-100">{formatFechaCorta(fecha)}</h2>
-            <p className={`text-xs ${motivoActual ? 'text-gauge-warn' : 'text-slate-400'}`}>
+            <h2 className="font-semibold text-sm text-slate-900">{formatFechaCorta(fecha)}</h2>
+            <p className={`text-xs ${motivoActual ? 'text-gauge-warn' : 'text-slate-600'}`}>
               {motivoActual ?? 'Día regular'}
             </p>
           </div>
-          <button onClick={() => !guardando && onCerrar()} className="text-slate-400 hover:text-slate-100 text-lg leading-none">
+          <button onClick={() => !guardando && onCerrar()} className="text-slate-600 hover:text-slate-900 text-lg leading-none">
             ✕
           </button>
         </div>
 
         {motivoActual === null && (
           <div className="border border-gauge-warn/40 bg-gauge-warn/10 rounded-lg p-3 space-y-2">
-            <p className="text-xs text-slate-200">
+            <p className="text-xs text-slate-800">
               Este día es regular. Si de última hora lo decretaron feriado, declaralo acá para que cuente las horas
               y le aparezcan las EBAR a quien quede de turno:
             </p>
@@ -730,13 +730,13 @@ function PanelDia({
           </div>
         )}
 
-        {seleccion.size === 0 && <p className="text-sm text-slate-400">Nadie está de turno este día todavía.</p>}
+        {seleccion.size === 0 && <p className="text-sm text-slate-600">Nadie está de turno este día todavía.</p>}
 
         <div className="space-y-3">
           {[...seleccion.entries()].map(([operadorId, datos]) => (
             <div key={operadorId} className="border border-panel-600/40 rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-slate-100">{nombreOperador(operadorId)}</p>
+                <p className="text-sm font-medium text-slate-900">{nombreOperador(operadorId)}</p>
                 <button onClick={() => quitarOperador(operadorId)} className="text-xs text-gauge-danger hover:underline">
                   Quitar
                 </button>
@@ -750,7 +750,7 @@ function PanelDia({
                       type="button"
                       onClick={() => toggleEstacion(operadorId, e.id)}
                       className={`text-xs px-2.5 py-1 rounded-full border ${
-                        activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-400'
+                        activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-600'
                       }`}
                     >
                       {e.codigo}

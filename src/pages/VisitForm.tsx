@@ -760,11 +760,11 @@ export function VisitForm() {
     (ubicacion.tipo === 'error' || (ubicacion.tipo === 'ok' && distanciaEfectiva! > DISTANCIA_MAXIMA_METROS));
   const ubicandoAun = requiereUbicacion && ubicacion.tipo === 'buscando';
 
-  if (cargandoDatos || ubicandoAun) return <p className="text-slate-400">Cargando…</p>;
+  if (cargandoDatos || ubicandoAun) return <p className="text-slate-600">Cargando…</p>;
 
   if (!estacion) {
     return (
-      <p className="text-slate-400">
+      <p className="text-slate-600">
         No se pudo cargar esta estación. Si no tienes señal, necesitas haber abierto esta pantalla
         al menos una vez con conexión antes de poder usarla sin señal.
       </p>
@@ -778,13 +778,13 @@ export function VisitForm() {
         <h1 className="text-lg font-bold uppercase tracking-wide text-gauge-danger">
           Esta estación no está asignada a ti hoy
         </h1>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-slate-700">
           No puedes registrar una visita en {estacion.codigo} — {estacion.nombre} porque no está entre tus EBAR
           asignadas para hoy. Si crees que es un error, contacta a tu administrador o supervisor.
         </p>
         <button
           type="button"
-          className="text-xs text-slate-400 hover:text-slate-100 underline"
+          className="text-xs text-slate-600 hover:text-slate-900 underline"
           onClick={() => navigate(`/estaciones/${estacionId}`)}
         >
           ← Volver a la estación
@@ -803,12 +803,12 @@ export function VisitForm() {
         <h1 className="text-lg font-bold uppercase tracking-wide text-gauge-danger">
           No se puede registrar la visita
         </h1>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-slate-700">
           No es posible registrar esta visita porque no te encuentras en las instalaciones de la estación EBAR.
         </p>
         <button
           type="button"
-          className="text-xs text-slate-400 hover:text-slate-100 underline"
+          className="text-xs text-slate-600 hover:text-slate-900 underline"
           onClick={() => navigate(`/estaciones/${estacionId}`)}
         >
           ← Volver a la estación
@@ -822,7 +822,7 @@ export function VisitForm() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold uppercase tracking-wide">{modoEdicion ? 'Editar visita' : 'Nueva visita'}</h1>
-          <p className="text-sm text-slate-400">{estacion.nombre} · {estacion.codigo}</p>
+          <p className="text-sm text-slate-600">{estacion.nombre} · {estacion.codigo}</p>
         </div>
         <div className="text-right flex-shrink-0">
           {modoEdicion ? (
@@ -846,7 +846,7 @@ export function VisitForm() {
           )}
           <button
             type="button"
-            className="text-xs text-slate-400 hover:text-slate-100 underline mt-1"
+            className="text-xs text-slate-600 hover:text-slate-900 underline mt-1"
             onClick={() => pausarYSalir(() => navigate(`/estaciones/${estacionId}`))}
           >
             ⏸ Pausar y continuar luego
@@ -857,7 +857,7 @@ export function VisitForm() {
       {esLineaConduccion ? (
         <>
           <div>
-            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-200 mb-2">Tubería de impulsión de 400mm</h2>
+            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-800 mb-2">Tubería de impulsión de 400mm</h2>
             <div className="space-y-3">
               <EquipoSection titulo="Válvulas de aire" valor={tuberia400ValvulasAire} onChange={setTuberia400ValvulasAire} />
               <EquipoSection titulo="Uniones elastoméricas" valor={tuberia400Uniones} onChange={setTuberia400Uniones} />
@@ -865,7 +865,7 @@ export function VisitForm() {
           </div>
 
           <div>
-            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-200 mb-2">Tubería de impulsión de 600mm</h2>
+            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-800 mb-2">Tubería de impulsión de 600mm</h2>
             <div className="space-y-3">
               <EquipoSection titulo="Válvulas de aire" valor={tuberia600ValvulasAire} onChange={setTuberia600ValvulasAire} />
               <EquipoSection titulo="Uniones elastoméricas" valor={tuberia600Uniones} onChange={setTuberia600Uniones} />
@@ -875,10 +875,10 @@ export function VisitForm() {
       ) : (
         <>
           <div>
-            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-200 mb-2">Estado general de la estación</h2>
+            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-800 mb-2">Estado general de la estación</h2>
             <div className="tarjeta p-4 space-y-3">
               <div className="tarjeta p-4 space-y-3">
-                <h3 className="text-base font-bold uppercase tracking-wide text-slate-200">Estado</h3>
+                <h3 className="text-base font-bold uppercase tracking-wide text-slate-800">Estado</h3>
 
                 <div className="flex gap-2">
                   {ESTADOS_ESTACION.map((e) => (
@@ -887,7 +887,7 @@ export function VisitForm() {
                       type="button"
                       onClick={() => setEstadoEstacion(estadoEstacion === e.value ? '' : e.value)}
                       className={`flex-1 rounded-lg px-2 py-2 text-xs border transition ${
-                        estadoEstacion === e.value ? e.claseActiva : 'bg-panel-900 border-panel-600 text-slate-300'
+                        estadoEstacion === e.value ? e.claseActiva : 'bg-panel-900 border-panel-600 text-slate-700'
                       }`}
                     >
                       {e.label}
@@ -904,7 +904,7 @@ export function VisitForm() {
                         type="button"
                         onClick={() => setNivelTanque(nivelTanque === n ? '' : n)}
                         className={`flex-1 rounded-lg px-3 py-2 text-sm border capitalize ${
-                          nivelTanque === n ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-300'
+                          nivelTanque === n ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-700'
                         }`}
                       >
                         {n}
@@ -955,11 +955,11 @@ export function VisitForm() {
           </div>
 
           <div>
-            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-200 mb-2">Bombas</h2>
+            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-800 mb-2">Bombas</h2>
             <div className="space-y-3">
               {bombas.length > 1 && (
                 <div className="tarjeta p-4 space-y-2">
-                  <h3 className="text-base font-bold uppercase tracking-wide text-slate-200">Bombas a reportar hoy</h3>
+                  <h3 className="text-base font-bold uppercase tracking-wide text-slate-800">Bombas a reportar hoy</h3>
                   <div className="flex gap-2 flex-wrap">
                     {bombas.map((b) => {
                       const activa = bombasSeleccionadas.has(b.id);
@@ -976,7 +976,7 @@ export function VisitForm() {
                             })
                           }
                           className={`rounded-lg px-3 py-2 text-sm border transition ${
-                            activa ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'bg-panel-900 border-panel-600 text-slate-400'
+                            activa ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'bg-panel-900 border-panel-600 text-slate-600'
                           }`}
                         >
                           Bomba {b.numero_bomba}
@@ -1003,10 +1003,10 @@ export function VisitForm() {
           </div>
 
           <div>
-            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-200 mb-2">Estado de equipos</h2>
+            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-800 mb-2">Estado de equipos</h2>
             <div className="space-y-3">
               <div className="tarjeta p-4 space-y-3">
-                <h3 className="text-base font-bold uppercase tracking-wide text-slate-200">Líneas de impulsión y guías de izado de bombas</h3>
+                <h3 className="text-base font-bold uppercase tracking-wide text-slate-800">Líneas de impulsión y guías de izado de bombas</h3>
                 <div className="space-y-3">
                   <EquipoSection
                     titulo="Líneas de impulsión"
@@ -1025,7 +1025,7 @@ export function VisitForm() {
                 </div>
               </div>
               <div className="tarjeta p-4 space-y-3">
-                <h3 className="text-base font-bold uppercase tracking-wide text-slate-200">Válvulas</h3>
+                <h3 className="text-base font-bold uppercase tracking-wide text-slate-800">Válvulas</h3>
                 <div className="space-y-3">
                   <EquipoSection
                     titulo="Válvulas de compuerta"
@@ -1052,7 +1052,7 @@ export function VisitForm() {
                 </div>
               </div>
               <div className="tarjeta p-4 space-y-3">
-                <h3 className="text-base font-bold uppercase tracking-wide text-slate-200">Cámara de llegada al cárcamo de bombeo</h3>
+                <h3 className="text-base font-bold uppercase tracking-wide text-slate-800">Cámara de llegada al cárcamo de bombeo</h3>
                 <div className="space-y-3">
                   <EquipoSection
                     titulo="Rejilla"
@@ -1125,7 +1125,7 @@ export function VisitForm() {
           <p className="text-sm font-semibold text-gauge-warn">Campos incompletos</p>
           <ul className="space-y-1">
             {errores.map((e) => (
-              <li key={e} className="text-xs text-slate-300 flex gap-2">
+              <li key={e} className="text-xs text-slate-700 flex gap-2">
                 <span className="text-gauge-warn flex-shrink-0">·</span> {e}
               </li>
             ))}
@@ -1150,7 +1150,7 @@ export function VisitForm() {
       {pasoConfirmacion === 2 && (
         <div className="tarjeta border-gauge-danger/50 p-4 space-y-3">
           <p className="text-sm font-semibold text-gauge-danger">¿Confirmas guardar con datos incompletos?</p>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-600">
             Esta visita quedará registrada sin todos los campos requeridos. El informe puede ser incompleto.
           </p>
           <div className="flex gap-2 pt-1">
@@ -1176,7 +1176,7 @@ export function VisitForm() {
           <div className="fixed inset-0 bg-black/50 z-20" />
           <div className="fixed inset-x-4 top-1/3 z-30 tarjeta border-gauge-warn/50 p-4 space-y-3 max-w-sm mx-auto">
             <p className="text-sm font-semibold text-gauge-warn">Esta visita tiene datos sin guardar</p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600">
               ¿Vas a seguir trabajando en el sitio? Pausa el registro para continuarlo después sin perder nada.
             </p>
             <div className="flex flex-col gap-2 pt-1">

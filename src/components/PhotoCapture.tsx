@@ -84,7 +84,7 @@ export function PhotoCapture({ fotos, onChange }: Props) {
                   ✕
                 </button>
                 {foto.estado_subida === 'pendiente' && (
-                  <span className="absolute bottom-1 left-1 text-[10px] bg-gauge-warn/90 text-panel-900 px-1.5 rounded">
+                  <span className="absolute bottom-1 left-1 text-[10px] bg-gauge-warn/90 text-white px-1.5 rounded">
                     Pendiente
                   </span>
                 )}

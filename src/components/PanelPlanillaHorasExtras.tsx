@@ -131,7 +131,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
               </h2>
               <button
                 onClick={() => (editando ? setEditando(null) : setAbierto(false))}
-                className="text-slate-400 hover:text-slate-100 text-lg leading-none"
+                className="text-slate-600 hover:text-slate-900 text-lg leading-none"
               >
                 ✕
               </button>
@@ -155,16 +155,16 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                     + Nueva planilla
                   </button>
                   {cargando ? (
-                    <p className="text-sm text-slate-400">Cargando…</p>
+                    <p className="text-sm text-slate-600">Cargando…</p>
                   ) : planillas.length === 0 ? (
-                    <p className="text-sm text-slate-400">Todavía no hay planillas guardadas.</p>
+                    <p className="text-sm text-slate-600">Todavía no hay planillas guardadas.</p>
                   ) : (
                     <div className="space-y-2">
                       {planillas.map((p) => (
                         <div key={p.id} className="border border-panel-600/40 rounded-lg p-3 flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium text-slate-100 truncate">{p.nombre_trabajador}</p>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-sm font-medium text-slate-900 truncate">{p.nombre_trabajador}</p>
+                            <p className="text-xs text-slate-600">
                               {formatFechaCorta(p.fecha_desde)} al {formatFechaCorta(p.fecha_hasta)} · {p.area || 'Sin área'}
                             </p>
                           </div>
@@ -542,7 +542,7 @@ function EditorPlanilla({
     }
   }
 
-  if (cargandoFilas) return <p className="text-sm text-slate-400">Cargando…</p>;
+  if (cargandoFilas) return <p className="text-sm text-slate-600">Cargando…</p>;
 
   return (
     <div className="space-y-4">
@@ -598,7 +598,7 @@ function EditorPlanilla({
       </div>
 
       <div className="border border-panel-600/40 rounded-lg p-3 space-y-2">
-        <p className="text-xs font-semibold text-slate-300">Jornada normal (sin horas extra)</p>
+        <p className="text-xs font-semibold text-slate-700">Jornada normal (sin horas extra)</p>
         <p className="text-[11px] text-slate-500">
           Se usa para prellenar cada día nuevo y como límite del cálculo: si una marcación es más temprano que la
           jornada no suma de más (ej. entrar antes de las 08:00), pero si es más tarde sí se descuenta — y al revés
@@ -673,7 +673,7 @@ function EditorPlanilla({
         <div className="overflow-x-auto border border-panel-600/40 rounded-lg">
           <table className="w-full text-xs min-w-[820px]">
             <thead>
-              <tr className="text-slate-400 text-left">
+              <tr className="text-slate-600 text-left">
                 <th className="p-1.5">Fecha</th>
                 <th className="p-1.5 min-w-[160px]">Descripción</th>
                 <th className="p-1.5 min-w-[120px]">N.º memorando</th>
@@ -779,12 +779,12 @@ function EditorPlanilla({
         </div>
       )}
 
-      <p className="text-sm text-slate-200 text-right font-semibold">Total horas extras: {formatHoras(totalHorasExtra)}</p>
+      <p className="text-sm text-slate-800 text-right font-semibold">Total horas extras: {formatHoras(totalHorasExtra)}</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="border border-panel-600/40 rounded-lg p-3 space-y-1.5">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-300">Revisado por</p>
+            <p className="text-xs font-semibold text-slate-700">Revisado por</p>
             <button type="button" onClick={() => setEditarRevisado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
               {editarRevisado ? 'Usar el de siempre' : 'Cambiar'}
             </button>
@@ -795,7 +795,7 @@ function EditorPlanilla({
               <input type="text" className="campo text-xs" placeholder="Cargo" value={revisadoCargo} onChange={(e) => setRevisadoCargo(e.target.value)} />
             </>
           ) : (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600">
               {REVISADO_NOMBRE_DEFAULT}
               <br />
               {REVISADO_CARGO_DEFAULT}
@@ -804,7 +804,7 @@ function EditorPlanilla({
         </div>
         <div className="border border-panel-600/40 rounded-lg p-3 space-y-1.5">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-300">Aprobado por</p>
+            <p className="text-xs font-semibold text-slate-700">Aprobado por</p>
             <button type="button" onClick={() => setEditarAprobado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
               {editarAprobado ? 'Usar el de siempre' : 'Cambiar'}
             </button>
@@ -815,7 +815,7 @@ function EditorPlanilla({
               <input type="text" className="campo text-xs" placeholder="Cargo" value={aprobadoCargo} onChange={(e) => setAprobadoCargo(e.target.value)} />
             </>
           ) : (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600">
               {APROBADO_NOMBRE_DEFAULT}
               <br />
               {APROBADO_CARGO_DEFAULT}
