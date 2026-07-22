@@ -144,25 +144,24 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
-              <div className="max-w-2xl mx-auto">
-                {editando ? (
-                  configuracion ? (
-                    <EditorPlanilla
-                      planilla={editando === 'nueva' ? null : editando}
-                      operadores={operadores}
-                      usuarioId={usuarioId}
-                      configuracion={configuracion}
-                      onCerrar={() => setEditando(null)}
-                      onGuardado={async () => {
-                        setEditando(null);
-                        await cargarPlanillas();
-                      }}
-                    />
-                  ) : (
-                    <p className="text-sm text-slate-600">Cargando…</p>
-                  )
+              {editando ? (
+                configuracion ? (
+                  <EditorPlanilla
+                    planilla={editando === 'nueva' ? null : editando}
+                    operadores={operadores}
+                    usuarioId={usuarioId}
+                    configuracion={configuracion}
+                    onCerrar={() => setEditando(null)}
+                    onGuardado={async () => {
+                      setEditando(null);
+                      await cargarPlanillas();
+                    }}
+                  />
                 ) : (
-                  <div className="space-y-3">
+                  <p className="text-sm text-slate-600">Cargando…</p>
+                )
+              ) : (
+                <div className="max-w-2xl mx-auto space-y-3">
                     <button onClick={() => setEditando('nueva')} className="boton-primario w-full">
                       + Nueva planilla
                     </button>
@@ -213,7 +212,6 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                     </div>
                   </div>
                 )}
-              </div>
             </div>
           </div>
         </>
@@ -667,6 +665,7 @@ function EditorPlanilla({
 
   return (
     <div className="space-y-4">
+      <div className="max-w-2xl mx-auto w-full space-y-4">
       <div>
         <label className="etiqueta">Trabajador</label>
         <select className="campo" value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
@@ -777,6 +776,7 @@ function EditorPlanilla({
         <button type="button" onClick={agregarFilaManual} className="boton-secundario text-sm px-3">
           + Día
         </button>
+      </div>
       </div>
 
       {filas.length > 0 && (
@@ -900,6 +900,7 @@ function EditorPlanilla({
         </div>
       )}
 
+      <div className="max-w-2xl mx-auto w-full space-y-4">
       <p className="text-sm text-slate-800 text-right font-semibold">Total horas extras: {formatHoras(totalHorasExtra)}</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -952,17 +953,20 @@ function EditorPlanilla({
       )}
 
       {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
+      </div>
 
-      <div className="flex gap-2 pt-2 sticky bottom-0 bg-panel-800 pb-1">
-        <button onClick={guardar} disabled={guardando} className="boton-primario flex-1">
-          {guardando ? 'Guardando…' : 'Guardar'}
-        </button>
-        <button onClick={generarPdf} disabled={generandoPdf} className="boton-secundario flex-1">
-          {generandoPdf ? 'Generando…' : '📄 Generar PDF'}
-        </button>
-        <button onClick={onCerrar} className="boton-secundario px-4">
-          Cerrar
-        </button>
+      <div className="sticky bottom-0 bg-panel-800 pb-1">
+        <div className="max-w-2xl mx-auto flex gap-2 pt-2">
+          <button onClick={guardar} disabled={guardando} className="boton-primario flex-1">
+            {guardando ? 'Guardando…' : 'Guardar'}
+          </button>
+          <button onClick={generarPdf} disabled={generandoPdf} className="boton-secundario flex-1">
+            {generandoPdf ? 'Generando…' : '📄 Generar PDF'}
+          </button>
+          <button onClick={onCerrar} className="boton-secundario px-4">
+            Cerrar
+          </button>
+        </div>
       </div>
     </div>
   );
