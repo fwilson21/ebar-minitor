@@ -59,6 +59,33 @@ function duracionJornada(inicio: string, fin: string): number {
   return redondear2(Math.max(0, aMinutos(fin)! - aMinutos(inicio)!) / 60);
 }
 
+/** Valida que Entrada/Sale de mañana y tarde vayan en orden ascendente a lo largo del día
+ * (entra mañana < sale mañana <= entra tarde < sale tarde). null si no hay ningún problema. */
+export function validarOrdenHorario(fila: HorarioFila): string | null {
+  const { entrada_manana, salida_manana, entrada_tarde, salida_tarde } = fila;
+  if (entrada_manana && salida_manana && salida_manana <= entrada_manana) {
+    return 'La salida de la mañana debe ser después de la entrada.';
+  }
+  if (entrada_tarde && salida_tarde && salida_tarde <= entrada_tarde) {
+    return 'La salida de la tarde debe ser después de la entrada.';
+  }
+  if (salida_manana && entrada_tarde && entrada_tarde < salida_manana) {
+    return 'La entrada de la tarde no puede ser antes de la salida de la mañana.';
+  }
+  return null;
+}
+
+export interface ResultadoHoras {
+  horas_manana: number | null;
+  horas_tarde: number | null;
+  horas_extra: number;
+  /** true si ese bloque no tiene sus dos marcaciones y su valor es una suposición (jornada normal
+   * completa) en vez de un cálculo real — ver PanelPlanillaHorasExtras.tsx: en ese caso no se aplica
+   * solo, se le pide confirmación al operador ("Calcular igual"). */
+  manana_asumida: boolean;
+  tarde_asumida: boolean;
+}
+
 /**
  * Sugiere Mañana/Tarde/Extras para una fila según su horario, recortado contra la jornada normal
  * del trabajador (ej. 08:00-12:00/13:00-17:00):
@@ -66,14 +93,15 @@ function duracionJornada(inicio: string, fin: string): number {
  *   referencia.
  * - Si el otro bloque quedó a medias (solo entrada o solo salida, ej. no marcó la salida a
  *   almorzar): no se sabe su hora exacta, así que se asume la jornada normal completa de ese bloque
- *   (ej. 4 horas) y se suma al bloque que sí está completo — y viceversa.
+ *   (ej. 4 horas) y se suma al bloque que sí está completo — y viceversa. Ese bloque queda marcado
+ *   como "asumido".
  * - Si el otro bloque no tiene ningún dato: queda en null (se muestra como "-"), sin sumar nada.
  * - Sin ninguna marcación de mediodía (solo entrada de la mañana y salida de la tarde, ej. 08:00 a
  *   17:00): no se sabe cuánto corresponde a mañana y cuánto a tarde, así que no se reparte — Mañana
  *   y Tarde quedan en null y el total (recortando esos dos extremos contra la jornada completa,
  *   menos 1 hora de almuerzo) va solo en Extras.
  */
-export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia) {
+export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia): ResultadoHoras {
   const { entrada_manana, salida_manana, entrada_tarde, salida_tarde } = fila;
   const tieneManana = !!(entrada_manana && salida_manana);
   const tieneTarde = !!(entrada_tarde && salida_tarde);
@@ -81,25 +109,31 @@ export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia)
   const algoTarde = !!(entrada_tarde || salida_tarde);
 
   if (tieneManana || tieneTarde) {
-    let manana: number | null;
+    let manana: number | null = null;
+    let mananaAsumida = false;
     if (tieneManana) {
       manana = horasRecortadas(entrada_manana!, salida_manana!, jornada.jornada_inicio_manana, jornada.jornada_fin_manana);
     } else if (tieneTarde && algoManana) {
       manana = duracionJornada(jornada.jornada_inicio_manana, jornada.jornada_fin_manana);
-    } else {
-      manana = null;
+      mananaAsumida = true;
     }
 
-    let tarde: number | null;
+    let tarde: number | null = null;
+    let tardeAsumida = false;
     if (tieneTarde) {
       tarde = horasRecortadas(entrada_tarde!, salida_tarde!, jornada.jornada_inicio_tarde, jornada.jornada_fin_tarde);
     } else if (tieneManana && algoTarde) {
       tarde = duracionJornada(jornada.jornada_inicio_tarde, jornada.jornada_fin_tarde);
-    } else {
-      tarde = null;
+      tardeAsumida = true;
     }
 
-    return { horas_manana: manana, horas_tarde: tarde, horas_extra: redondear2((manana ?? 0) + (tarde ?? 0)) };
+    return {
+      horas_manana: manana,
+      horas_tarde: tarde,
+      horas_extra: redondear2((manana ?? 0) + (tarde ?? 0)),
+      manana_asumida: mananaAsumida,
+      tarde_asumida: tardeAsumida,
+    };
   }
 
   if (entrada_manana && salida_tarde) {
@@ -108,10 +142,10 @@ export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia)
     // Se descuenta 1 hora de almuerzo (nadie marcó al mediodía, pero igual sale a almorzar).
     // No se sabe cuánto de eso es mañana y cuánto es tarde, así que el total va directo a Extras.
     const total = redondear2(Math.max(0, (finEfectivo - inicioEfectivo) / 60 - 1));
-    return { horas_manana: null, horas_tarde: null, horas_extra: total };
+    return { horas_manana: null, horas_tarde: null, horas_extra: total, manana_asumida: false, tarde_asumida: false };
   }
 
-  return { horas_manana: null, horas_tarde: null, horas_extra: 0 };
+  return { horas_manana: null, horas_tarde: null, horas_extra: 0, manana_asumida: false, tarde_asumida: false };
 }
 
 export function sumarHorasExtra(filas: Array<{ horas_extra?: number | null }>): number {

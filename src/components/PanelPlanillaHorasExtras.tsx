@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
-import { calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra } from '../lib/horasExtras';
+import { calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
 import { abrirBlob, descargarBlob, generarReportePlanillaHorasExtras, type FilaPlanillaReporte } from '../lib/pdf';
 
 const DIRECCION_DEFAULT = 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO GADMFO';
@@ -17,6 +17,15 @@ function timestampArchivo(): string {
 function formatFechaCorta(fechaIso: string): string {
   const d = new Date(`${fechaIso}T12:00:00`);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+/** Al terminar de escribir una hora (type="time" solo entrega .value cuando está completa), salta
+ * el cursor al siguiente campo de hora del formulario, en el orden en que aparecen en pantalla. */
+function enfocarSiguienteHora(e: ChangeEvent<HTMLInputElement>) {
+  if (!e.target.value) return;
+  const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="time"]'));
+  const idx = inputs.indexOf(e.target);
+  if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
 }
 
 interface FilaEdit {
@@ -455,6 +464,8 @@ function EditorPlanilla({
   // Mañana/Tarde/Extras se calculan solas en cuanto el operador escribe Entrada/Sale (nunca antes:
   // una fila nueva empieza en blanco, sin horario ni horas de ejemplo — ver nuevaFila). Si edita
   // Mañana/Tarde/Extras directamente en vez de tocar el horario, ese valor a mano se respeta.
+  // Si el cálculo resulta en un bloque "asumido" (falta una marcación, ver horasExtras.ts), no se
+  // aplica solo — se deja pendiente para que el operador lo confirme con el botón "Calcular igual".
   function actualizarFila(id: string, cambios: Partial<FilaEdit>) {
     setFilas((prev) =>
       prev.map((f) => {
@@ -463,8 +474,14 @@ function EditorPlanilla({
         const horarioCambio =
           'entrada_manana' in cambios || 'salida_manana' in cambios || 'entrada_tarde' in cambios || 'salida_tarde' in cambios;
         if (horarioCambio) {
-          const horas = calcularHorasFila(actualizada, jornada);
-          return { ...actualizada, ...horas };
+          const r = calcularHorasFila(actualizada, jornada);
+          const pendiente = r.manana_asumida || r.tarde_asumida;
+          return {
+            ...actualizada,
+            horas_manana: r.manana_asumida ? null : r.horas_manana,
+            horas_tarde: r.tarde_asumida ? null : r.horas_tarde,
+            horas_extra: pendiente ? null : r.horas_extra,
+          };
         }
         return actualizada;
       }),
@@ -475,11 +492,29 @@ function EditorPlanilla({
     setFilas((prev) => prev.filter((f) => f.id !== id));
   }
 
+  /** Aplica el cálculo completo de una fila aunque incluya un bloque "asumido" — el operador lo pidió
+   * a propósito con el botón "Calcular igual" de esa fila. */
+  function calcularIgual(id: string) {
+    setFilas((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const r = calcularHorasFila(f, jornada);
+        return { ...f, horas_manana: r.horas_manana, horas_tarde: r.horas_tarde, horas_extra: r.horas_extra };
+      }),
+    );
+  }
+
   // Vuelve a calcular Mañana/Tarde/Extras de todas las filas con la jornada y las reglas actuales
   // — útil para filas ya guardadas antes de un ajuste en la lógica de cálculo (quedan con el valor
-  // viejo hasta que se recalculan a mano).
+  // viejo hasta que se recalculan a mano). A diferencia del cálculo automático al editar una fila,
+  // este botón sí aplica de una los bloques "asumidos", porque tocarlo ya es la confirmación.
   function recalcularTodas() {
-    setFilas((prev) => prev.map((f) => ({ ...f, ...calcularHorasFila(f, jornada) })));
+    setFilas((prev) =>
+      prev.map((f) => {
+        const r = calcularHorasFila(f, jornada);
+        return { ...f, horas_manana: r.horas_manana, horas_tarde: r.horas_tarde, horas_extra: r.horas_extra };
+      }),
+    );
   }
 
   const totalHorasExtra = useMemo(() => sumarHorasExtra(filas), [filas]);
@@ -495,6 +530,11 @@ function EditorPlanilla({
     }
     if (!fechaDesde || !fechaHasta) {
       setMensaje('Completa el período (Desde/Hasta).');
+      return;
+    }
+    const filaInvalida = filas.map((f) => ({ f, error: validarOrdenHorario(f) })).find((r) => r.error);
+    if (filaInvalida) {
+      setMensaje(`Revisa el horario del ${formatFechaCorta(filaInvalida.f.fecha)}: ${filaInvalida.error}`);
       return;
     }
     setGuardando(true);
@@ -594,6 +634,11 @@ function EditorPlanilla({
   async function generarPdf() {
     if (!nombreTrabajador.trim()) {
       setMensaje('Elige un operador o escribe el nombre del trabajador antes de generar el PDF.');
+      return;
+    }
+    const filaInvalida = filas.map((f) => ({ f, error: validarOrdenHorario(f) })).find((r) => r.error);
+    if (filaInvalida) {
+      setMensaje(`Revisa el horario del ${formatFechaCorta(filaInvalida.f.fecha)}: ${filaInvalida.error}`);
       return;
     }
     setGenerandoPdf(true);
@@ -730,19 +775,51 @@ function EditorPlanilla({
         <div className="grid grid-cols-4 gap-2">
           <div>
             <label className="etiqueta">Entrada</label>
-            <input type="time" lang="en-GB" className="campo" value={jornadaInicioManana} onChange={(e) => setJornadaInicioManana(e.target.value)} />
+            <input
+              type="time" lang="en-GB"
+              className="campo"
+              value={jornadaInicioManana}
+              onChange={(e) => {
+                setJornadaInicioManana(e.target.value);
+                enfocarSiguienteHora(e);
+              }}
+            />
           </div>
           <div>
             <label className="etiqueta">Sale</label>
-            <input type="time" lang="en-GB" className="campo" value={jornadaFinManana} onChange={(e) => setJornadaFinManana(e.target.value)} />
+            <input
+              type="time" lang="en-GB"
+              className="campo"
+              value={jornadaFinManana}
+              onChange={(e) => {
+                setJornadaFinManana(e.target.value);
+                enfocarSiguienteHora(e);
+              }}
+            />
           </div>
           <div>
             <label className="etiqueta">Entrada</label>
-            <input type="time" lang="en-GB" className="campo" value={jornadaInicioTarde} onChange={(e) => setJornadaInicioTarde(e.target.value)} />
+            <input
+              type="time" lang="en-GB"
+              className="campo"
+              value={jornadaInicioTarde}
+              onChange={(e) => {
+                setJornadaInicioTarde(e.target.value);
+                enfocarSiguienteHora(e);
+              }}
+            />
           </div>
           <div>
             <label className="etiqueta">Sale</label>
-            <input type="time" lang="en-GB" className="campo" value={jornadaFinTarde} onChange={(e) => setJornadaFinTarde(e.target.value)} />
+            <input
+              type="time" lang="en-GB"
+              className="campo"
+              value={jornadaFinTarde}
+              onChange={(e) => {
+                setJornadaFinTarde(e.target.value);
+                enfocarSiguienteHora(e);
+              }}
+            />
           </div>
         </div>
       </div>
@@ -810,92 +887,137 @@ function EditorPlanilla({
               </tr>
             </thead>
             <tbody>
-              {filas.map((f) => (
-                <tr key={f.id} className="border-t border-panel-600/30">
-                  <td className="p-1">
-                    <input
-                      type="date"
-                      className="campo text-xs py-1"
-                      value={f.fecha}
-                      onChange={(e) => actualizarFila(f.id, { fecha: e.target.value })}
-                    />
-                  </td>
-                  <td className="p-1">
-                    <input
-                      type="text"
-                      className="campo text-xs py-1"
-                      value={f.descripcion_actividades}
-                      onChange={(e) => actualizarFila(f.id, { descripcion_actividades: e.target.value })}
-                    />
-                  </td>
-                  <td className="p-1">
-                    <input
-                      type="text"
-                      className="campo text-xs py-1"
-                      value={f.numero_memorando}
-                      onChange={(e) => actualizarFila(f.id, { numero_memorando: e.target.value })}
-                    />
-                  </td>
-                  <td className="p-1">
-                    <input
-                      type="time" lang="en-GB"
-                      className="campo text-xs py-1"
-                      value={f.entrada_manana}
-                      onChange={(e) => actualizarFila(f.id, { entrada_manana: e.target.value })}
-                    />
-                  </td>
-                  <td className="p-1">
-                    <input
-                      type="time" lang="en-GB"
-                      className="campo text-xs py-1"
-                      value={f.salida_manana}
-                      onChange={(e) => actualizarFila(f.id, { salida_manana: e.target.value })}
-                    />
-                  </td>
-                  <td className="p-1">
-                    <input
-                      type="time" lang="en-GB"
-                      className="campo text-xs py-1"
-                      value={f.entrada_tarde}
-                      onChange={(e) => actualizarFila(f.id, { entrada_tarde: e.target.value })}
-                    />
-                  </td>
-                  <td className="p-1">
-                    <input
-                      type="time" lang="en-GB"
-                      className="campo text-xs py-1"
-                      value={f.salida_tarde}
-                      onChange={(e) => actualizarFila(f.id, { salida_tarde: e.target.value })}
-                    />
-                  </td>
-                  <td className="p-1">
-                    <InputHoras
-                      valor={f.horas_manana}
-                      onCommit={(n) => actualizarFila(f.id, { horas_manana: n })}
-                      className="campo text-xs py-1"
-                    />
-                  </td>
-                  <td className="p-1">
-                    <InputHoras
-                      valor={f.horas_tarde}
-                      onCommit={(n) => actualizarFila(f.id, { horas_tarde: n })}
-                      className="campo text-xs py-1"
-                    />
-                  </td>
-                  <td className="p-1">
-                    <InputHoras
-                      valor={f.horas_extra}
-                      onCommit={(n) => actualizarFila(f.id, { horas_extra: n })}
-                      className="campo text-xs py-1 font-semibold"
-                    />
-                  </td>
-                  <td className="p-1">
-                    <button onClick={() => quitarFila(f.id)} className="text-gauge-danger text-xs px-1">
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {filas.map((f) => {
+                const tieneManana = !!(f.entrada_manana && f.salida_manana);
+                const tieneTarde = !!(f.entrada_tarde && f.salida_tarde);
+                const algoManana = !!(f.entrada_manana || f.salida_manana);
+                const algoTarde = !!(f.entrada_tarde || f.salida_tarde);
+                const pendienteManana = !tieneManana && algoManana && tieneTarde && f.horas_manana === null;
+                const pendienteTarde = !tieneTarde && algoTarde && tieneManana && f.horas_tarde === null;
+                const pendiente = pendienteManana || pendienteTarde;
+
+                const errorManana = tieneManana && f.salida_manana <= f.entrada_manana;
+                const errorTarde = tieneTarde && f.salida_tarde <= f.entrada_tarde;
+                const errorCruce = !!(f.salida_manana && f.entrada_tarde && f.entrada_tarde < f.salida_manana);
+                const ordenError = errorManana || errorTarde || errorCruce;
+
+                const clase = (error: boolean, falta: boolean) =>
+                  error
+                    ? 'campo text-xs py-1 border-gauge-danger'
+                    : falta
+                    ? 'campo text-xs py-1 border-gauge-warn bg-gauge-warn/10'
+                    : 'campo text-xs py-1';
+
+                return (
+                  <tr key={f.id} className="border-t border-panel-600/30">
+                    <td className="p-1">
+                      <input
+                        type="date"
+                        className="campo text-xs py-1"
+                        value={f.fecha}
+                        onChange={(e) => actualizarFila(f.id, { fecha: e.target.value })}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="text"
+                        className="campo text-xs py-1"
+                        value={f.descripcion_actividades}
+                        onChange={(e) => actualizarFila(f.id, { descripcion_actividades: e.target.value })}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="text"
+                        className="campo text-xs py-1"
+                        value={f.numero_memorando}
+                        onChange={(e) => actualizarFila(f.id, { numero_memorando: e.target.value })}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="time" lang="en-GB"
+                        className={clase(errorManana, false)}
+                        value={f.entrada_manana}
+                        onChange={(e) => {
+                          actualizarFila(f.id, { entrada_manana: e.target.value });
+                          enfocarSiguienteHora(e);
+                        }}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="time" lang="en-GB"
+                        className={clase(errorManana || errorCruce, pendienteManana && !f.salida_manana)}
+                        value={f.salida_manana}
+                        onChange={(e) => {
+                          actualizarFila(f.id, { salida_manana: e.target.value });
+                          enfocarSiguienteHora(e);
+                        }}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="time" lang="en-GB"
+                        className={clase(errorTarde || errorCruce, pendienteTarde && !f.entrada_tarde)}
+                        value={f.entrada_tarde}
+                        onChange={(e) => {
+                          actualizarFila(f.id, { entrada_tarde: e.target.value });
+                          enfocarSiguienteHora(e);
+                        }}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="time" lang="en-GB"
+                        className={clase(errorTarde, pendienteTarde && !f.salida_tarde)}
+                        value={f.salida_tarde}
+                        onChange={(e) => {
+                          actualizarFila(f.id, { salida_tarde: e.target.value });
+                          enfocarSiguienteHora(e);
+                        }}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <InputHoras
+                        valor={f.horas_manana}
+                        onCommit={(n) => actualizarFila(f.id, { horas_manana: n })}
+                        className="campo text-xs py-1"
+                      />
+                    </td>
+                    <td className="p-1">
+                      <InputHoras
+                        valor={f.horas_tarde}
+                        onCommit={(n) => actualizarFila(f.id, { horas_tarde: n })}
+                        className="campo text-xs py-1"
+                      />
+                    </td>
+                    <td className="p-1">
+                      {pendiente ? (
+                        <button
+                          type="button"
+                          onClick={() => calcularIgual(f.id)}
+                          title="Falta una marcación de mediodía — al aceptar se asume la jornada normal completa para ese bloque."
+                          className="w-full rounded-lg border border-gauge-warn text-gauge-warn text-[10px] leading-tight font-semibold px-1 py-1.5 hover:bg-gauge-warn/10"
+                        >
+                          ⚠ Calcular igual
+                        </button>
+                      ) : (
+                        <InputHoras
+                          valor={f.horas_extra}
+                          onCommit={(n) => actualizarFila(f.id, { horas_extra: n })}
+                          className={`campo text-xs py-1 font-semibold ${ordenError ? 'text-gauge-danger border-gauge-danger' : ''}`}
+                        />
+                      )}
+                    </td>
+                    <td className="p-1">
+                      <button onClick={() => quitarFila(f.id)} className="text-gauge-danger text-xs px-1">
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
