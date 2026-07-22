@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
+import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
 import { calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra } from '../lib/horasExtras';
-import { descargarBlob, generarReportePlanillaHorasExtras, type FilaPlanillaReporte } from '../lib/pdf';
+import { abrirBlob, descargarBlob, generarReportePlanillaHorasExtras, type FilaPlanillaReporte } from '../lib/pdf';
 
 const DIRECCION_DEFAULT = 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO GADMFO';
-const REVISADO_NOMBRE_DEFAULT = 'Ing. Adriana Alejandra Bazurto Bermejo';
-const REVISADO_CARGO_DEFAULT = 'ANALISTA DE REDES DE ALCANTARILLADO Y ESTACIONES DE BOMBEO DE AGUAS RESIDUALES';
-const APROBADO_NOMBRE_DEFAULT = 'Ing. Freddy W. Vásconez A.';
-const APROBADO_CARGO_DEFAULT = 'JEFE DE SERVICIOS DE ALCANTARILLADO';
 
 const MANUAL = 'manual';
 
@@ -33,9 +29,9 @@ interface FilaEdit {
   salida_manana: string;
   entrada_tarde: string;
   salida_tarde: string;
-  horas_manana: number;
-  horas_tarde: number;
-  horas_extra: number;
+  horas_manana: number | null;
+  horas_tarde: number | null;
+  horas_extra: number | null;
 }
 
 function filaDesdeDb(f: FilaPlanillaHorasExtras): FilaEdit {
@@ -49,8 +45,8 @@ function filaDesdeDb(f: FilaPlanillaHorasExtras): FilaEdit {
     salida_manana: f.salida_manana ?? '',
     entrada_tarde: f.entrada_tarde ?? '',
     salida_tarde: f.salida_tarde ?? '',
-    horas_manana: f.horas_manana ?? 0,
-    horas_tarde: f.horas_tarde ?? 0,
+    horas_manana: f.horas_manana ?? null,
+    horas_tarde: f.horas_tarde ?? null,
     horas_extra: f.horas_extra ?? 0,
   };
 }
@@ -58,8 +54,16 @@ function filaDesdeDb(f: FilaPlanillaHorasExtras): FilaEdit {
 /** Campo de horas en formato "HH:MM" (como el total del PDF) en vez de decimal: mantiene su
  * propio texto mientras se escribe y solo lo convierte a número al salir del campo, para no
  * reformatear a mitad de la escritura; si el valor cambia por fuera (recalcular, editar horario),
- * se resincroniza. */
-function InputHoras({ valor, onCommit, className }: { valor: number; onCommit: (n: number) => void; className?: string }) {
+ * se resincroniza. null (sin dato para ese bloque, ver horasExtras.ts) se muestra y se escribe como "-". */
+function InputHoras({
+  valor,
+  onCommit,
+  className,
+}: {
+  valor: number | null;
+  onCommit: (n: number | null) => void;
+  className?: string;
+}) {
   const [texto, setTexto] = useState(formatHoras(valor));
   useEffect(() => setTexto(formatHoras(valor)), [valor]);
   return (
@@ -85,15 +89,17 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
   const [cargando, setCargando] = useState(false);
   const [planillas, setPlanillas] = useState<PlanillaHorasExtras[]>([]);
   const [editando, setEditando] = useState<PlanillaHorasExtras | 'nueva' | null>(null);
+  const [configuracion, setConfiguracion] = useState<ConfiguracionPlanillaHorasExtras | null>(null);
+  const [editandoFirmantes, setEditandoFirmantes] = useState(false);
 
   async function cargarPlanillas() {
     setCargando(true);
-    const { data } = await supabase
-      .from('planillas_horas_extras')
-      .select('*')
-      .order('fecha_desde', { ascending: false })
-      .limit(50);
+    const [{ data }, { data: config }] = await Promise.all([
+      supabase.from('planillas_horas_extras').select('*').order('fecha_desde', { ascending: false }).limit(50),
+      supabase.from('configuracion_planilla_horas_extras').select('*').eq('id', true).single(),
+    ]);
     setPlanillas((data as PlanillaHorasExtras[]) ?? []);
+    if (config) setConfiguracion(config as ConfiguracionPlanillaHorasExtras);
     setCargando(false);
   }
 
@@ -138,50 +144,76 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
-              {editando ? (
-                <EditorPlanilla
-                  planilla={editando === 'nueva' ? null : editando}
-                  operadores={operadores}
-                  usuarioId={usuarioId}
-                  onCerrar={() => setEditando(null)}
-                  onGuardado={async () => {
-                    setEditando(null);
-                    await cargarPlanillas();
-                  }}
-                />
-              ) : (
-                <div className="space-y-3">
-                  <button onClick={() => setEditando('nueva')} className="boton-primario w-full">
-                    + Nueva planilla
-                  </button>
-                  {cargando ? (
-                    <p className="text-sm text-slate-600">Cargando…</p>
-                  ) : planillas.length === 0 ? (
-                    <p className="text-sm text-slate-600">Todavía no hay planillas guardadas.</p>
+              <div className="max-w-2xl mx-auto">
+                {editando ? (
+                  configuracion ? (
+                    <EditorPlanilla
+                      planilla={editando === 'nueva' ? null : editando}
+                      operadores={operadores}
+                      usuarioId={usuarioId}
+                      configuracion={configuracion}
+                      onCerrar={() => setEditando(null)}
+                      onGuardado={async () => {
+                        setEditando(null);
+                        await cargarPlanillas();
+                      }}
+                    />
                   ) : (
-                    <div className="space-y-2">
-                      {planillas.map((p) => (
-                        <div key={p.id} className="border border-panel-600/40 rounded-lg p-3 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-slate-900 truncate">{p.nombre_trabajador}</p>
-                            <p className="text-xs text-slate-600">
-                              {formatFechaCorta(p.fecha_desde)} al {formatFechaCorta(p.fecha_hasta)} · {p.area || 'Sin área'}
-                            </p>
+                    <p className="text-sm text-slate-600">Cargando…</p>
+                  )
+                ) : (
+                  <div className="space-y-3">
+                    <button onClick={() => setEditando('nueva')} className="boton-primario w-full">
+                      + Nueva planilla
+                    </button>
+                    {cargando ? (
+                      <p className="text-sm text-slate-600">Cargando…</p>
+                    ) : planillas.length === 0 ? (
+                      <p className="text-sm text-slate-600">Todavía no hay planillas guardadas.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {planillas.map((p) => (
+                          <div key={p.id} className="border border-panel-600/40 rounded-lg p-3 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-900 truncate">{p.nombre_trabajador}</p>
+                              <p className="text-xs text-slate-600">
+                                {formatFechaCorta(p.fecha_desde)} al {formatFechaCorta(p.fecha_hasta)} · {p.area || 'Sin área'}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button onClick={() => setEditando(p)} className="text-xs text-gauge-ok hover:underline">
+                                Abrir
+                              </button>
+                              <button onClick={() => eliminar(p.id)} className="text-xs text-gauge-danger hover:underline">
+                                Eliminar
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button onClick={() => setEditando(p)} className="text-xs text-gauge-ok hover:underline">
-                              Abrir
-                            </button>
-                            <button onClick={() => eliminar(p.id)} className="text-xs text-gauge-danger hover:underline">
-                              Eliminar
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="border-t border-panel-600/40 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditandoFirmantes((v) => !v)}
+                        className="text-xs text-gauge-ok hover:underline"
+                      >
+                        ⚙️ Firmantes por defecto (Revisado por / Aprobado por)
+                      </button>
+                      {editandoFirmantes && configuracion && (
+                        <EditorFirmantesDefault
+                          configuracion={configuracion}
+                          onGuardado={(c) => {
+                            setConfiguracion(c);
+                            setEditandoFirmantes(false);
+                          }}
+                        />
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </>
@@ -190,16 +222,75 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
   );
 }
 
+/** Edita la fila única de configuracion_planilla_horas_extras: el cambio aplica a todas las
+ * planillas nuevas que se generen de ahí en adelante (las ya guardadas no se tocan). */
+function EditorFirmantesDefault({
+  configuracion,
+  onGuardado,
+}: {
+  configuracion: ConfiguracionPlanillaHorasExtras;
+  onGuardado: (c: ConfiguracionPlanillaHorasExtras) => void;
+}) {
+  const [revisadoNombre, setRevisadoNombre] = useState(configuracion.revisado_nombre);
+  const [revisadoCargo, setRevisadoCargo] = useState(configuracion.revisado_cargo);
+  const [aprobadoNombre, setAprobadoNombre] = useState(configuracion.aprobado_nombre);
+  const [aprobadoCargo, setAprobadoCargo] = useState(configuracion.aprobado_cargo);
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+
+  async function guardar() {
+    setGuardando(true);
+    setMensaje(null);
+    const payload = {
+      revisado_nombre: revisadoNombre.trim(),
+      revisado_cargo: revisadoCargo.trim(),
+      aprobado_nombre: aprobadoNombre.trim(),
+      aprobado_cargo: aprobadoCargo.trim(),
+    };
+    const { error } = await supabase.from('configuracion_planilla_horas_extras').update(payload).eq('id', true);
+    setGuardando(false);
+    if (error) {
+      setMensaje(`No se pudo guardar: ${error.message}`);
+      return;
+    }
+    onGuardado(payload);
+  }
+
+  return (
+    <div className="mt-2 border border-panel-600/40 rounded-lg p-3 space-y-3">
+      <p className="text-[11px] text-slate-500">
+        Se usan como firmantes de toda planilla nueva que se genere de aquí en adelante.
+      </p>
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-slate-700">Revisado por</p>
+        <input type="text" className="campo text-xs" placeholder="Nombre" value={revisadoNombre} onChange={(e) => setRevisadoNombre(e.target.value)} />
+        <input type="text" className="campo text-xs" placeholder="Cargo" value={revisadoCargo} onChange={(e) => setRevisadoCargo(e.target.value)} />
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-slate-700">Aprobado por</p>
+        <input type="text" className="campo text-xs" placeholder="Nombre" value={aprobadoNombre} onChange={(e) => setAprobadoNombre(e.target.value)} />
+        <input type="text" className="campo text-xs" placeholder="Cargo" value={aprobadoCargo} onChange={(e) => setAprobadoCargo(e.target.value)} />
+      </div>
+      {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
+      <button onClick={guardar} disabled={guardando} className="boton-primario w-full text-sm">
+        {guardando ? 'Guardando…' : 'Guardar firmantes por defecto'}
+      </button>
+    </div>
+  );
+}
+
 function EditorPlanilla({
   planilla,
   operadores,
   usuarioId,
+  configuracion,
   onCerrar,
   onGuardado,
 }: {
   planilla: PlanillaHorasExtras | null;
   operadores: Usuario[];
   usuarioId: string;
+  configuracion: ConfiguracionPlanillaHorasExtras;
   onCerrar: () => void;
   onGuardado: () => Promise<void>;
 }) {
@@ -218,15 +309,17 @@ function EditorPlanilla({
   const [jornadaFinTarde, setJornadaFinTarde] = useState(planilla?.jornada_fin_tarde ?? '17:00');
 
   const [editarRevisado, setEditarRevisado] = useState(
-    !!planilla && (planilla.revisado_nombre !== REVISADO_NOMBRE_DEFAULT || planilla.revisado_cargo !== REVISADO_CARGO_DEFAULT),
+    !!planilla &&
+      (planilla.revisado_nombre !== configuracion.revisado_nombre || planilla.revisado_cargo !== configuracion.revisado_cargo),
   );
-  const [revisadoNombre, setRevisadoNombre] = useState(planilla?.revisado_nombre ?? REVISADO_NOMBRE_DEFAULT);
-  const [revisadoCargo, setRevisadoCargo] = useState(planilla?.revisado_cargo ?? REVISADO_CARGO_DEFAULT);
+  const [revisadoNombre, setRevisadoNombre] = useState(planilla?.revisado_nombre ?? configuracion.revisado_nombre);
+  const [revisadoCargo, setRevisadoCargo] = useState(planilla?.revisado_cargo ?? configuracion.revisado_cargo);
   const [editarAprobado, setEditarAprobado] = useState(
-    !!planilla && (planilla.aprobado_nombre !== APROBADO_NOMBRE_DEFAULT || planilla.aprobado_cargo !== APROBADO_CARGO_DEFAULT),
+    !!planilla &&
+      (planilla.aprobado_nombre !== configuracion.aprobado_nombre || planilla.aprobado_cargo !== configuracion.aprobado_cargo),
   );
-  const [aprobadoNombre, setAprobadoNombre] = useState(planilla?.aprobado_nombre ?? APROBADO_NOMBRE_DEFAULT);
-  const [aprobadoCargo, setAprobadoCargo] = useState(planilla?.aprobado_cargo ?? APROBADO_CARGO_DEFAULT);
+  const [aprobadoNombre, setAprobadoNombre] = useState(planilla?.aprobado_nombre ?? configuracion.aprobado_nombre);
+  const [aprobadoCargo, setAprobadoCargo] = useState(planilla?.aprobado_cargo ?? configuracion.aprobado_cargo);
 
   const [descripcionDefault, setDescripcionDefault] = useState('');
   const [memorandoDefault, setMemorandoDefault] = useState('');
@@ -237,6 +330,9 @@ function EditorPlanilla({
   const [generandoPdf, setGenerandoPdf] = useState(false);
   const [trayendoDias, setTrayendoDias] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [pdfNombre, setPdfNombre] = useState('');
+  const [compartiendo, setCompartiendo] = useState(false);
 
   const jornada = useMemo(
     () => ({
@@ -418,10 +514,10 @@ function EditorPlanilla({
         jornada_fin_manana: jornadaFinManana,
         jornada_inicio_tarde: jornadaInicioTarde,
         jornada_fin_tarde: jornadaFinTarde,
-        revisado_nombre: editarRevisado ? revisadoNombre.trim() : REVISADO_NOMBRE_DEFAULT,
-        revisado_cargo: editarRevisado ? revisadoCargo.trim() : REVISADO_CARGO_DEFAULT,
-        aprobado_nombre: editarAprobado ? aprobadoNombre.trim() : APROBADO_NOMBRE_DEFAULT,
-        aprobado_cargo: editarAprobado ? aprobadoCargo.trim() : APROBADO_CARGO_DEFAULT,
+        revisado_nombre: editarRevisado ? revisadoNombre.trim() : configuracion.revisado_nombre,
+        revisado_cargo: editarRevisado ? revisadoCargo.trim() : configuracion.revisado_cargo,
+        aprobado_nombre: editarAprobado ? aprobadoNombre.trim() : configuracion.aprobado_nombre,
+        aprobado_cargo: editarAprobado ? aprobadoCargo.trim() : configuracion.aprobado_cargo,
       };
 
       let planillaId = planilla?.id;
@@ -525,20 +621,45 @@ function EditorPlanilla({
           fechaPresentacion: fechaPresentacion || null,
           fechaDesde,
           fechaHasta,
-          revisadoNombre: editarRevisado ? revisadoNombre.trim() : REVISADO_NOMBRE_DEFAULT,
-          revisadoCargo: editarRevisado ? revisadoCargo.trim() : REVISADO_CARGO_DEFAULT,
-          aprobadoNombre: editarAprobado ? aprobadoNombre.trim() : APROBADO_NOMBRE_DEFAULT,
-          aprobadoCargo: editarAprobado ? aprobadoCargo.trim() : APROBADO_CARGO_DEFAULT,
+          revisadoNombre: editarRevisado ? revisadoNombre.trim() : configuracion.revisado_nombre,
+          revisadoCargo: editarRevisado ? revisadoCargo.trim() : configuracion.revisado_cargo,
+          aprobadoNombre: editarAprobado ? aprobadoNombre.trim() : configuracion.aprobado_nombre,
+          aprobadoCargo: editarAprobado ? aprobadoCargo.trim() : configuracion.aprobado_cargo,
         },
         filasReporte,
         formatHoras(totalHorasExtra),
       );
       const slug = nombreTrabajador.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-      descargarBlob(blob, `planilla_horas_extras_${slug}_${timestampArchivo()}.pdf`);
+      const nombreArchivo = `planilla_horas_extras_${slug}_${timestampArchivo()}.pdf`;
+      setPdfBlob(blob);
+      setPdfNombre(nombreArchivo);
+      descargarBlob(blob, nombreArchivo);
+      abrirBlob(blob);
     } catch (err: any) {
       setMensaje(`No se pudo generar el PDF: ${err.message ?? err}`);
     } finally {
       setGenerandoPdf(false);
+    }
+  }
+
+  // Mismo mecanismo que "Descargar y compartir" en Reportes y en Calendario de turnos: comparte
+  // el PDF con el selector nativo del celular (el usuario elige WhatsApp ahí).
+  async function compartirPorWhatsApp() {
+    if (!pdfBlob) return;
+    setCompartiendo(true);
+    setMensaje(null);
+    try {
+      const archivo = new File([pdfBlob], pdfNombre, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({ files: [archivo], title: 'Planilla de horas extras', text: nombreTrabajador.trim() });
+      } else {
+        descargarBlob(pdfBlob, pdfNombre);
+        setMensaje('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente por WhatsApp.');
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') setMensaje(`No se pudo compartir: ${err.message ?? err}`);
+    } finally {
+      setCompartiendo(false);
     }
   }
 
@@ -609,19 +730,19 @@ function EditorPlanilla({
         <div className="grid grid-cols-4 gap-2">
           <div>
             <label className="etiqueta">Entrada</label>
-            <input type="time" className="campo" value={jornadaInicioManana} onChange={(e) => setJornadaInicioManana(e.target.value)} />
+            <input type="time" lang="en-GB" className="campo" value={jornadaInicioManana} onChange={(e) => setJornadaInicioManana(e.target.value)} />
           </div>
           <div>
             <label className="etiqueta">Sale</label>
-            <input type="time" className="campo" value={jornadaFinManana} onChange={(e) => setJornadaFinManana(e.target.value)} />
+            <input type="time" lang="en-GB" className="campo" value={jornadaFinManana} onChange={(e) => setJornadaFinManana(e.target.value)} />
           </div>
           <div>
             <label className="etiqueta">Entrada</label>
-            <input type="time" className="campo" value={jornadaInicioTarde} onChange={(e) => setJornadaInicioTarde(e.target.value)} />
+            <input type="time" lang="en-GB" className="campo" value={jornadaInicioTarde} onChange={(e) => setJornadaInicioTarde(e.target.value)} />
           </div>
           <div>
             <label className="etiqueta">Sale</label>
-            <input type="time" className="campo" value={jornadaFinTarde} onChange={(e) => setJornadaFinTarde(e.target.value)} />
+            <input type="time" lang="en-GB" className="campo" value={jornadaFinTarde} onChange={(e) => setJornadaFinTarde(e.target.value)} />
           </div>
         </div>
       </div>
@@ -716,7 +837,7 @@ function EditorPlanilla({
                   </td>
                   <td className="p-1">
                     <input
-                      type="time"
+                      type="time" lang="en-GB"
                       className="campo text-xs py-1"
                       value={f.entrada_manana}
                       onChange={(e) => actualizarFila(f.id, { entrada_manana: e.target.value })}
@@ -724,7 +845,7 @@ function EditorPlanilla({
                   </td>
                   <td className="p-1">
                     <input
-                      type="time"
+                      type="time" lang="en-GB"
                       className="campo text-xs py-1"
                       value={f.salida_manana}
                       onChange={(e) => actualizarFila(f.id, { salida_manana: e.target.value })}
@@ -732,7 +853,7 @@ function EditorPlanilla({
                   </td>
                   <td className="p-1">
                     <input
-                      type="time"
+                      type="time" lang="en-GB"
                       className="campo text-xs py-1"
                       value={f.entrada_tarde}
                       onChange={(e) => actualizarFila(f.id, { entrada_tarde: e.target.value })}
@@ -740,7 +861,7 @@ function EditorPlanilla({
                   </td>
                   <td className="p-1">
                     <input
-                      type="time"
+                      type="time" lang="en-GB"
                       className="campo text-xs py-1"
                       value={f.salida_tarde}
                       onChange={(e) => actualizarFila(f.id, { salida_tarde: e.target.value })}
@@ -796,9 +917,9 @@ function EditorPlanilla({
             </>
           ) : (
             <p className="text-xs text-slate-600">
-              {REVISADO_NOMBRE_DEFAULT}
+              {configuracion.revisado_nombre}
               <br />
-              {REVISADO_CARGO_DEFAULT}
+              {configuracion.revisado_cargo}
             </p>
           )}
         </div>
@@ -816,13 +937,19 @@ function EditorPlanilla({
             </>
           ) : (
             <p className="text-xs text-slate-600">
-              {APROBADO_NOMBRE_DEFAULT}
+              {configuracion.aprobado_nombre}
               <br />
-              {APROBADO_CARGO_DEFAULT}
+              {configuracion.aprobado_cargo}
             </p>
           )}
         </div>
       </div>
+
+      {pdfBlob && (
+        <button onClick={compartirPorWhatsApp} disabled={compartiendo} className="boton-primario w-full">
+          {compartiendo ? 'Abriendo…' : '📤 Compartir por WhatsApp'}
+        </button>
+      )}
 
       {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
 

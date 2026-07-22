@@ -31,9 +31,11 @@ function aMinutos(hora?: string | null): number | null {
   return h * 60 + m;
 }
 
-/** Horas decimales → "HH:MM" (permite pasar de 24, ej. 42.5 → "42:30", para el total del período). */
+/** Horas decimales → "HH:MM" (permite pasar de 24, ej. 42.5 → "42:30", para el total del período).
+ * null/undefined (bloque sin dato, no se sabe cuánto es) → "-", distinto de 0 (se sabe que fue cero). */
 export function formatHoras(horas?: number | null): string {
-  if (!horas || horas <= 0) return '00:00';
+  if (horas === null || horas === undefined) return '-';
+  if (horas <= 0) return '00:00';
   const totalMinutos = Math.round(horas * 60);
   const h = Math.floor(totalMinutos / 60);
   const m = totalMinutos % 60;
@@ -58,9 +60,11 @@ function horasRecortadas(entrada: string, salida: string, refInicio: string, ref
  * - Con marcación completa de un bloque (mañana y/o tarde): cada uno se recorta contra su propia
  *   jornada de referencia, sin importar si el otro bloque tiene datos o no.
  * - Sin ninguna marcación de mediodía (solo entrada de la mañana y salida de la tarde, ej. 08:00 a
- *   17:00): el total sale de recortar esos dos extremos contra la jornada completa, menos 1 hora de
- *   almuerzo. Mañana/Tarde se reparten solo para mostrar en la tabla, usando el corte de la jornada
- *   (jornada_fin_manana) como límite.
+ *   17:00): no se sabe cuánto corresponde a mañana y cuánto a tarde, así que no se reparte — Mañana
+ *   y Tarde quedan en null (se muestran como "-") y el total (recortando esos dos extremos contra la
+ *   jornada completa, menos 1 hora de almuerzo) va solo en Extras.
+ * Un bloque sin marcación propia (ej. solo hay tarde) también queda en null, no en 0: 0 significa
+ * "se sabe que fue cero", null significa "no hay dato para ese bloque".
  */
 export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia) {
   const { entrada_manana, salida_manana, entrada_tarde, salida_tarde } = fila;
@@ -70,36 +74,35 @@ export function calcularHorasFila(fila: HorarioFila, jornada: JornadaReferencia)
   if (tieneManana || tieneTarde) {
     const manana = tieneManana
       ? horasRecortadas(entrada_manana!, salida_manana!, jornada.jornada_inicio_manana, jornada.jornada_fin_manana)
-      : 0;
+      : null;
     const tarde = tieneTarde
       ? horasRecortadas(entrada_tarde!, salida_tarde!, jornada.jornada_inicio_tarde, jornada.jornada_fin_tarde)
-      : 0;
-    return { horas_manana: manana, horas_tarde: tarde, horas_extra: redondear2(manana + tarde) };
+      : null;
+    return { horas_manana: manana, horas_tarde: tarde, horas_extra: redondear2((manana ?? 0) + (tarde ?? 0)) };
   }
 
   if (entrada_manana && salida_tarde) {
     const inicioEfectivo = Math.max(aMinutos(entrada_manana)!, aMinutos(jornada.jornada_inicio_manana)!);
     const finEfectivo = Math.min(aMinutos(salida_tarde)!, aMinutos(jornada.jornada_fin_tarde)!);
-    const corte = aMinutos(jornada.jornada_fin_manana)!;
-    const mananaBruto = Math.max(0, Math.min(finEfectivo, corte) - inicioEfectivo) / 60;
-    const tardeBruto = Math.max(0, finEfectivo - Math.max(inicioEfectivo, corte)) / 60;
-    // Se descuenta 1 hora de almuerzo (nadie marcó al mediodía, pero igual sale a almorzar):
-    // se resta primero de la tarde y, si no alcanza, el resto de la mañana.
-    const tarde = redondear2(Math.max(0, tardeBruto - 1));
-    const manana = redondear2(Math.max(0, mananaBruto - Math.max(0, 1 - tardeBruto)));
-    return { horas_manana: manana, horas_tarde: tarde, horas_extra: redondear2(manana + tarde) };
+    // Se descuenta 1 hora de almuerzo (nadie marcó al mediodía, pero igual sale a almorzar).
+    // No se sabe cuánto de eso es mañana y cuánto es tarde, así que el total va directo a Extras.
+    const total = redondear2(Math.max(0, (finEfectivo - inicioEfectivo) / 60 - 1));
+    return { horas_manana: null, horas_tarde: null, horas_extra: total };
   }
 
-  return { horas_manana: 0, horas_tarde: 0, horas_extra: 0 };
+  return { horas_manana: null, horas_tarde: null, horas_extra: 0 };
 }
 
 export function sumarHorasExtra(filas: Array<{ horas_extra?: number | null }>): number {
   return filas.reduce((acc, f) => acc + (f.horas_extra ?? 0), 0);
 }
 
-/** Inverso de formatHoras: "HH:MM" (o solo "HH") → horas decimales. Texto inválido/vacío → 0. */
-export function parseHorasHHMM(texto: string): number {
-  const match = texto.trim().match(/^(\d{1,3}):?(\d{0,2})$/);
+/** Inverso de formatHoras: "HH:MM" (o solo "HH") → horas decimales. Vacío o "-" → null (sin dato,
+ * como lo muestra formatHoras). Cualquier otro texto inválido → 0. */
+export function parseHorasHHMM(texto: string): number | null {
+  const limpio = texto.trim();
+  if (limpio === '' || limpio === '-') return null;
+  const match = limpio.match(/^(\d{1,3}):?(\d{0,2})$/);
   if (!match) return 0;
   const h = Number(match[1] || 0);
   const m = Math.min(59, Number(match[2] || 0));
