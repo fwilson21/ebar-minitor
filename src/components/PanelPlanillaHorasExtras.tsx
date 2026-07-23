@@ -1243,23 +1243,21 @@ function EditorPlanilla({
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="etiqueta">Descripción de actividades (por defecto)</label>
+          <label className="etiqueta">N.º de informe de actividades</label>
           <input
             type="text"
             className="campo"
             value={descripcionDefault}
             onChange={(e) => setDescripcionDefault(e.target.value)}
-            placeholder='Ej: "Referirse al INFORME N.° ..."'
           />
         </div>
         <div>
-          <label className="etiqueta">N.º de memorando (por defecto)</label>
+          <label className="etiqueta">N.º de memorando de autorización</label>
           <input
             type="text"
             className="campo"
             value={memorandoDefault}
             onChange={(e) => setMemorandoDefault(e.target.value)}
-            placeholder="Ej: MEMORANDO No. GADMFO-DAPA-2026-..."
           />
         </div>
       </div>
