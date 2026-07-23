@@ -726,9 +726,24 @@ function EditorPlanilla({
     if (editarRevisado && !revisadoCargo.trim()) faltan.add('revisadoCargo');
     if (editarAprobado && !aprobadoNombre.trim()) faltan.add('aprobadoNombre');
     if (editarAprobado && !aprobadoCargo.trim()) faltan.add('aprobadoCargo');
+    if (!descripcionDefault.trim()) faltan.add('descripcionDefault');
+    if (!memorandoDefault.trim()) faltan.add('memorandoDefault');
     for (const f of filas) {
       if (!f.descripcion_actividades.trim()) faltan.add(`fila-${f.id}-descripcion`);
       if (!f.numero_memorando.trim()) faltan.add(`fila-${f.id}-memorando`);
+      // Entrada/Sale de cada bloque: no se marcan como "faltante" (rojo) las que ya tienen su propio
+      // aviso amarillo de "Calcular igual" (pendienteManana/pendienteTarde, ver la tabla más abajo)
+      // para no pelear dos colores por el mismo campo — ahí el amarillo manda hasta que se confirme.
+      const tieneManana = !!(f.entrada_manana && f.salida_manana);
+      const tieneTarde = !!(f.entrada_tarde && f.salida_tarde);
+      const algoManana = !!(f.entrada_manana || f.salida_manana);
+      const algoTarde = !!(f.entrada_tarde || f.salida_tarde);
+      const pendienteManana = !tieneManana && algoManana && tieneTarde && f.horas_manana === null;
+      const pendienteTarde = !tieneTarde && algoTarde && tieneManana && f.horas_tarde === null;
+      if (!f.entrada_manana) faltan.add(`fila-${f.id}-entrada_manana`);
+      if (!f.salida_manana && !pendienteManana) faltan.add(`fila-${f.id}-salida_manana`);
+      if (!f.entrada_tarde && !pendienteTarde) faltan.add(`fila-${f.id}-entrada_tarde`);
+      if (!f.salida_tarde) faltan.add(`fila-${f.id}-salida_tarde`);
     }
     return faltan;
   }, [
@@ -750,6 +765,8 @@ function EditorPlanilla({
     editarAprobado,
     aprobadoNombre,
     aprobadoCargo,
+    descripcionDefault,
+    memorandoDefault,
     filas,
   ]);
 
@@ -1246,7 +1263,7 @@ function EditorPlanilla({
           <label className="etiqueta">N.º de informe de actividades</label>
           <input
             type="text"
-            className="campo"
+            className={campoClase('campo', 'descripcionDefault')}
             value={descripcionDefault}
             onChange={(e) => setDescripcionDefault(e.target.value)}
           />
@@ -1255,7 +1272,7 @@ function EditorPlanilla({
           <label className="etiqueta">N.º de memorando de autorización</label>
           <input
             type="text"
-            className="campo"
+            className={campoClase('campo', 'memorandoDefault')}
             value={memorandoDefault}
             onChange={(e) => setMemorandoDefault(e.target.value)}
           />
@@ -1317,8 +1334,8 @@ function EditorPlanilla({
                 const ordenError = errorManana || errorTarde || errorCruce;
                 const aviso = avisoAlmuerzoLargo(f, jornada);
 
-                const clase = (error: boolean, falta: boolean) =>
-                  error
+                const clase = (error: boolean, falta: boolean, faltante: boolean = false) =>
+                  error || faltante
                     ? 'campo text-xs py-1 border-2 border-gauge-danger bg-gauge-danger/10 text-gauge-danger focus:ring-gauge-danger/60'
                     : falta
                     ? 'campo text-xs py-1 border-gauge-warn bg-gauge-warn/10'
@@ -1384,7 +1401,7 @@ function EditorPlanilla({
                     <td className="p-1">
                       <input
                         type="time" lang="en-GB"
-                        className={clase(errorManana, false)}
+                        className={clase(errorManana, false, resaltarFaltantes && !f.entrada_manana)}
                         value={f.entrada_manana}
                         onChange={(e) => manejarCambioHora('entrada_manana', e)}
                         onBlur={atraparFoco(errorManana)}
@@ -1394,7 +1411,11 @@ function EditorPlanilla({
                     <td className="p-1">
                       <input
                         type="time" lang="en-GB"
-                        className={clase(errorManana || errorCruce, (pendienteManana && !f.salida_manana) || !!aviso?.salidaManana)}
+                        className={clase(
+                          errorManana || errorCruce,
+                          (pendienteManana && !f.salida_manana) || !!aviso?.salidaManana,
+                          resaltarFaltantes && !f.salida_manana && !pendienteManana,
+                        )}
                         value={f.salida_manana}
                         onChange={(e) => manejarCambioHora('salida_manana', e)}
                         onBlur={atraparFoco(errorManana || errorCruce)}
@@ -1405,7 +1426,11 @@ function EditorPlanilla({
                     <td className="p-1">
                       <input
                         type="time" lang="en-GB"
-                        className={clase(errorTarde || errorCruce, (pendienteTarde && !f.entrada_tarde) || !!aviso?.entradaTarde)}
+                        className={clase(
+                          errorTarde || errorCruce,
+                          (pendienteTarde && !f.entrada_tarde) || !!aviso?.entradaTarde,
+                          resaltarFaltantes && !f.entrada_tarde && !pendienteTarde,
+                        )}
                         value={f.entrada_tarde}
                         onChange={(e) => manejarCambioHora('entrada_tarde', e)}
                         onBlur={atraparFoco(errorTarde || errorCruce)}
@@ -1416,7 +1441,7 @@ function EditorPlanilla({
                     <td className="p-1">
                       <input
                         type="time" lang="en-GB"
-                        className={clase(errorTarde, pendienteTarde && !f.salida_tarde)}
+                        className={clase(errorTarde, pendienteTarde && !f.salida_tarde, resaltarFaltantes && !f.salida_tarde)}
                         value={f.salida_tarde}
                         onChange={(e) => manejarCambioHora('salida_tarde', e)}
                         onBlur={atraparFoco(errorTarde)}
