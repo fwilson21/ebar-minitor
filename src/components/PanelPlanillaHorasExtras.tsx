@@ -774,6 +774,20 @@ function EditorPlanilla({
     return resaltarFaltantes && camposFaltantes.has(clave) ? `${base} border-2 border-gauge-danger bg-gauge-danger/10` : base;
   }
 
+  // Al escribir en "N.º de informe de actividades" / "N.º de memorando de autorización", se
+  // completan de una vez las filas que todavía no tengan su propia Descripción/N.º memorando —
+  // antes solo se usaban como plantilla para los días que se agregaran después ("+ Día"), dejando
+  // en blanco los que ya existían en la tabla.
+  useEffect(() => {
+    if (!descripcionDefault) return;
+    setFilas((prev) => prev.map((f) => (f.descripcion_actividades ? f : { ...f, descripcion_actividades: descripcionDefault })));
+  }, [descripcionDefault]);
+
+  useEffect(() => {
+    if (!memorandoDefault) return;
+    setFilas((prev) => prev.map((f) => (f.numero_memorando ? f : { ...f, numero_memorando: memorandoDefault })));
+  }, [memorandoDefault]);
+
   function nuevaFila(fecha: string): FilaEdit {
     return {
       id: `tmp-${fecha}-${Math.random().toString(36).slice(2)}`,
