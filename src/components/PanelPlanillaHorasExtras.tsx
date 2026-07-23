@@ -211,7 +211,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
           <div className="fixed inset-2 sm:inset-6 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-panel-600/40">
               <h2 className="font-semibold text-sm">
-                {editando && editando !== 'nueva' ? 'Editar planilla' : editando === 'nueva' ? 'Nueva planilla' : 'Planillas de horas extras'}
+                {editando && editando !== 'nueva' ? 'Editar planilla' : editando === 'nueva' ? 'Nueva planilla' : ''}
               </h2>
               <button
                 onClick={() => (editando ? setEditando(null) : setAbierto(false))}
@@ -240,6 +240,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                 )
               ) : (
                 <div className="max-w-2xl mx-auto space-y-3">
+                    <h1 className="text-xl font-bold text-slate-900 text-center">Planillas de horas extras</h1>
                     <p className="text-sm font-semibold text-slate-700">Buscar planilla</p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
