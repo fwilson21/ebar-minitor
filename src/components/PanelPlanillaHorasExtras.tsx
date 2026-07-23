@@ -546,12 +546,16 @@ function EditorPlanilla({
   );
   // Aviso, no bloquea: un almuerzo mucho más largo que el de la Jornada normal no es un dato
   // inválido (el orden de las horas está bien), pero vale la pena que el operador lo confirme.
+  const [avisosDescartados, setAvisosDescartados] = useState<Set<string>>(new Set());
   const avisosAlmuerzo = useMemo(
     () =>
       filas
-        .map((f) => ({ fecha: f.fecha, aviso: avisoAlmuerzoLargo(f, jornada) }))
-        .filter((r): r is { fecha: string; aviso: NonNullable<ReturnType<typeof avisoAlmuerzoLargo>> } => !!r.aviso),
-    [filas, jornada],
+        .map((f) => ({ id: f.id, fecha: f.fecha, aviso: avisoAlmuerzoLargo(f, jornada) }))
+        .filter(
+          (r): r is { id: string; fecha: string; aviso: NonNullable<ReturnType<typeof avisoAlmuerzoLargo>> } =>
+            !!r.aviso && !avisosDescartados.has(r.id),
+        ),
+    [filas, jornada, avisosDescartados],
   );
 
   async function guardar() {
@@ -1099,11 +1103,24 @@ function EditorPlanilla({
       )}
 
       {avisosAlmuerzo.length > 0 && (
-        <div className="border border-gauge-warn/50 bg-gauge-warn/10 rounded-lg p-2 space-y-0.5">
-          {avisosAlmuerzo.map((a, i) => (
-            <p key={i} className="text-xs text-gauge-warn">
-              ⚠ {formatFechaCorta(a.fecha)}: {a.aviso.mensaje}
-            </p>
+        <div className="space-y-1.5">
+          {avisosAlmuerzo.map((a) => (
+            <div
+              key={a.id}
+              className="border border-gauge-warn/50 bg-gauge-warn/10 rounded-lg p-2 flex items-start justify-between gap-2"
+            >
+              <p className="text-xs text-gauge-warn">
+                ⚠ {formatFechaCorta(a.fecha)}: {a.aviso.mensaje}
+              </p>
+              <button
+                type="button"
+                onClick={() => setAvisosDescartados((prev) => new Set(prev).add(a.id))}
+                className="text-gauge-warn text-xs px-1 shrink-0"
+                title="Ya lo revisé, ocultar aviso"
+              >
+                ✕
+              </button>
+            </div>
           ))}
         </div>
       )}
