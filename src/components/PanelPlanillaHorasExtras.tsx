@@ -193,7 +193,9 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
   return (
     <div className="tarjeta p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold">Planilla de horas extras</h2>
+        <h2 className="text-base font-semibold cursor-pointer" onClick={() => setAbierto(true)}>
+          Planilla de horas extras
+        </h2>
         <button onClick={() => setAbierto(true)} className="boton-secundario text-xs px-3 py-1.5">
           Abrir
         </button>
@@ -615,6 +617,14 @@ function EditorPlanilla({
   const [pdfNombre, setPdfNombre] = useState('');
   const [compartiendo, setCompartiendo] = useState(false);
 
+  // Flujo de "campos incompletos" antes de Guardar/Generar PDF: primero se ofrece elegir entre
+  // guardar igual o completar; si elige guardar igual se pregunta una segunda vez para confirmar;
+  // si elige completar, se sombrean en rojo los campos vacíos (campoClase más abajo) y el sombreado
+  // se quita solo, en vivo, apenas se llena cada uno — no hay que limpiarlo a mano.
+  const [accionPendiente, setAccionPendiente] = useState<'guardar' | 'pdf' | null>(null);
+  const [confirmarSinCompletar, setConfirmarSinCompletar] = useState(false);
+  const [resaltarFaltantes, setResaltarFaltantes] = useState(false);
+
   const jornada = useMemo(
     () => ({
       jornada_inicio_manana: jornadaInicioManana,
@@ -652,37 +662,39 @@ function EditorPlanilla({
     if (operador?.cargo) setCargoTrabajador(operador.cargo);
 
     async function prellenar() {
-      const { data } = await supabase
-        .from('planillas_horas_extras')
-        .select('*')
-        .eq('operador_id', operadorId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (data) {
-        const anterior = data as PlanillaHorasExtras;
+      // Se piden en paralelo: el área/dirección/ocupación siguen saliendo de la última planilla del
+      // operador (si existe), pero la jornada la manda la jornada por defecto configurada para ese
+      // operador (ver EditorJornadasOperadorDefault) siempre que exista — es la más reciente decisión
+      // del usuario sobre su horario, más confiable que lo que haya quedado en una planilla vieja.
+      // Solo si nunca se configuró una jornada por defecto se cae de vuelta a la de la última planilla.
+      const [{ data }, { data: jornadaDefaultData }] = await Promise.all([
+        supabase
+          .from('planillas_horas_extras')
+          .select('*')
+          .eq('operador_id', operadorId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase.from('jornadas_operador_default').select('*').eq('operador_id', operadorId).maybeSingle(),
+      ]);
+      const anterior = data as PlanillaHorasExtras | null;
+      if (anterior) {
         if (!operador?.cargo) setCargoTrabajador((v) => v || anterior.cargo_trabajador);
         setArea((v) => v || anterior.area);
         setDireccion((v) => (v === DIRECCION_DEFAULT ? anterior.direccion : v));
+      }
+      const jornadaDefault = jornadaDefaultData as JornadaOperadorDefault | null;
+      if (jornadaDefault) {
+        setJornadaInicioManana(jornadaDefault.jornada_inicio_manana);
+        setJornadaFinManana(jornadaDefault.jornada_fin_manana);
+        setJornadaInicioTarde(jornadaDefault.jornada_inicio_tarde);
+        setJornadaFinTarde(jornadaDefault.jornada_fin_tarde);
+      } else if (anterior) {
         setJornadaInicioManana(anterior.jornada_inicio_manana);
         setJornadaFinManana(anterior.jornada_fin_manana);
         setJornadaInicioTarde(anterior.jornada_inicio_tarde);
         setJornadaFinTarde(anterior.jornada_fin_tarde);
-        return;
       }
-      // Nunca tuvo una planilla: usa la jornada por defecto de este operador, si se configuró una
-      // (ver EditorJornadasOperadorDefault) — si tampoco hay eso, se queda con 08:00-12:00/13:00-17:00.
-      const { data: jornadaDefault } = await supabase
-        .from('jornadas_operador_default')
-        .select('*')
-        .eq('operador_id', operadorId)
-        .maybeSingle();
-      if (!jornadaDefault) return;
-      const j = jornadaDefault as JornadaOperadorDefault;
-      setJornadaInicioManana(j.jornada_inicio_manana);
-      setJornadaFinManana(j.jornada_fin_manana);
-      setJornadaInicioTarde(j.jornada_inicio_tarde);
-      setJornadaFinTarde(j.jornada_fin_tarde);
     }
     prellenar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -692,6 +704,58 @@ function EditorPlanilla({
     operadorId && operadorId !== MANUAL
       ? operadores.find((o) => o.id === operadorId)?.nombre_completo ?? ''
       : nombreManual;
+
+  // Campos vacíos de toda la planilla (encabezado + cada fila) — se recalcula solo con cada cambio,
+  // así el sombreado en rojo (ver campoClase) desaparece de un campo apenas se llena, sin tener que
+  // limpiarlo a mano en cada onChange.
+  const camposFaltantes = useMemo(() => {
+    const faltan = new Set<string>();
+    if (!operadorId) faltan.add('operador');
+    if (operadorId === MANUAL && !nombreManual.trim()) faltan.add('nombreManual');
+    if (!cargoTrabajador.trim()) faltan.add('cargoTrabajador');
+    if (!area.trim()) faltan.add('area');
+    if (!direccion.trim()) faltan.add('direccion');
+    if (!fechaPresentacion) faltan.add('fechaPresentacion');
+    if (!fechaDesde) faltan.add('fechaDesde');
+    if (!fechaHasta) faltan.add('fechaHasta');
+    if (!jornadaInicioManana) faltan.add('jornadaInicioManana');
+    if (!jornadaFinManana) faltan.add('jornadaFinManana');
+    if (!jornadaInicioTarde) faltan.add('jornadaInicioTarde');
+    if (!jornadaFinTarde) faltan.add('jornadaFinTarde');
+    if (editarRevisado && !revisadoNombre.trim()) faltan.add('revisadoNombre');
+    if (editarRevisado && !revisadoCargo.trim()) faltan.add('revisadoCargo');
+    if (editarAprobado && !aprobadoNombre.trim()) faltan.add('aprobadoNombre');
+    if (editarAprobado && !aprobadoCargo.trim()) faltan.add('aprobadoCargo');
+    for (const f of filas) {
+      if (!f.descripcion_actividades.trim()) faltan.add(`fila-${f.id}-descripcion`);
+      if (!f.numero_memorando.trim()) faltan.add(`fila-${f.id}-memorando`);
+    }
+    return faltan;
+  }, [
+    operadorId,
+    nombreManual,
+    cargoTrabajador,
+    area,
+    direccion,
+    fechaPresentacion,
+    fechaDesde,
+    fechaHasta,
+    jornadaInicioManana,
+    jornadaFinManana,
+    jornadaInicioTarde,
+    jornadaFinTarde,
+    editarRevisado,
+    revisadoNombre,
+    revisadoCargo,
+    editarAprobado,
+    aprobadoNombre,
+    aprobadoCargo,
+    filas,
+  ]);
+
+  function campoClase(base: string, clave: string): string {
+    return resaltarFaltantes && camposFaltantes.has(clave) ? `${base} border-2 border-gauge-danger bg-gauge-danger/10` : base;
+  }
 
   function nuevaFila(fecha: string): FilaEdit {
     return {
@@ -831,16 +895,11 @@ function EditorPlanilla({
   );
 
   async function guardar() {
-    if (!nombreTrabajador.trim()) {
-      setMensaje('Elige un operador o escribe el nombre del trabajador.');
-      return;
-    }
-    if (!cargoTrabajador.trim() || !area.trim()) {
-      setMensaje('Completa Ocupación y Área.');
-      return;
-    }
+    // Único campo que sigue bloqueando incluso con "Guardar sin completar": la base de datos exige
+    // sí o sí un período (columnas fecha_desde/fecha_hasta no admiten vacío), así que sin esto la
+    // planilla no se puede grabar de ninguna forma, a diferencia del resto de campos.
     if (!fechaDesde || !fechaHasta) {
-      setMensaje('Completa el período (Desde/Hasta).');
+      setMensaje('El período (Desde/Hasta) es obligatorio — sin esas dos fechas no se puede guardar la planilla.');
       return;
     }
     const filaInvalida = filas.map((f) => ({ f, error: validarOrdenHorario(f) })).find((r) => r.error);
@@ -943,10 +1002,6 @@ function EditorPlanilla({
   }
 
   async function generarPdf() {
-    if (!nombreTrabajador.trim()) {
-      setMensaje('Elige un operador o escribe el nombre del trabajador antes de generar el PDF.');
-      return;
-    }
     const filaInvalida = filas.map((f) => ({ f, error: validarOrdenHorario(f) })).find((r) => r.error);
     if (filaInvalida) {
       setMensaje(`Revisa el horario del ${formatFechaCorta(filaInvalida.f.fecha)}: ${filaInvalida.error}`);
@@ -1018,6 +1073,26 @@ function EditorPlanilla({
     }
   }
 
+  // Antes de guardar o generar el PDF, si hay campos vacíos se pide confirmación (ver el modal más
+  // abajo) en vez de dejar pasar directo. "Guardar sin completar" salta esto y llama a guardar()/
+  // generarPdf() de una vez — por eso esas dos funciones ya no bloquean por campos vacíos, solo por
+  // errores reales de horario (validarOrdenHorario).
+  function alGuardarClick() {
+    if (camposFaltantes.size > 0) {
+      setAccionPendiente('guardar');
+      return;
+    }
+    guardar();
+  }
+
+  function alGenerarPdfClick() {
+    if (camposFaltantes.size > 0) {
+      setAccionPendiente('pdf');
+      return;
+    }
+    generarPdf();
+  }
+
   if (cargandoFilas) return <p className="text-sm text-slate-600">Cargando…</p>;
 
   return (
@@ -1025,7 +1100,7 @@ function EditorPlanilla({
       <div className="max-w-2xl mx-auto w-full space-y-4">
       <div>
         <label className="etiqueta">Trabajador</label>
-        <select className="campo" value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
+        <select className={campoClase('campo', 'operador')} value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
           <option value="">Selecciona un operador…</option>
           {operadores.map((o) => (
             <option key={o.id} value={o.id}>
@@ -1039,38 +1114,69 @@ function EditorPlanilla({
       {operadorId === MANUAL && (
         <div>
           <label className="etiqueta">Nombre completo</label>
-          <input type="text" className="campo" value={nombreManual} onChange={(e) => setNombreManual(e.target.value)} />
+          <input
+            type="text"
+            className={campoClase('campo', 'nombreManual')}
+            value={nombreManual}
+            onChange={(e) => setNombreManual(e.target.value)}
+          />
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="etiqueta">Ocupación</label>
-          <input type="text" className="campo" value={cargoTrabajador} onChange={(e) => setCargoTrabajador(e.target.value)} />
+          <input
+            type="text"
+            className={campoClase('campo', 'cargoTrabajador')}
+            value={cargoTrabajador}
+            onChange={(e) => setCargoTrabajador(e.target.value)}
+          />
         </div>
         <div>
           <label className="etiqueta">Área</label>
-          <input type="text" className="campo" value={area} onChange={(e) => setArea(e.target.value)} placeholder="Ej: Estaciones de bombeo" />
+          <input
+            type="text"
+            className={campoClase('campo', 'area')}
+            value={area}
+            onChange={(e) => setArea(e.target.value)}
+            placeholder="Ej: Estaciones de bombeo"
+          />
         </div>
       </div>
 
       <div>
         <label className="etiqueta">Dirección</label>
-        <input type="text" className="campo" value={direccion} onChange={(e) => setDireccion(e.target.value)} />
+        <input type="text" className={campoClase('campo', 'direccion')} value={direccion} onChange={(e) => setDireccion(e.target.value)} />
       </div>
 
       <div className="grid grid-cols-3 gap-2">
         <div>
           <label className="etiqueta">Fecha de presentación</label>
-          <input type="date" className="campo" value={fechaPresentacion} onChange={(e) => setFechaPresentacion(e.target.value)} />
+          <input
+            type="date"
+            className={campoClase('campo', 'fechaPresentacion')}
+            value={fechaPresentacion}
+            onChange={(e) => setFechaPresentacion(e.target.value)}
+          />
         </div>
         <div>
           <label className="etiqueta">Período — Desde</label>
-          <input type="date" className="campo" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} />
+          <input
+            type="date"
+            className={campoClase('campo', 'fechaDesde')}
+            value={fechaDesde}
+            onChange={(e) => setFechaDesde(e.target.value)}
+          />
         </div>
         <div>
           <label className="etiqueta">Período — Hasta</label>
-          <input type="date" className="campo" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} />
+          <input
+            type="date"
+            className={campoClase('campo', 'fechaHasta')}
+            value={fechaHasta}
+            onChange={(e) => setFechaHasta(e.target.value)}
+          />
         </div>
       </div>
 
@@ -1088,7 +1194,7 @@ function EditorPlanilla({
             <label className="etiqueta">Entrada</label>
             <input
               type="time" lang="en-GB"
-              className="campo"
+              className={campoClase('campo', 'jornadaInicioManana')}
               value={jornadaInicioManana}
               onChange={(e) => {
                 setJornadaInicioManana(e.target.value);
@@ -1100,7 +1206,7 @@ function EditorPlanilla({
             <label className="etiqueta">Sale</label>
             <input
               type="time" lang="en-GB"
-              className="campo"
+              className={campoClase('campo', 'jornadaFinManana')}
               value={jornadaFinManana}
               onChange={(e) => {
                 setJornadaFinManana(e.target.value);
@@ -1112,7 +1218,7 @@ function EditorPlanilla({
             <label className="etiqueta">Entrada</label>
             <input
               type="time" lang="en-GB"
-              className="campo"
+              className={campoClase('campo', 'jornadaInicioTarde')}
               value={jornadaInicioTarde}
               onChange={(e) => {
                 setJornadaInicioTarde(e.target.value);
@@ -1124,7 +1230,7 @@ function EditorPlanilla({
             <label className="etiqueta">Sale</label>
             <input
               type="time" lang="en-GB"
-              className="campo"
+              className={campoClase('campo', 'jornadaFinTarde')}
               value={jornadaFinTarde}
               onChange={(e) => {
                 setJornadaFinTarde(e.target.value);
@@ -1264,7 +1370,7 @@ function EditorPlanilla({
                     <td className="p-1">
                       <input
                         type="text"
-                        className="campo text-xs py-1"
+                        className={campoClase('campo text-xs py-1', `fila-${f.id}-descripcion`)}
                         value={f.descripcion_actividades}
                         onChange={(e) => actualizarFila(f.id, { descripcion_actividades: e.target.value })}
                       />
@@ -1272,7 +1378,7 @@ function EditorPlanilla({
                     <td className="p-1">
                       <input
                         type="text"
-                        className="campo text-xs py-1"
+                        className={campoClase('campo text-xs py-1', `fila-${f.id}-memorando`)}
                         value={f.numero_memorando}
                         onChange={(e) => actualizarFila(f.id, { numero_memorando: e.target.value })}
                       />
@@ -1410,8 +1516,8 @@ function EditorPlanilla({
           </div>
           {editarRevisado ? (
             <>
-              <input type="text" className="campo text-xs" placeholder="Nombre" value={revisadoNombre} onChange={(e) => setRevisadoNombre(e.target.value)} />
-              <input type="text" className="campo text-xs" placeholder="Cargo" value={revisadoCargo} onChange={(e) => setRevisadoCargo(e.target.value)} />
+              <input type="text" className={campoClase('campo text-xs', 'revisadoNombre')} placeholder="Nombre" value={revisadoNombre} onChange={(e) => setRevisadoNombre(e.target.value)} />
+              <input type="text" className={campoClase('campo text-xs', 'revisadoCargo')} placeholder="Cargo" value={revisadoCargo} onChange={(e) => setRevisadoCargo(e.target.value)} />
             </>
           ) : (
             <p className="text-xs text-slate-600">
@@ -1430,8 +1536,8 @@ function EditorPlanilla({
           </div>
           {editarAprobado ? (
             <>
-              <input type="text" className="campo text-xs" placeholder="Nombre" value={aprobadoNombre} onChange={(e) => setAprobadoNombre(e.target.value)} />
-              <input type="text" className="campo text-xs" placeholder="Cargo" value={aprobadoCargo} onChange={(e) => setAprobadoCargo(e.target.value)} />
+              <input type="text" className={campoClase('campo text-xs', 'aprobadoNombre')} placeholder="Nombre" value={aprobadoNombre} onChange={(e) => setAprobadoNombre(e.target.value)} />
+              <input type="text" className={campoClase('campo text-xs', 'aprobadoCargo')} placeholder="Cargo" value={aprobadoCargo} onChange={(e) => setAprobadoCargo(e.target.value)} />
             </>
           ) : (
             <p className="text-xs text-slate-600">
@@ -1452,12 +1558,85 @@ function EditorPlanilla({
       {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
       </div>
 
+      {accionPendiente && !confirmarSinCompletar && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setAccionPendiente(null)} />
+          <div className="fixed inset-x-4 top-1/3 z-50 max-w-sm mx-auto bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Faltan campos por completar</p>
+              <button
+                onClick={() => setAccionPendiente(null)}
+                className="text-slate-600 hover:text-slate-900 text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-slate-600">Todavía hay campos vacíos en esta planilla. ¿Qué deseas hacer?</p>
+            <div className="space-y-2">
+              <button onClick={() => setConfirmarSinCompletar(true)} className="boton-secundario w-full text-sm">
+                {accionPendiente === 'pdf' ? 'Generar PDF sin completar' : 'Guardar sin completar'}
+              </button>
+              <button
+                onClick={() => {
+                  setResaltarFaltantes(true);
+                  setAccionPendiente(null);
+                }}
+                className="boton-primario w-full text-sm"
+              >
+                Cerrar el mensaje y completar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {confirmarSinCompletar && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => {
+              setConfirmarSinCompletar(false);
+              setAccionPendiente(null);
+            }}
+          />
+          <div className="fixed inset-x-4 top-1/3 z-50 max-w-sm mx-auto bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl p-4 space-y-3">
+            <p className="text-sm font-semibold">
+              ¿Seguro que deseas {accionPendiente === 'pdf' ? 'generar el PDF' : 'guardar la planilla'} sin completar
+              todos los campos?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setConfirmarSinCompletar(false);
+                  const accion = accionPendiente;
+                  setAccionPendiente(null);
+                  if (accion === 'pdf') generarPdf();
+                  else guardar();
+                }}
+                className="boton-primario flex-1 text-sm"
+              >
+                Sí, {accionPendiente === 'pdf' ? 'generar' : 'guardar'}
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmarSinCompletar(false);
+                  setAccionPendiente(null);
+                }}
+                className="boton-secundario flex-1 text-sm"
+              >
+                No, cancelar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       <div className="sticky bottom-0 bg-panel-800 pb-1">
         <div className="max-w-2xl mx-auto flex gap-2 pt-2">
-          <button onClick={guardar} disabled={guardando} className="boton-primario flex-1">
+          <button onClick={alGuardarClick} disabled={guardando} className="boton-primario flex-1">
             {guardando ? 'Guardando…' : 'Guardar'}
           </button>
-          <button onClick={generarPdf} disabled={generandoPdf} className="boton-secundario flex-1">
+          <button onClick={alGenerarPdfClick} disabled={generandoPdf} className="boton-secundario flex-1">
             {generandoPdf ? 'Generando…' : '📄 Generar PDF'}
           </button>
           <button onClick={onCerrar} className="boton-secundario px-4">
