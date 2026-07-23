@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, JornadaOperadorDefault, PlanillaHorasExtras, Usuario } from '../lib/types';
 import { avisoAlmuerzoLargo, calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
@@ -777,15 +777,30 @@ function EditorPlanilla({
   // Al escribir en "N.º de informe de actividades" / "N.º de memorando de autorización", se
   // completan de una vez las filas que todavía no tengan su propia Descripción/N.º memorando —
   // antes solo se usaban como plantilla para los días que se agregaran después ("+ Día"), dejando
-  // en blanco los que ya existían en la tabla.
+  // en blanco los que ya existían en la tabla. Se compara contra el valor anterior (no solo contra
+  // vacío) para que cada letra que se escribe siga completando la fila entera, en vez de solo la
+  // primera letra: si no, apenas se llenaba con "I" esa fila dejaba de estar "vacía" y la siguiente
+  // letra ("N", "F"...) ya no la alcanzaba.
+  const descripcionDefaultAnteriorRef = useRef('');
   useEffect(() => {
-    if (!descripcionDefault) return;
-    setFilas((prev) => prev.map((f) => (f.descripcion_actividades ? f : { ...f, descripcion_actividades: descripcionDefault })));
+    const anterior = descripcionDefaultAnteriorRef.current;
+    setFilas((prev) =>
+      prev.map((f) =>
+        !f.descripcion_actividades || f.descripcion_actividades === anterior
+          ? { ...f, descripcion_actividades: descripcionDefault }
+          : f,
+      ),
+    );
+    descripcionDefaultAnteriorRef.current = descripcionDefault;
   }, [descripcionDefault]);
 
+  const memorandoDefaultAnteriorRef = useRef('');
   useEffect(() => {
-    if (!memorandoDefault) return;
-    setFilas((prev) => prev.map((f) => (f.numero_memorando ? f : { ...f, numero_memorando: memorandoDefault })));
+    const anterior = memorandoDefaultAnteriorRef.current;
+    setFilas((prev) =>
+      prev.map((f) => (!f.numero_memorando || f.numero_memorando === anterior ? { ...f, numero_memorando: memorandoDefault } : f)),
+    );
+    memorandoDefaultAnteriorRef.current = memorandoDefault;
   }, [memorandoDefault]);
 
   function nuevaFila(fecha: string): FilaEdit {
