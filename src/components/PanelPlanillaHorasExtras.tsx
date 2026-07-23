@@ -126,6 +126,8 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
   const [editandoJornadas, setEditandoJornadas] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [mesFiltro, setMesFiltro] = useState(mesActual());
+  const [mostrarListado, setMostrarListado] = useState(false);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [operadorExpandido, setOperadorExpandido] = useState<string | null>(null);
 
   async function cargarPlanillas() {
@@ -150,7 +152,16 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
     if (!error) setPlanillas((prev) => prev.filter((p) => p.id !== id));
   }
 
-  const hayFiltro = !!busqueda.trim() || !!mesFiltro;
+  // Todas las personas (operadores o no) que alguna vez tuvieron una planilla, sin importar el
+  // filtro actual — alimenta el desplegable de sugerencias del campo de búsqueda.
+  const personasDisponibles = useMemo(() => {
+    const mapa = new Map<string, string>();
+    for (const p of planillas) {
+      const clave = p.operador_id ?? p.nombre_trabajador;
+      if (!mapa.has(clave)) mapa.set(clave, p.nombre_trabajador);
+    }
+    return [...mapa.entries()].map(([clave, nombre]) => ({ clave, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [planillas]);
 
   const planillasFiltradas = useMemo(() => {
     const termino = busqueda.trim().toLowerCase();
@@ -227,35 +238,85 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                 )
               ) : (
                 <div className="max-w-2xl mx-auto space-y-3">
+                    <p className="text-sm font-semibold text-slate-700">Buscar planilla</p>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        className="campo text-sm"
-                        placeholder="Buscar por nombre…"
-                        value={busqueda}
-                        onChange={(e) => setBusqueda(e.target.value)}
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          className="campo text-sm pr-7"
+                          placeholder="Buscar por nombre…"
+                          value={busqueda}
+                          onChange={(e) => {
+                            setBusqueda(e.target.value);
+                            if (e.target.value.trim()) setMostrarListado(true);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setMostrarSugerencias((v) => !v)}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs px-1"
+                          title="Ver todo el personal con planillas"
+                        >
+                          ▾
+                        </button>
+                        {mostrarSugerencias && (
+                          <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-panel-800 border border-panel-600/60 rounded-lg shadow-xl">
+                            {personasDisponibles.length === 0 ? (
+                              <p className="text-xs text-slate-500 p-2">Todavía no hay planillas guardadas.</p>
+                            ) : (
+                              <ul className="divide-y divide-panel-600/40">
+                                {personasDisponibles.map((p) => (
+                                  <li key={p.clave}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setBusqueda(p.nombre);
+                                        setMesFiltro('');
+                                        setOperadorExpandido(p.clave);
+                                        setMostrarListado(true);
+                                        setMostrarSugerencias(false);
+                                      }}
+                                      className="w-full text-left text-xs px-3 py-1.5 hover:bg-panel-700/60"
+                                    >
+                                      • {p.nombre}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <input
                         type="month"
                         className="campo text-sm"
                         value={mesFiltro}
-                        onChange={(e) => setMesFiltro(e.target.value)}
+                        onChange={(e) => {
+                          setMesFiltro(e.target.value);
+                          setMostrarListado(true);
+                        }}
                       />
                     </div>
-                    {hayFiltro && (
-                      <button
-                        type="button"
-                        onClick={() => {
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (mostrarListado) {
                           setBusqueda('');
+                          setMesFiltro(mesActual());
+                          setOperadorExpandido(null);
+                          setMostrarListado(false);
+                        } else {
                           setMesFiltro('');
-                        }}
-                        className="text-xs text-gauge-ok hover:underline"
-                      >
-                        Ver todos (sin filtro de mes)
-                      </button>
-                    )}
+                          setMostrarListado(true);
+                        }
+                      }}
+                      className="text-xs text-gauge-ok hover:underline"
+                    >
+                      {mostrarListado ? 'Ocultar listado' : 'Ver todos (sin filtro de mes)'}
+                    </button>
 
-                    {cargando ? (
+                    {mostrarListado && (cargando ? (
                       <p className="text-sm text-slate-600">Cargando…</p>
                     ) : planillas.length === 0 ? (
                       <p className="text-sm text-slate-600">Todavía no hay planillas guardadas.</p>
@@ -300,7 +361,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                           </div>
                         ))}
                       </div>
-                    )}
+                    ))}
 
                     <div className="border-t border-panel-600/40 pt-3 space-y-2">
                       <div>
