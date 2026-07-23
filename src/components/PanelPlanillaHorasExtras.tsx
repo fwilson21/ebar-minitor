@@ -19,6 +19,12 @@ function formatFechaCorta(fechaIso: string): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
+/** "YYYY-MM" del mes en curso — año/mes con el que arranca el filtro de la lista de planillas. */
+function mesActual(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 let temporizadorAvanceHora: ReturnType<typeof setTimeout> | null = null;
 
 /** Cancela cualquier salto de cursor pendiente. Se llama en cada tecla, aunque no se vaya a
@@ -119,7 +125,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
   const [editandoFirmantes, setEditandoFirmantes] = useState(false);
   const [editandoJornadas, setEditandoJornadas] = useState(false);
   const [busqueda, setBusqueda] = useState('');
-  const [mesFiltro, setMesFiltro] = useState('');
+  const [mesFiltro, setMesFiltro] = useState(mesActual());
   const [operadorExpandido, setOperadorExpandido] = useState<string | null>(null);
 
   async function cargarPlanillas() {
@@ -221,15 +227,11 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                 )
               ) : (
                 <div className="max-w-2xl mx-auto space-y-3">
-                    <button onClick={() => setEditando('nueva')} className="boton-primario w-full">
-                      + Nueva planilla
-                    </button>
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <input
                         type="text"
                         className="campo text-sm"
-                        placeholder="Buscar por nombre de operador…"
+                        placeholder="Buscar por nombre…"
                         value={busqueda}
                         onChange={(e) => setBusqueda(e.target.value)}
                       />
@@ -249,7 +251,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                         }}
                         className="text-xs text-gauge-ok hover:underline"
                       >
-                        Quitar filtros
+                        Ver todos (sin filtro de mes)
                       </button>
                     )}
 
@@ -257,74 +259,46 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                       <p className="text-sm text-slate-600">Cargando…</p>
                     ) : planillas.length === 0 ? (
                       <p className="text-sm text-slate-600">Todavía no hay planillas guardadas.</p>
-                    ) : hayFiltro ? (
-                      gruposPorOperador.length === 0 ? (
-                        <p className="text-sm text-slate-600">Ningún operador tiene planillas con ese filtro.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {gruposPorOperador.map((g) => (
-                            <div key={g.clave} className="border border-panel-600/40 rounded-lg overflow-hidden">
-                              <button
-                                type="button"
-                                onClick={() => setOperadorExpandido((v) => (v === g.clave ? null : g.clave))}
-                                className="w-full flex items-center justify-between gap-2 p-3 text-left"
-                              >
-                                <span className="text-sm font-medium text-slate-900 truncate">{g.nombre}</span>
-                                <span className="text-xs text-slate-500 shrink-0">
-                                  {g.planillas.length} planilla{g.planillas.length === 1 ? '' : 's'}{' '}
-                                  {operadorExpandido === g.clave ? '▲' : '▼'}
-                                </span>
-                              </button>
-                              {operadorExpandido === g.clave && (
-                                <div className="border-t border-panel-600/40 divide-y divide-panel-600/40">
-                                  {g.planillas.map((p) => (
-                                    <div key={p.id} className="p-3 flex items-center justify-between gap-2">
-                                      <div className="min-w-0 cursor-pointer" onClick={() => setEditando(p)}>
-                                        <p className="text-xs text-slate-600">
-                                          {formatFechaCorta(p.fecha_desde)} al {formatFechaCorta(p.fecha_hasta)} · {p.area || 'Sin área'}
-                                        </p>
-                                      </div>
-                                      <div className="flex items-center gap-2 shrink-0">
-                                        <button onClick={() => setEditando(p)} className="text-xs text-gauge-ok hover:underline">
-                                          Abrir
-                                        </button>
-                                        <button onClick={() => eliminar(p.id)} className="text-xs text-gauge-danger hover:underline">
-                                          Eliminar
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )
+                    ) : gruposPorOperador.length === 0 ? (
+                      <p className="text-sm text-slate-600">Nadie tiene planillas con ese filtro.</p>
                     ) : (
                       <div className="space-y-2">
-                        {planillas.slice(0, 50).map((p) => (
-                          <div key={p.id} className="border border-panel-600/40 rounded-lg p-3 flex items-center justify-between gap-2">
-                            <div className="min-w-0 cursor-pointer" onClick={() => setEditando(p)}>
-                              <p className="text-sm font-medium text-slate-900 truncate">{p.nombre_trabajador}</p>
-                              <p className="text-xs text-slate-600">
-                                {formatFechaCorta(p.fecha_desde)} al {formatFechaCorta(p.fecha_hasta)} · {p.area || 'Sin área'}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button onClick={() => setEditando(p)} className="text-xs text-gauge-ok hover:underline">
-                                Abrir
-                              </button>
-                              <button onClick={() => eliminar(p.id)} className="text-xs text-gauge-danger hover:underline">
-                                Eliminar
-                              </button>
-                            </div>
+                        {gruposPorOperador.map((g) => (
+                          <div key={g.clave} className="border border-panel-600/40 rounded-lg overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => setOperadorExpandido((v) => (v === g.clave ? null : g.clave))}
+                              className="w-full flex items-center justify-between gap-2 p-3 text-left"
+                            >
+                              <span className="text-sm font-medium text-slate-900 truncate">{g.nombre}</span>
+                              <span className="text-xs text-slate-500 shrink-0">
+                                {g.planillas.length} planilla{g.planillas.length === 1 ? '' : 's'}{' '}
+                                {operadorExpandido === g.clave ? '▲' : '▼'}
+                              </span>
+                            </button>
+                            {operadorExpandido === g.clave && (
+                              <div className="border-t border-panel-600/40 divide-y divide-panel-600/40">
+                                {g.planillas.map((p) => (
+                                  <div key={p.id} className="p-3 flex items-center justify-between gap-2">
+                                    <div className="min-w-0 cursor-pointer" onClick={() => setEditando(p)}>
+                                      <p className="text-xs text-slate-600">
+                                        {formatFechaCorta(p.fecha_desde)} al {formatFechaCorta(p.fecha_hasta)} · {p.area || 'Sin área'}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <button onClick={() => setEditando(p)} className="text-xs text-gauge-ok hover:underline">
+                                        Abrir
+                                      </button>
+                                      <button onClick={() => eliminar(p.id)} className="text-xs text-gauge-danger hover:underline">
+                                        Eliminar
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         ))}
-                        {planillas.length > 50 && (
-                          <p className="text-xs text-slate-500">
-                            Mostrando las 50 más recientes. Usa la búsqueda o el filtro por mes para ver el resto.
-                          </p>
-                        )}
                       </div>
                     )}
 
@@ -358,6 +332,10 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                         {editandoJornadas && <EditorJornadasOperadorDefault operadores={operadores} />}
                       </div>
                     </div>
+
+                    <button onClick={() => setEditando('nueva')} className="boton-primario w-full">
+                      + Nueva planilla
+                    </button>
                   </div>
                 )}
             </div>
