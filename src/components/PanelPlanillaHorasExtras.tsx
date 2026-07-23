@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from 'react';
 import { supabase } from '../lib/supabase';
-import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, PlanillaHorasExtras, Usuario } from '../lib/types';
+import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, JornadaOperadorDefault, PlanillaHorasExtras, Usuario } from '../lib/types';
 import { avisoAlmuerzoLargo, calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
 import { abrirBlob, descargarBlob, generarReportePlanillaHorasExtras, type FilaPlanillaReporte } from '../lib/pdf';
 
@@ -117,11 +117,15 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
   const [editando, setEditando] = useState<PlanillaHorasExtras | 'nueva' | null>(null);
   const [configuracion, setConfiguracion] = useState<ConfiguracionPlanillaHorasExtras | null>(null);
   const [editandoFirmantes, setEditandoFirmantes] = useState(false);
+  const [editandoJornadas, setEditandoJornadas] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [mesFiltro, setMesFiltro] = useState('');
+  const [operadorExpandido, setOperadorExpandido] = useState<string | null>(null);
 
   async function cargarPlanillas() {
     setCargando(true);
     const [{ data }, { data: config }] = await Promise.all([
-      supabase.from('planillas_horas_extras').select('*').order('fecha_desde', { ascending: false }).limit(50),
+      supabase.from('planillas_horas_extras').select('*').order('fecha_desde', { ascending: false }).limit(1000),
       supabase.from('configuracion_planilla_horas_extras').select('*').eq('id', true).single(),
     ]);
     setPlanillas((data as PlanillaHorasExtras[]) ?? []);
@@ -139,6 +143,35 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
     const { error } = await supabase.from('planillas_horas_extras').delete().eq('id', id);
     if (!error) setPlanillas((prev) => prev.filter((p) => p.id !== id));
   }
+
+  const hayFiltro = !!busqueda.trim() || !!mesFiltro;
+
+  const planillasFiltradas = useMemo(() => {
+    const termino = busqueda.trim().toLowerCase();
+    return planillas.filter((p) => {
+      if (termino && !p.nombre_trabajador.toLowerCase().includes(termino)) return false;
+      if (mesFiltro) {
+        const inicioMes = `${mesFiltro}-01`;
+        const [anio, mes] = mesFiltro.split('-').map(Number);
+        const finMes = new Date(anio, mes, 0);
+        const finMesStr = `${finMes.getFullYear()}-${String(finMes.getMonth() + 1).padStart(2, '0')}-${String(
+          finMes.getDate(),
+        ).padStart(2, '0')}`;
+        if (p.fecha_desde > finMesStr || p.fecha_hasta < inicioMes) return false;
+      }
+      return true;
+    });
+  }, [planillas, busqueda, mesFiltro]);
+
+  const gruposPorOperador = useMemo(() => {
+    const mapa = new Map<string, { clave: string; nombre: string; planillas: PlanillaHorasExtras[] }>();
+    for (const p of planillasFiltradas) {
+      const clave = p.operador_id ?? p.nombre_trabajador;
+      if (!mapa.has(clave)) mapa.set(clave, { clave, nombre: p.nombre_trabajador, planillas: [] });
+      mapa.get(clave)!.planillas.push(p);
+    }
+    return [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [planillasFiltradas]);
 
   return (
     <div className="tarjeta p-4 space-y-3">
@@ -191,13 +224,85 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                     <button onClick={() => setEditando('nueva')} className="boton-primario w-full">
                       + Nueva planilla
                     </button>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        className="campo text-sm"
+                        placeholder="Buscar por nombre de operador…"
+                        value={busqueda}
+                        onChange={(e) => setBusqueda(e.target.value)}
+                      />
+                      <input
+                        type="month"
+                        className="campo text-sm"
+                        value={mesFiltro}
+                        onChange={(e) => setMesFiltro(e.target.value)}
+                      />
+                    </div>
+                    {hayFiltro && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBusqueda('');
+                          setMesFiltro('');
+                        }}
+                        className="text-xs text-gauge-ok hover:underline"
+                      >
+                        Quitar filtros
+                      </button>
+                    )}
+
                     {cargando ? (
                       <p className="text-sm text-slate-600">Cargando…</p>
                     ) : planillas.length === 0 ? (
                       <p className="text-sm text-slate-600">Todavía no hay planillas guardadas.</p>
+                    ) : hayFiltro ? (
+                      gruposPorOperador.length === 0 ? (
+                        <p className="text-sm text-slate-600">Ningún operador tiene planillas con ese filtro.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {gruposPorOperador.map((g) => (
+                            <div key={g.clave} className="border border-panel-600/40 rounded-lg overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => setOperadorExpandido((v) => (v === g.clave ? null : g.clave))}
+                                className="w-full flex items-center justify-between gap-2 p-3 text-left"
+                              >
+                                <span className="text-sm font-medium text-slate-900 truncate">{g.nombre}</span>
+                                <span className="text-xs text-slate-500 shrink-0">
+                                  {g.planillas.length} planilla{g.planillas.length === 1 ? '' : 's'}{' '}
+                                  {operadorExpandido === g.clave ? '▲' : '▼'}
+                                </span>
+                              </button>
+                              {operadorExpandido === g.clave && (
+                                <div className="border-t border-panel-600/40 divide-y divide-panel-600/40">
+                                  {g.planillas.map((p) => (
+                                    <div key={p.id} className="p-3 flex items-center justify-between gap-2">
+                                      <div className="min-w-0 cursor-pointer" onClick={() => setEditando(p)}>
+                                        <p className="text-xs text-slate-600">
+                                          {formatFechaCorta(p.fecha_desde)} al {formatFechaCorta(p.fecha_hasta)} · {p.area || 'Sin área'}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <button onClick={() => setEditando(p)} className="text-xs text-gauge-ok hover:underline">
+                                          Abrir
+                                        </button>
+                                        <button onClick={() => eliminar(p.id)} className="text-xs text-gauge-danger hover:underline">
+                                          Eliminar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )
                     ) : (
                       <div className="space-y-2">
-                        {planillas.map((p) => (
+                        {planillas.slice(0, 50).map((p) => (
                           <div key={p.id} className="border border-panel-600/40 rounded-lg p-3 flex items-center justify-between gap-2">
                             <div className="min-w-0 cursor-pointer" onClick={() => setEditando(p)}>
                               <p className="text-sm font-medium text-slate-900 truncate">{p.nombre_trabajador}</p>
@@ -215,26 +320,43 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                             </div>
                           </div>
                         ))}
+                        {planillas.length > 50 && (
+                          <p className="text-xs text-slate-500">
+                            Mostrando las 50 más recientes. Usa la búsqueda o el filtro por mes para ver el resto.
+                          </p>
+                        )}
                       </div>
                     )}
 
-                    <div className="border-t border-panel-600/40 pt-3">
-                      <button
-                        type="button"
-                        onClick={() => setEditandoFirmantes((v) => !v)}
-                        className="text-xs text-gauge-ok hover:underline"
-                      >
-                        ⚙️ Firmantes por defecto (Revisado por / Aprobado por)
-                      </button>
-                      {editandoFirmantes && configuracion && (
-                        <EditorFirmantesDefault
-                          configuracion={configuracion}
-                          onGuardado={(c) => {
-                            setConfiguracion(c);
-                            setEditandoFirmantes(false);
-                          }}
-                        />
-                      )}
+                    <div className="border-t border-panel-600/40 pt-3 space-y-2">
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setEditandoFirmantes((v) => !v)}
+                          className="text-xs text-gauge-ok hover:underline"
+                        >
+                          ⚙️ Firmantes por defecto (Revisado por / Aprobado por)
+                        </button>
+                        {editandoFirmantes && configuracion && (
+                          <EditorFirmantesDefault
+                            configuracion={configuracion}
+                            onGuardado={(c) => {
+                              setConfiguracion(c);
+                              setEditandoFirmantes(false);
+                            }}
+                          />
+                        )}
+                      </div>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setEditandoJornadas((v) => !v)}
+                          className="text-xs text-gauge-ok hover:underline"
+                        >
+                          ⚙️ Jornadas por defecto por operador
+                        </button>
+                        {editandoJornadas && <EditorJornadasOperadorDefault operadores={operadores} />}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -299,6 +421,102 @@ function EditorFirmantesDefault({
       <button onClick={guardar} disabled={guardando} className="boton-primario w-full text-sm">
         {guardando ? 'Guardando…' : 'Guardar firmantes por defecto'}
       </button>
+    </div>
+  );
+}
+
+const JORNADA_DEFECTO_VACIA = { jornada_inicio_manana: '08:00', jornada_fin_manana: '12:00', jornada_inicio_tarde: '13:00', jornada_fin_tarde: '17:00' };
+
+/** Deja fijar el horario normal de cada operador (por si nunca tuvo una planilla, ver
+ * EditorPlanilla → prellenar) sin tener que crear una planilla primero solo para eso. */
+function EditorJornadasOperadorDefault({ operadores }: { operadores: Usuario[] }) {
+  const [operadorId, setOperadorId] = useState('');
+  const [cargando, setCargando] = useState(false);
+  const [inicioManana, setInicioManana] = useState(JORNADA_DEFECTO_VACIA.jornada_inicio_manana);
+  const [finManana, setFinManana] = useState(JORNADA_DEFECTO_VACIA.jornada_fin_manana);
+  const [inicioTarde, setInicioTarde] = useState(JORNADA_DEFECTO_VACIA.jornada_inicio_tarde);
+  const [finTarde, setFinTarde] = useState(JORNADA_DEFECTO_VACIA.jornada_fin_tarde);
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!operadorId) return;
+    setCargando(true);
+    setMensaje(null);
+    supabase
+      .from('jornadas_operador_default')
+      .select('*')
+      .eq('operador_id', operadorId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const j = (data as JornadaOperadorDefault | null) ?? JORNADA_DEFECTO_VACIA;
+        setInicioManana(j.jornada_inicio_manana.slice(0, 5));
+        setFinManana(j.jornada_fin_manana.slice(0, 5));
+        setInicioTarde(j.jornada_inicio_tarde.slice(0, 5));
+        setFinTarde(j.jornada_fin_tarde.slice(0, 5));
+        setCargando(false);
+      });
+  }, [operadorId]);
+
+  async function guardar() {
+    setGuardando(true);
+    setMensaje(null);
+    const { error } = await supabase.from('jornadas_operador_default').upsert({
+      operador_id: operadorId,
+      jornada_inicio_manana: inicioManana,
+      jornada_fin_manana: finManana,
+      jornada_inicio_tarde: inicioTarde,
+      jornada_fin_tarde: finTarde,
+    });
+    setGuardando(false);
+    setMensaje(error ? `No se pudo guardar: ${error.message}` : 'Guardado.');
+  }
+
+  return (
+    <div className="mt-2 border border-panel-600/40 rounded-lg p-3 space-y-3">
+      <p className="text-[11px] text-slate-500">
+        Se usa para prellenar la jornada de una planilla nueva de ese operador cuando todavía no tiene ninguna
+        planilla anterior de donde copiarla.
+      </p>
+      <select className="campo text-xs" value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
+        <option value="">Selecciona un operador…</option>
+        {operadores.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.nombre_completo}
+          </option>
+        ))}
+      </select>
+
+      {operadorId && (cargando ? (
+        <p className="text-xs text-slate-600">Cargando…</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-4 gap-2">
+            <div>
+              <label className="etiqueta text-[10px]">Entrada</label>
+              <input type="time" className="campo text-xs" value={inicioManana} onChange={(e) => setInicioManana(e.target.value)} />
+            </div>
+            <div>
+              <label className="etiqueta text-[10px]">Sale</label>
+              <input type="time" className="campo text-xs" value={finManana} onChange={(e) => setFinManana(e.target.value)} />
+            </div>
+            <div>
+              <label className="etiqueta text-[10px]">Entrada</label>
+              <input type="time" className="campo text-xs" value={inicioTarde} onChange={(e) => setInicioTarde(e.target.value)} />
+            </div>
+            <div>
+              <label className="etiqueta text-[10px]">Sale</label>
+              <input type="time" className="campo text-xs" value={finTarde} onChange={(e) => setFinTarde(e.target.value)} />
+            </div>
+          </div>
+          {mensaje && (
+            <p className={`text-xs ${mensaje.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>{mensaje}</p>
+          )}
+          <button onClick={guardar} disabled={guardando} className="boton-primario w-full text-sm">
+            {guardando ? 'Guardando…' : 'Guardar jornada de este operador'}
+          </button>
+        </>
+      ))}
     </div>
   );
 }
@@ -402,15 +620,30 @@ function EditorPlanilla({
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (!data) return;
-      const anterior = data as PlanillaHorasExtras;
-      if (!operador?.cargo) setCargoTrabajador((v) => v || anterior.cargo_trabajador);
-      setArea((v) => v || anterior.area);
-      setDireccion((v) => (v === DIRECCION_DEFAULT ? anterior.direccion : v));
-      setJornadaInicioManana(anterior.jornada_inicio_manana);
-      setJornadaFinManana(anterior.jornada_fin_manana);
-      setJornadaInicioTarde(anterior.jornada_inicio_tarde);
-      setJornadaFinTarde(anterior.jornada_fin_tarde);
+      if (data) {
+        const anterior = data as PlanillaHorasExtras;
+        if (!operador?.cargo) setCargoTrabajador((v) => v || anterior.cargo_trabajador);
+        setArea((v) => v || anterior.area);
+        setDireccion((v) => (v === DIRECCION_DEFAULT ? anterior.direccion : v));
+        setJornadaInicioManana(anterior.jornada_inicio_manana);
+        setJornadaFinManana(anterior.jornada_fin_manana);
+        setJornadaInicioTarde(anterior.jornada_inicio_tarde);
+        setJornadaFinTarde(anterior.jornada_fin_tarde);
+        return;
+      }
+      // Nunca tuvo una planilla: usa la jornada por defecto de este operador, si se configuró una
+      // (ver EditorJornadasOperadorDefault) — si tampoco hay eso, se queda con 08:00-12:00/13:00-17:00.
+      const { data: jornadaDefault } = await supabase
+        .from('jornadas_operador_default')
+        .select('*')
+        .eq('operador_id', operadorId)
+        .maybeSingle();
+      if (!jornadaDefault) return;
+      const j = jornadaDefault as JornadaOperadorDefault;
+      setJornadaInicioManana(j.jornada_inicio_manana);
+      setJornadaFinManana(j.jornada_fin_manana);
+      setJornadaInicioTarde(j.jornada_inicio_tarde);
+      setJornadaFinTarde(j.jornada_fin_tarde);
     }
     prellenar();
     // eslint-disable-next-line react-hooks/exhaustive-deps

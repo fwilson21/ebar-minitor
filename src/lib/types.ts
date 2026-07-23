@@ -85,6 +85,14 @@ export interface ConfiguracionPlanillaHorasExtras {
   aprobado_cargo: string;
 }
 
+export interface JornadaOperadorDefault {
+  operador_id: string;
+  jornada_inicio_manana: string;
+  jornada_fin_manana: string;
+  jornada_inicio_tarde: string;
+  jornada_fin_tarde: string;
+}
+
 export interface FilaPlanillaHorasExtras {
   id: string;
   planilla_id: string;
