@@ -637,17 +637,23 @@ function EditorPlanilla({
     [jornadaInicioManana, jornadaFinManana, jornadaInicioTarde, jornadaFinTarde],
   );
 
-  // El aviso de "falta el período" (al traer días o al guardar) se limpia solo apenas se llenan
-  // Desde y Hasta — no debe quedarse en pantalla una vez que la observación ya se subsanó.
+  // Los avisos de "falta el operador" o "falta el período" (al traer días o al guardar) se limpian
+  // solos apenas se subsana lo que pedían — no deben quedarse en pantalla una vez elegido el
+  // trabajador o llenadas las fechas.
   useEffect(() => {
-    if (!fechaDesde || !fechaHasta) return;
-    setMensaje((m) =>
-      m === 'Escribe el período (Desde/Hasta) antes de traer los días.' ||
-      m === 'El período (Desde/Hasta) es obligatorio — sin esas dos fechas no se puede guardar la planilla.'
-        ? null
-        : m,
-    );
-  }, [fechaDesde, fechaHasta]);
+    setMensaje((m) => {
+      if (m === 'Elige un operador registrado para poder traer sus días de turno.') {
+        return operadorId && operadorId !== MANUAL ? null : m;
+      }
+      if (
+        m === 'Escribe el período (Desde/Hasta) antes de traer los días.' ||
+        m === 'El período (Desde/Hasta) es obligatorio — sin esas dos fechas no se puede guardar la planilla.'
+      ) {
+        return fechaDesde && fechaHasta ? null : m;
+      }
+      return m;
+    });
+  }, [operadorId, fechaDesde, fechaHasta]);
 
   useEffect(() => {
     if (!planilla) {
@@ -1622,7 +1628,6 @@ function EditorPlanilla({
         </button>
       )}
 
-      {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
       </div>
 
       {accionPendiente && !confirmarSinCompletar && (
