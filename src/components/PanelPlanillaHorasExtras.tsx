@@ -5,6 +5,7 @@ import { avisoAlmuerzoLargo, calcularHorasFila, formatHoras, parseHorasHHMM, sum
 import { abrirBlob, descargarBlob, generarReportePlanillaHorasExtras, type FilaPlanillaReporte } from '../lib/pdf';
 
 const DIRECCION_DEFAULT = 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO GADMFO';
+const AREA_DEFAULT = 'Jefatura de servicios de alcantarillado';
 
 const MANUAL = 'manual';
 
@@ -582,7 +583,7 @@ function EditorPlanilla({
   const [nombreManual, setNombreManual] = useState(planilla && !planilla.operador_id ? planilla.nombre_trabajador : '');
   const [cargoTrabajador, setCargoTrabajador] = useState(planilla?.cargo_trabajador ?? '');
   const [direccion, setDireccion] = useState(planilla?.direccion ?? DIRECCION_DEFAULT);
-  const [area, setArea] = useState(planilla?.area ?? '');
+  const [area, setArea] = useState(planilla?.area ?? AREA_DEFAULT);
   const [fechaPresentacion, setFechaPresentacion] = useState(planilla?.fecha_presentacion ?? '');
   const [fechaDesde, setFechaDesde] = useState(planilla?.fecha_desde ?? '');
   const [fechaHasta, setFechaHasta] = useState(planilla?.fecha_hasta ?? '');
@@ -681,7 +682,7 @@ function EditorPlanilla({
       const anterior = data as PlanillaHorasExtras | null;
       if (anterior) {
         if (!operador?.cargo) setCargoTrabajador((v) => v || anterior.cargo_trabajador);
-        setArea((v) => v || anterior.area);
+        setArea((v) => (v === AREA_DEFAULT ? anterior.area : v));
         setDireccion((v) => (v === DIRECCION_DEFAULT ? anterior.direccion : v));
       }
       const jornadaDefault = jornadaDefaultData as JornadaOperadorDefault | null;
