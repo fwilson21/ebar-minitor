@@ -637,6 +637,18 @@ function EditorPlanilla({
     [jornadaInicioManana, jornadaFinManana, jornadaInicioTarde, jornadaFinTarde],
   );
 
+  // El aviso de "falta el período" (al traer días o al guardar) se limpia solo apenas se llenan
+  // Desde y Hasta — no debe quedarse en pantalla una vez que la observación ya se subsanó.
+  useEffect(() => {
+    if (!fechaDesde || !fechaHasta) return;
+    setMensaje((m) =>
+      m === 'Escribe el período (Desde/Hasta) antes de traer los días.' ||
+      m === 'El período (Desde/Hasta) es obligatorio — sin esas dos fechas no se puede guardar la planilla.'
+        ? null
+        : m,
+    );
+  }, [fechaDesde, fechaHasta]);
+
   useEffect(() => {
     if (!planilla) {
       setCargandoFilas(false);
