@@ -1318,6 +1318,7 @@ function EditorPlanilla({
           + Día
         </button>
       </div>
+      {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
       </div>
 
       {filas.length > 0 && (
