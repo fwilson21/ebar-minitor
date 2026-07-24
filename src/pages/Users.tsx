@@ -47,6 +47,10 @@ export function Users() {
   const [cargoEdicion, setCargoEdicion] = useState('');
   const [mensajeCargo, setMensajeCargo] = useState<string | null>(null);
   const [guardandoCargo, setGuardandoCargo] = useState(false);
+  const [editandoNombreId, setEditandoNombreId] = useState<string | null>(null);
+  const [nombreEdicion, setNombreEdicion] = useState('');
+  const [mensajeNombre, setMensajeNombre] = useState<string | null>(null);
+  const [guardandoNombre, setGuardandoNombre] = useState(false);
 
   useEffect(() => {
     cargar();
@@ -223,6 +227,32 @@ export function Users() {
     }
   }
 
+  function abrirEditarNombre(id: string, actual: string) {
+    setEditandoNombreId((prev) => (prev === id ? null : id));
+    setNombreEdicion(actual ?? '');
+    setMensajeNombre(null);
+  }
+
+  async function manejarGuardarNombre(id: string) {
+    const nombre = nombreEdicion.trim();
+    if (!nombre) {
+      setMensajeNombre('Escribe el nombre completo.');
+      return;
+    }
+    setGuardandoNombre(true);
+    setMensajeNombre(null);
+    try {
+      const { error } = await supabase.from('usuarios').update({ nombre_completo: nombre }).eq('id', id);
+      if (error) throw error;
+      setUsuarios((prev) => prev.map((u) => (u.id === id ? { ...u, nombre_completo: nombre } : u)));
+      setMensajeNombre('Nombre actualizado.');
+    } catch (err: any) {
+      setMensajeNombre(`No se pudo guardar: ${err.message ?? err}`);
+    } finally {
+      setGuardandoNombre(false);
+    }
+  }
+
   async function manejarRestablecer(id: string) {
     if (passwordReset.length < 6) {
       setMensajeReset('La contraseña debe tener al menos 6 caracteres.');
@@ -249,11 +279,11 @@ export function Users() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold">Usuarios</h1>
+      <div className="relative flex items-center justify-center">
+        <h1 className="text-2xl font-extrabold text-slate-900">Usuarios</h1>
         {esAdmin && (
           <button
-            className="text-sm text-gauge-ok"
+            className="absolute right-0 text-sm text-gauge-ok"
             onClick={() => { setMostrarForm((v) => !v); setMensajeInvitar(null); }}
           >
             {mostrarForm ? 'Cancelar' : '+ Crear usuario'}
@@ -409,6 +439,15 @@ export function Users() {
               {esAdmin && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
+                  onClick={() => abrirEditarNombre(u.id, u.nombre_completo)}
+                >
+                  📝 Nombre
+                </button>
+              )}
+
+              {esAdmin && (
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirReset(u.id)}
                 >
                   🔑 Contraseña
@@ -491,6 +530,33 @@ export function Users() {
               </div>
             )}
 
+            {esAdmin && editandoNombreId === u.id && (
+              <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
+                <label className="etiqueta">Nombre completo</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="campo flex-1"
+                    placeholder="Nombre y apellido"
+                    value={nombreEdicion}
+                    onChange={(e) => setNombreEdicion(e.target.value)}
+                  />
+                  <button
+                    className="boton-primario px-4 flex-shrink-0"
+                    disabled={guardandoNombre || nombreEdicion.trim() === (u.nombre_completo ?? '')}
+                    onClick={() => manejarGuardarNombre(u.id)}
+                  >
+                    {guardandoNombre ? '…' : 'Guardar'}
+                  </button>
+                </div>
+                {mensajeNombre && (
+                  <p className={`text-xs ${mensajeNombre.startsWith('No se pudo') || mensajeNombre.startsWith('Escribe') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+                    {mensajeNombre}
+                  </p>
+                )}
+              </div>
+            )}
+
             {esAdmin && renombrandoId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Nuevo usuario para {u.nombre_completo}</label>
@@ -507,7 +573,7 @@ export function Users() {
                   />
                   <button
                     className="boton-primario px-4 flex-shrink-0"
-                    disabled={guardandoRenombrar}
+                    disabled={guardandoRenombrar || nuevoNombreUsuario.trim() === (u.nombre_usuario ?? '')}
                     onClick={() => manejarRenombrar(u.id)}
                   >
                     {guardandoRenombrar ? '…' : 'Guardar'}
@@ -540,7 +606,7 @@ export function Users() {
                   />
                   <button
                     className="boton-primario px-4 flex-shrink-0"
-                    disabled={guardandoCedula}
+                    disabled={guardandoCedula || cedulaEdicion.trim() === (u.cedula ?? '')}
                     onClick={() => manejarGuardarCedula(u.id)}
                   >
                     {guardandoCedula ? '…' : 'Guardar'}
@@ -567,7 +633,7 @@ export function Users() {
                   />
                   <button
                     className="boton-primario px-4 flex-shrink-0"
-                    disabled={guardandoCargo}
+                    disabled={guardandoCargo || cargoEdicion.trim() === (u.cargo ?? '')}
                     onClick={() => manejarGuardarCargo(u.id)}
                   >
                     {guardandoCargo ? '…' : 'Guardar'}
