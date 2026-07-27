@@ -23,26 +23,40 @@ export interface AdaptadorSync {
   subirFotoADrive(visitaId: string, datos: { base64: string; contentType: string; descripcion?: string | null }): Promise<void>;
 }
 
+// `iniciarAutoSincronizacion` dispara la sincronización desde varios eventos (recuperar
+// conexión, volver a la pestaña, intervalo cada 60s) y además existe el botón manual
+// "Sincronizar ahora": sin este candado, dos disparos casi simultáneos procesaban la misma
+// visita pendiente en paralelo y subían sus fotos por duplicado antes de que cualquiera
+// alcanzara a marcarlas como subidas.
+let sincronizacionEnCurso = false;
+
 export async function ejecutarSincronizacion(adaptador: AdaptadorSync): Promise<{ ok: number; fallidas: number }> {
-  const pendientes = await offlineDB.visitas_pendientes.toArray();
-  let ok = 0;
-  let fallidas = 0;
+  if (sincronizacionEnCurso) return { ok: 0, fallidas: 0 };
+  sincronizacionEnCurso = true;
 
-  for (const item of pendientes) {
-    try {
-      await sincronizarUnaVisita(item, adaptador);
-      await offlineDB.visitas_pendientes.delete(item.cliente_uuid);
-      ok += 1;
-    } catch (err: any) {
-      fallidas += 1;
-      await offlineDB.visitas_pendientes.update(item.cliente_uuid, {
-        intentos: item.intentos + 1,
-        ultimo_error: err?.message ?? String(err),
-      });
+  try {
+    const pendientes = await offlineDB.visitas_pendientes.toArray();
+    let ok = 0;
+    let fallidas = 0;
+
+    for (const item of pendientes) {
+      try {
+        await sincronizarUnaVisita(item, adaptador);
+        await offlineDB.visitas_pendientes.delete(item.cliente_uuid);
+        ok += 1;
+      } catch (err: any) {
+        fallidas += 1;
+        await offlineDB.visitas_pendientes.update(item.cliente_uuid, {
+          intentos: item.intentos + 1,
+          ultimo_error: err?.message ?? String(err),
+        });
+      }
     }
-  }
 
-  return { ok, fallidas };
+    return { ok, fallidas };
+  } finally {
+    sincronizacionEnCurso = false;
+  }
 }
 
 async function sincronizarUnaVisita(item: VisitaPendiente, adaptador: AdaptadorSync): Promise<void> {
