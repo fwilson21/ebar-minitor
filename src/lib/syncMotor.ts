@@ -24,17 +24,20 @@ export interface AdaptadorSync {
 }
 
 // `iniciarAutoSincronizacion` dispara la sincronización desde varios eventos (recuperar
-// conexión, volver a la pestaña, intervalo cada 60s) y además existe el botón manual
-// "Sincronizar ahora": sin este candado, dos disparos casi simultáneos procesaban la misma
-// visita pendiente en paralelo y subían sus fotos por duplicado antes de que cualquiera
-// alcanzara a marcarlas como subidas.
-let sincronizacionEnCurso = false;
+// conexión, volver a la pestaña, intervalo cada 60s), está el botón manual "Sincronizar
+// ahora", y ADEMÁS el service worker puede correr la suya propia vía Background Sync
+// (ver sw.ts) — un proceso aparte, con su propia copia de este módulo en memoria. Un simple
+// `let` no sirve de candado porque no lo comparten: se necesita la Web Locks API
+// (`navigator.locks`), que sí coordina entre pestañas y el service worker.
+async function conCandadoDeSincronizacion<T>(tarea: () => Promise<T>, valorSiOcupado: T): Promise<T> {
+  if (!('locks' in navigator)) return tarea(); // navegador sin soporte: se ejecuta igual, sin candado
+  return navigator.locks.request('ebar-sync-visitas', { ifAvailable: true }, (lock) =>
+    lock ? tarea() : Promise.resolve(valorSiOcupado),
+  );
+}
 
 export async function ejecutarSincronizacion(adaptador: AdaptadorSync): Promise<{ ok: number; fallidas: number }> {
-  if (sincronizacionEnCurso) return { ok: 0, fallidas: 0 };
-  sincronizacionEnCurso = true;
-
-  try {
+  return conCandadoDeSincronizacion(async () => {
     const pendientes = await offlineDB.visitas_pendientes.toArray();
     let ok = 0;
     let fallidas = 0;
@@ -54,9 +57,7 @@ export async function ejecutarSincronizacion(adaptador: AdaptadorSync): Promise<
     }
 
     return { ok, fallidas };
-  } finally {
-    sincronizacionEnCurso = false;
-  }
+  }, { ok: 0, fallidas: 0 });
 }
 
 async function sincronizarUnaVisita(item: VisitaPendiente, adaptador: AdaptadorSync): Promise<void> {
