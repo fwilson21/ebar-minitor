@@ -148,6 +148,11 @@ async function sincronizarUnaVisita(item: VisitaPendiente, adaptador: AdaptadorS
     if (!foto.blob) return;
     const { base64, contentType } = await prepararBlobParaSubida(foto.blob);
     await adaptador.subirFotoADrive(visitaId, { base64, contentType, descripcion: descripcion ?? null });
+    // Se marca y persiste de inmediato (no al final de toda la visita): si otra foto de la
+    // misma visita falla después y hay que reintentar, esta ya no se debe volver a subir —
+    // si no, cada reintento crea una copia nueva en Drive y una fila duplicada en `fotos`.
+    foto.estado_subida = 'subida';
+    await offlineDB.visitas_pendientes.update(item.cliente_uuid, { payload: item.payload });
   });
 }
 
