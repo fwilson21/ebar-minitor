@@ -96,6 +96,13 @@ select id, 3, 220, 15 from estaciones_ebar where codigo = 'EBAR-002';
    supabase secrets set GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
    supabase secrets set GOOGLE_DRIVE_ROOT_FOLDER_ID='id_de_la_carpeta_raiz'
    ```
+   > **Alternativa más simple (la que usa este proyecto actualmente):** en vez de la cuenta
+   > de servicio, publicar un Google Apps Script como Web App y configurar
+   > `GOOGLE_DRIVE_WEBAPP_URL` + `GOOGLE_DRIVE_WEBAPP_SECRET` (ver comentario en
+   > `supabase/functions/upload-to-drive/index.ts`). El script debe validar el campo
+   > `secreto` de cada petición contra una "Propiedad del script" antes de guardar nada
+   > en Drive — sin esa validación, cualquiera con la URL puede subir archivos arbitrarios
+   > a tu Drive y hacerlos públicos.
 
 ### 2.3 WhatsApp (envío de reportes)
 

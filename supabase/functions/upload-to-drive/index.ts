@@ -8,6 +8,7 @@
 //   GOOGLE_SERVICE_ACCOUNT_JSON   -> contenido completo del JSON de la cuenta de servicio
 //   GOOGLE_DRIVE_ROOT_FOLDER_ID   -> ID de la carpeta raíz en Drive (compartida con la cuenta de servicio)
 //   GOOGLE_DRIVE_WEBAPP_URL       -> URL de un Google Apps Script publicado como Web App
+//   GOOGLE_DRIVE_WEBAPP_SECRET    -> clave secreta que el Apps Script valida antes de aceptar la subida
 //   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY -> ya provistas automáticamente por Supabase
 //
 // IMPORTANTE: si no quieres entrar en Google Cloud Console, puedes usar la opción
@@ -103,10 +104,11 @@ Deno.serve(async (req) => {
 // Autenticación de la cuenta de servicio (JWT firmado con la clave privada del JSON)
 // ----------------------------------------------------------------------------
 async function subirArchivoViaAppsScript(url: string, payload: Payload): Promise<{ file_id: string; folder_id: string; url_publica: string }> {
+  const secreto = Deno.env.get('GOOGLE_DRIVE_WEBAPP_SECRET');
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, secreto }),
   });
 
   const data = await resp.json();
