@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Stations } from './pages/Stations';
 import { StationDetail } from './pages/StationDetail';
 import { VisitForm } from './pages/VisitForm';
+import { VisitaDetalle } from './pages/VisitaDetalle';
 import { Reports } from './pages/Reports';
 import { Users } from './pages/Users';
 import { Asignaciones } from './pages/Asignaciones';
@@ -34,6 +35,7 @@ export const routes = createRoutesFromElements(
       <Route path="estaciones/:id" element={<StationDetail />} />
       <Route path="estaciones/:id/nueva-visita" element={<VisitForm />} />
       <Route path="estaciones/:id/visitas/:visitaId/editar" element={<VisitForm />} />
+      <Route path="estaciones/:id/visitas/:visitaId/ver" element={<VisitaDetalle />} />
       <Route path="reportes" element={<Reports />} />
       <Route path="usuarios" element={<Users />} />
       <Route path="asignaciones" element={<Asignaciones />} />

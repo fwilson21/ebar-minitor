@@ -356,13 +356,14 @@ export function StationDetail() {
           <div className="space-y-2">
             {historialFiltrado.map((h) => {
               const puedeEditar = puedeEditarTodo || usuario?.id === h.operador_id;
-              const Contenedor = puedeEditar ? Link : 'div';
-              const propsContenedor = puedeEditar
-                ? { to: `/estaciones/${estacion.id}/visitas/${h.id}/editar` }
-                : {};
+              const propsContenedor = {
+                to: puedeEditar
+                  ? `/estaciones/${estacion.id}/visitas/${h.id}/editar`
+                  : `/estaciones/${estacion.id}/visitas/${h.id}/ver`,
+              };
               const duracion = duracionVisita(h.fecha_hora_llegada, h.fecha_hora_salida);
               return (
-              <Contenedor key={h.id} className="tarjeta p-3 block hover:border-gauge-ok/50 transition" {...(propsContenedor as any)}>
+              <Link key={h.id} className="tarjeta p-3 block hover:border-gauge-ok/50 transition" {...propsContenedor}>
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-2">
                     <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC', { hour12: false })}</span>
@@ -372,7 +373,7 @@ export function StationDetail() {
                       </span>
                     )}
                   </span>
-                  <span className="text-xs text-slate-500">{h.operador}{puedeEditar && ' · Editar →'}</span>
+                  <span className="text-xs text-slate-500">{h.operador}{puedeEditar ? ' · Editar →' : ' · Ver →'}</span>
                 </div>
                 <div className="flex gap-2 mt-2 flex-wrap">
                   {h.bombas.filter((b) => b.estado === 'encendida').map((b) => (
@@ -451,7 +452,7 @@ export function StationDetail() {
                     })}
                   </div>
                 )}
-              </Contenedor>
+              </Link>
               );
             })}
           </div>
