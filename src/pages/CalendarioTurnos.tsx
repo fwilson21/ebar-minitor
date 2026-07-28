@@ -13,6 +13,8 @@ import {
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
 import { nombreCorto } from '../lib/nombres';
 import { PanelPlanillaHorasExtras } from '../components/PanelPlanillaHorasExtras';
+import { GridEditable } from '../components/GridEditable';
+import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 
 const DIAS_SEMANA_CORTOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
@@ -306,178 +308,82 @@ export function CalendarioTurnos() {
         </p>
       </div>
 
-      <div className="tarjeta p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <button onClick={() => setMes((m) => sumarMeses(m, -1))} className="boton-secundario px-3 py-1.5 text-sm">
-            ‹
-          </button>
-          <p className="font-semibold text-sm capitalize">{tituloMesLabel}</p>
-          <button onClick={() => setMes((m) => sumarMeses(m, 1))} className="boton-secundario px-3 py-1.5 text-sm">
-            ›
-          </button>
-        </div>
+      {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
+      <div className="lg:hidden space-y-5">
+        <BloqueCalendario
+          setMes={setMes}
+          cargandoMes={cargandoMes}
+          tituloMesLabel={tituloMesLabel}
+          celdas={celdas}
+          motivoDiaFn={(fecha) => motivoDia(fecha, feriadosAdicionalesMap)}
+          turnosPorFecha={turnosPorFecha}
+          nombreOperadorPorId={nombreOperadorPorId}
+          setDiaSeleccionado={setDiaSeleccionado}
+        />
+        <BloqueResumenMes resumenMes={resumenMes} algunoSobrepasaLimite={algunoSobrepasaLimite} />
+        <BloqueExportar
+          mensaje={mensaje}
+          generandoPdf={generandoPdf}
+          manejarGenerarPdf={manejarGenerarPdf}
+          pdfBlob={pdfBlob}
+          manejarCompartir={manejarCompartir}
+          compartiendo={compartiendo}
+          mensajeCompartir={mensajeCompartir}
+        />
+        <BloquePlanillaHorasExtras operadores={operadores} usuarioId={usuario.id} />
+        <BloqueFeriados anioVisible={anioVisible} feriadosAdicionales={feriadosAdicionales} quitarFeriado={quitarFeriado} />
+      </div>
 
-        {cargandoMes ? (
-          <p className="text-slate-600 text-sm">Cargando…</p>
-        ) : (
-          <>
-            <div className="grid grid-cols-7 gap-1 text-center">
-              {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d) => (
-                <div key={d} className="text-xs text-slate-700 font-semibold py-1">
-                  {d}
-                </div>
-              ))}
-              {celdas.map((fecha, i) => {
-                if (!fecha) return <div key={i} />;
-                const motivo = motivoDia(fecha, feriadosAdicionalesMap);
-                const turnosDia = turnosPorFecha.get(fecha) ?? [];
-                const esFeriado = motivo !== null && motivo !== 'Fin de semana';
+      {/* Escritorio (lg+): mismos bloques, pero acomodados según lo que haya guardado el
+          administrador en Distribución de entorno de trabajo (o el acomodo por defecto). */}
+      <div className="hidden lg:block">
+        <GridEditable
+          pantallaId="turnos"
+          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'turnos')!.bloques}
+          renderBloque={(bloqueId) => {
+            switch (bloqueId) {
+              case 'calendario':
                 return (
-                  <button
-                    key={fecha}
-                    type="button"
-                    onClick={() => setDiaSeleccionado(fecha)}
-                    className={`min-h-[3.75rem] rounded-lg border text-sm font-medium flex flex-col items-center pt-1 pb-1 gap-0.5 transition overflow-hidden ${
-                      esFeriado
-                        ? 'border-gauge-warn bg-gauge-warn/20 text-gauge-warn hover:bg-gauge-warn/30'
-                        : motivo === 'Fin de semana'
-                          ? 'border-panel-500 bg-panel-700 text-slate-900 hover:bg-panel-600'
-                          : 'border-panel-600/60 bg-panel-700/40 text-slate-700 hover:bg-panel-700 hover:text-slate-900'
-                    } ${turnosDia.length > 0 ? 'ring-2 ring-gauge-ok' : ''}`}
-                  >
-                    <span>{Number(fecha.slice(-2))}</span>
-                    {turnosDia.length > 0 && (
-                      <div className="flex flex-col items-center leading-tight w-full px-0.5">
-                        {turnosDia.slice(0, MAX_NOMBRES_EN_CELDA).map((t) => (
-                          <span key={t.id} className="text-[8.5px] font-bold text-gauge-ok truncate max-w-full">
-                            {nombreCorto(nombreOperadorPorId(t.operador_id))}
-                          </span>
-                        ))}
-                        {turnosDia.length > MAX_NOMBRES_EN_CELDA && (
-                          <span className="text-[8.5px] font-bold text-gauge-ok">
-                            +{turnosDia.length - MAX_NOMBRES_EN_CELDA} más
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </button>
+                  <BloqueCalendario
+                    setMes={setMes}
+                    cargandoMes={cargandoMes}
+                    tituloMesLabel={tituloMesLabel}
+                    celdas={celdas}
+                    motivoDiaFn={(fecha) => motivoDia(fecha, feriadosAdicionalesMap)}
+                    turnosPorFecha={turnosPorFecha}
+                    nombreOperadorPorId={nombreOperadorPorId}
+                    setDiaSeleccionado={setDiaSeleccionado}
+                  />
                 );
-              })}
-            </div>
-
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 pt-1">
-              <span>
-                <span className="inline-block w-3 h-3 rounded bg-panel-700 border border-panel-500 align-middle mr-1" />
-                Fin de semana
-              </span>
-              <span>
-                <span className="inline-block w-3 h-3 rounded bg-gauge-warn/20 border border-gauge-warn align-middle mr-1" />
-                Feriado
-              </span>
-              <span>
-                <span className="inline-block w-3 h-3 rounded ring-2 ring-gauge-ok align-middle mr-1" />
-                Con turno asignado (nombre del operador)
-              </span>
-              <span>
-                <span className="inline-block w-3 h-3 rounded bg-panel-700/40 border border-panel-600/60 align-middle mr-1" />
-                Regular (tocar para declarar feriado)
-              </span>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="tarjeta p-4 space-y-2">
-        <h2 className="text-base font-semibold">Resumen del mes</h2>
-        {algunoSobrepasaLimite && (
-          <p className="text-sm text-gauge-danger bg-gauge-danger/10 border border-gauge-danger/40 rounded-lg px-3 py-2">
-            ⚠ {resumenMes.filter((r) => r.sobrepasaLimite).length === 1 ? 'Un operador supera' : 'Algunos operadores superan'} las{' '}
-            {LIMITE_HORAS_MES} horas este mes.
-          </p>
-        )}
-        {resumenMes.length === 0 ? (
-          <p className="text-sm text-slate-600">Todavía no hay turnos cargados este mes.</p>
-        ) : (
-          <div className="space-y-1">
-            {resumenMes.map((r) => (
-              <div
-                key={r.operadorId}
-                className={`flex items-center justify-between text-sm gap-2 ${r.sobrepasaLimite ? 'text-gauge-danger' : ''}`}
-              >
-                <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-800'}>
-                  {r.sobrepasaLimite ? '⚠ ' : ''}
-                  {r.nombre}
-                </span>
-                <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-700'}>
-                  {r.dias} x 8 = {r.horas} horas
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="tarjeta p-4 space-y-3">
-        <h2 className="text-base font-semibold">Exportar</h2>
-        {mensaje && <p className="text-sm text-gauge-danger">{mensaje}</p>}
-        <button onClick={manejarGenerarPdf} disabled={generandoPdf} className="boton-primario w-full">
-          {generandoPdf ? 'Generando…' : '📄 Generar PDF del mes'}
-        </button>
-
-        {pdfBlob && (
-          <div className="space-y-2 pt-2 border-t border-panel-600/40">
-            <button onClick={manejarCompartir} disabled={compartiendo} className="boton-primario w-full">
-              {compartiendo ? 'Abriendo…' : '📤 Compartir por WhatsApp'}
-            </button>
-            {mensajeCompartir && (
-              <p className={`text-xs ${mensajeCompartir.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
-                {mensajeCompartir}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      <PanelPlanillaHorasExtras operadores={operadores} usuarioId={usuario.id} />
-
-      <div className="tarjeta p-4 space-y-3">
-        <div>
-          <h2 className="text-base font-semibold">Feriados</h2>
-          <p className="text-xs text-slate-500">
-            Referencia: el calendario nacional de Ecuador y los locales (cantonización de Francisco de Orellana 30
-            de abril, provincialización de Orellana 30 de julio) se calculan solos. Los feriados de última hora se
-            declaran tocando el día en el calendario de arriba.
-          </p>
-        </div>
-
-        <div>
-          <p className="text-xs text-slate-600 mb-1">Feriados calculados para {anioVisible}:</p>
-          <div className="space-y-0.5 text-xs text-slate-700">
-            {[...calcularFeriados(anioVisible).entries()]
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([fecha, nombres]) => (
-                <p key={fecha}>
-                  {fecha} — {nombres.join(' + ')}
-                </p>
-              ))}
-          </div>
-        </div>
-
-        {feriadosAdicionales.length > 0 && (
-          <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
-            <p className="text-xs text-slate-600">Feriados de última hora ya declarados:</p>
-            {feriadosAdicionales.map((f) => (
-              <div key={f.id} className="flex items-center justify-between text-sm">
-                <span className="text-slate-700">
-                  {f.fecha} · {f.descripcion}
-                </span>
-                <button onClick={() => quitarFeriado(f.id)} className="text-gauge-danger hover:underline text-xs">
-                  Quitar
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+              case 'feriados':
+                return (
+                  <BloqueFeriados
+                    anioVisible={anioVisible}
+                    feriadosAdicionales={feriadosAdicionales}
+                    quitarFeriado={quitarFeriado}
+                  />
+                );
+              case 'resumen_mes':
+                return <BloqueResumenMes resumenMes={resumenMes} algunoSobrepasaLimite={algunoSobrepasaLimite} />;
+              case 'exportar':
+                return (
+                  <BloqueExportar
+                    mensaje={mensaje}
+                    generandoPdf={generandoPdf}
+                    manejarGenerarPdf={manejarGenerarPdf}
+                    pdfBlob={pdfBlob}
+                    manejarCompartir={manejarCompartir}
+                    compartiendo={compartiendo}
+                    mensajeCompartir={mensajeCompartir}
+                  />
+                );
+              case 'planilla_horas_extras':
+                return <BloquePlanillaHorasExtras operadores={operadores} usuarioId={usuario.id} />;
+              default:
+                return null;
+            }
+          }}
+        />
       </div>
 
       {diaSeleccionado && (
@@ -497,6 +403,264 @@ export function CalendarioTurnos() {
       )}
     </div>
   );
+}
+
+interface BloqueCalendarioProps {
+  setMes: (updater: (m: string) => string) => void;
+  cargandoMes: boolean;
+  tituloMesLabel: string;
+  celdas: (string | null)[];
+  motivoDiaFn: (fecha: string) => string | null;
+  turnosPorFecha: Map<string, TurnoCalendario[]>;
+  nombreOperadorPorId: (id: string) => string;
+  setDiaSeleccionado: (fecha: string) => void;
+}
+
+function BloqueCalendario({
+  setMes,
+  cargandoMes,
+  tituloMesLabel,
+  celdas,
+  motivoDiaFn,
+  turnosPorFecha,
+  nombreOperadorPorId,
+  setDiaSeleccionado,
+}: BloqueCalendarioProps) {
+  const numSemanas = Math.max(1, celdas.length / 7);
+  return (
+    <div className="tarjeta p-4 space-y-3 lg:h-full lg:flex lg:flex-col lg:min-h-0">
+      <div className="flex items-center justify-between lg:shrink-0">
+        <button onClick={() => setMes((m) => sumarMeses(m, -1))} className="boton-secundario px-3 py-1.5 text-sm">
+          ‹
+        </button>
+        <p className="font-semibold text-sm capitalize">{tituloMesLabel}</p>
+        <button onClick={() => setMes((m) => sumarMeses(m, 1))} className="boton-secundario px-3 py-1.5 text-sm">
+          ›
+        </button>
+      </div>
+
+      {cargandoMes ? (
+        <p className="text-slate-600 text-sm">Cargando…</p>
+      ) : (
+        <div className="space-y-3 lg:space-y-0 lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
+          <div className="grid grid-cols-7 gap-1 text-center lg:shrink-0">
+            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d) => (
+              <div key={d} className="text-xs text-slate-700 font-semibold py-1">
+                {d}
+              </div>
+            ))}
+          </div>
+          {/* grid-template-rows dinámico (1fr por semana): así el bloque cabe siempre en el alto
+              que le asigne el admin en Distribución de entorno, sin scroll interno — ver
+              lg:flex-1/lg:min-h-0 arriba, que le da a este grid una altura real de la que repartir. */}
+          <div
+            className="grid grid-cols-7 gap-1 text-center lg:flex-1 lg:min-h-0"
+            style={{ gridTemplateRows: `repeat(${numSemanas}, 1fr)` }}
+          >
+            {celdas.map((fecha, i) => {
+              if (!fecha) return <div key={i} />;
+              const motivo = motivoDiaFn(fecha);
+              const turnosDia = turnosPorFecha.get(fecha) ?? [];
+              const esFeriado = motivo !== null && motivo !== 'Fin de semana';
+              return (
+                <button
+                  key={fecha}
+                  type="button"
+                  onClick={() => setDiaSeleccionado(fecha)}
+                  className={`min-h-[3.75rem] lg:min-h-0 rounded-lg border text-sm font-medium flex flex-col items-center pt-1 pb-1 gap-0.5 transition overflow-hidden ${
+                    esFeriado
+                      ? 'border-gauge-warn bg-gauge-warn/20 text-gauge-warn hover:bg-gauge-warn/30'
+                      : motivo === 'Fin de semana'
+                        ? 'border-panel-500 bg-panel-700 text-slate-900 hover:bg-panel-600'
+                        : 'border-panel-600/60 bg-panel-700/40 text-slate-700 hover:bg-panel-700 hover:text-slate-900'
+                  } ${turnosDia.length > 0 ? 'ring-2 ring-gauge-ok' : ''}`}
+                >
+                  <span>{Number(fecha.slice(-2))}</span>
+                  {turnosDia.length > 0 && (
+                    <div className="flex flex-col items-center leading-tight w-full px-0.5">
+                      {turnosDia.slice(0, MAX_NOMBRES_EN_CELDA).map((t) => (
+                        <span key={t.id} className="text-[8.5px] font-bold text-gauge-ok truncate max-w-full">
+                          {nombreCorto(nombreOperadorPorId(t.operador_id))}
+                        </span>
+                      ))}
+                      {turnosDia.length > MAX_NOMBRES_EN_CELDA && (
+                        <span className="text-[8.5px] font-bold text-gauge-ok">
+                          +{turnosDia.length - MAX_NOMBRES_EN_CELDA} más
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 pt-1 lg:shrink-0">
+            <span>
+              <span className="inline-block w-3 h-3 rounded bg-panel-700 border border-panel-500 align-middle mr-1" />
+              Fin de semana
+            </span>
+            <span>
+              <span className="inline-block w-3 h-3 rounded bg-gauge-warn/20 border border-gauge-warn align-middle mr-1" />
+              Feriado
+            </span>
+            <span>
+              <span className="inline-block w-3 h-3 rounded ring-2 ring-gauge-ok align-middle mr-1" />
+              Con turno asignado (nombre del operador)
+            </span>
+            <span>
+              <span className="inline-block w-3 h-3 rounded bg-panel-700/40 border border-panel-600/60 align-middle mr-1" />
+              Regular (tocar para declarar feriado)
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface BloqueFeriadosProps {
+  anioVisible: number;
+  feriadosAdicionales: { id: string; fecha: string; descripcion: string }[];
+  quitarFeriado: (id: string) => void;
+}
+
+function BloqueFeriados({ anioVisible, feriadosAdicionales, quitarFeriado }: BloqueFeriadosProps) {
+  return (
+    <div className="tarjeta p-4 space-y-3">
+      <div>
+        <h2 className="text-base font-semibold">Feriados</h2>
+        <p className="text-xs text-slate-500">
+          Referencia: el calendario nacional de Ecuador y los locales (cantonización de Francisco de Orellana 30
+          de abril, provincialización de Orellana 30 de julio) se calculan solos. Los feriados de última hora se
+          declaran tocando el día en el calendario de arriba.
+        </p>
+      </div>
+
+      <div>
+        <p className="text-xs text-slate-600 mb-1">Feriados calculados para {anioVisible}:</p>
+        <div className="space-y-0.5 text-xs text-slate-700">
+          {[...calcularFeriados(anioVisible).entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([fecha, nombres]) => (
+              <p key={fecha}>
+                {fecha} — {nombres.join(' + ')}
+              </p>
+            ))}
+        </div>
+      </div>
+
+      {feriadosAdicionales.length > 0 && (
+        <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
+          <p className="text-xs text-slate-600">Feriados de última hora ya declarados:</p>
+          {feriadosAdicionales.map((f) => (
+            <div key={f.id} className="flex items-center justify-between text-sm">
+              <span className="text-slate-700">
+                {f.fecha} · {f.descripcion}
+              </span>
+              <button onClick={() => quitarFeriado(f.id)} className="text-gauge-danger hover:underline text-xs">
+                Quitar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ResumenOperadorMes {
+  operadorId: string;
+  nombre: string;
+  dias: number;
+  horas: number;
+  sobrepasaLimite: boolean;
+}
+
+interface BloqueResumenMesProps {
+  resumenMes: ResumenOperadorMes[];
+  algunoSobrepasaLimite: boolean;
+}
+
+function BloqueResumenMes({ resumenMes, algunoSobrepasaLimite }: BloqueResumenMesProps) {
+  return (
+    <div className="tarjeta p-4 space-y-2">
+      <h2 className="text-base font-semibold">Resumen del mes</h2>
+      {algunoSobrepasaLimite && (
+        <p className="text-sm text-gauge-danger bg-gauge-danger/10 border border-gauge-danger/40 rounded-lg px-3 py-2">
+          ⚠ {resumenMes.filter((r) => r.sobrepasaLimite).length === 1 ? 'Un operador supera' : 'Algunos operadores superan'} las{' '}
+          {LIMITE_HORAS_MES} horas este mes.
+        </p>
+      )}
+      {resumenMes.length === 0 ? (
+        <p className="text-sm text-slate-600">Todavía no hay turnos cargados este mes.</p>
+      ) : (
+        <div className="space-y-1">
+          {resumenMes.map((r) => (
+            <div
+              key={r.operadorId}
+              className={`flex items-center justify-between text-sm gap-2 ${r.sobrepasaLimite ? 'text-gauge-danger' : ''}`}
+            >
+              <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-800'}>
+                {r.sobrepasaLimite ? '⚠ ' : ''}
+                {r.nombre}
+              </span>
+              <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-700'}>
+                {r.dias} x 8 = {r.horas} horas
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface BloqueExportarProps {
+  mensaje: string | null;
+  generandoPdf: boolean;
+  manejarGenerarPdf: () => void;
+  pdfBlob: Blob | null;
+  manejarCompartir: () => void;
+  compartiendo: boolean;
+  mensajeCompartir: string | null;
+}
+
+function BloqueExportar({
+  mensaje,
+  generandoPdf,
+  manejarGenerarPdf,
+  pdfBlob,
+  manejarCompartir,
+  compartiendo,
+  mensajeCompartir,
+}: BloqueExportarProps) {
+  return (
+    <div className="tarjeta p-4 space-y-3">
+      <h2 className="text-base font-semibold">Exportar</h2>
+      {mensaje && <p className="text-sm text-gauge-danger">{mensaje}</p>}
+      <button onClick={manejarGenerarPdf} disabled={generandoPdf} className="boton-primario w-full">
+        {generandoPdf ? 'Generando…' : '📄 Generar PDF del mes'}
+      </button>
+
+      {pdfBlob && (
+        <div className="space-y-2 pt-2 border-t border-panel-600/40">
+          <button onClick={manejarCompartir} disabled={compartiendo} className="boton-primario w-full">
+            {compartiendo ? 'Abriendo…' : '📤 Compartir por WhatsApp'}
+          </button>
+          {mensajeCompartir && (
+            <p className={`text-xs ${mensajeCompartir.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+              {mensajeCompartir}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BloquePlanillaHorasExtras({ operadores, usuarioId }: { operadores: Usuario[]; usuarioId: string }) {
+  return <PanelPlanillaHorasExtras operadores={operadores} usuarioId={usuarioId} />;
 }
 
 interface PanelDiaProps {

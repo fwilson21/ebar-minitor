@@ -20,6 +20,7 @@ const NAV_BASE = [
 const NAV_ADMIN = { to: '/usuarios', label: 'Usuarios', icon: '👥' };
 const NAV_ADMIN_SUPERVISOR = { to: '/asignaciones', label: 'Asignar', icon: '🗺️' };
 const NAV_TURNOS = { to: '/calendario-turnos', label: 'Turnos', icon: '📅' };
+const NAV_DISTRIBUCION = { to: '/distribucion-entorno', label: 'Distribución', icon: '🧩' };
 
 export function AppShell() {
   const { usuario, logout } = useAuth();
@@ -114,7 +115,7 @@ export function AppShell() {
   const navItems = [
     ...NAV_BASE,
     ...(usuario?.rol === 'administrador' || usuario?.rol === 'supervisor' ? [NAV_ADMIN_SUPERVISOR] : []),
-    ...(usuario?.rol === 'administrador' ? [NAV_TURNOS, NAV_ADMIN] : []),
+    ...(usuario?.rol === 'administrador' ? [NAV_TURNOS, NAV_ADMIN, NAV_DISTRIBUCION] : []),
   ];
 
   return (

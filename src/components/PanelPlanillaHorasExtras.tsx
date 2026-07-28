@@ -1,8 +1,28 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type Dispatch,
+  type FocusEvent,
+  type KeyboardEvent,
+  type SetStateAction,
+} from 'react';
 import { supabase } from '../lib/supabase';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, JornadaOperadorDefault, PlanillaHorasExtras, Usuario } from '../lib/types';
-import { avisoAlmuerzoLargo, calcularHorasFila, formatHoras, parseHorasHHMM, sumarHorasExtra, validarOrdenHorario } from '../lib/horasExtras';
+import {
+  avisoAlmuerzoLargo,
+  calcularHorasFila,
+  formatHoras,
+  parseHorasHHMM,
+  sumarHorasExtra,
+  validarOrdenHorario,
+  type JornadaReferencia,
+} from '../lib/horasExtras';
 import { abrirBlob, descargarBlob, generarReportePlanillaHorasExtras, type FilaPlanillaReporte } from '../lib/pdf';
+import { GridEditable } from './GridEditable';
+import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 
 const DIRECCION_DEFAULT = 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO GADMFO';
 const AREA_DEFAULT = 'Jefatura de servicios de alcantarillado';
@@ -209,37 +229,40 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
       {abierto && (
         <>
           <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setAbierto(false)} />
-          <div className="fixed inset-2 sm:inset-6 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-panel-600/40">
-              <h2 className="font-semibold text-sm">
-                {editando && editando !== 'nueva' ? 'Editar planilla' : editando === 'nueva' ? 'Nueva planilla' : ''}
-              </h2>
-              <button
-                onClick={() => (editando ? setEditando(null) : setAbierto(false))}
-                className="text-slate-600 hover:text-slate-900 text-lg leading-none"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
-              {editando ? (
-                configuracion ? (
-                  <EditorPlanilla
-                    planilla={editando === 'nueva' ? null : editando}
-                    operadores={operadores}
-                    usuarioId={usuarioId}
-                    configuracion={configuracion}
-                    onCerrar={() => setEditando(null)}
-                    onGuardado={async () => {
-                      setEditando(null);
-                      await cargarPlanillas();
-                    }}
-                  />
-                ) : (
+          {editando ? (
+            configuracion ? (
+              // EditorPlanilla se posiciona a sí mismo (distinto en celular vs escritorio, ver
+              // GridEditable dentro) — no lo envuelve una caja fija del padre para no montarlo dos
+              // veces (una por breakpoint) y duplicar sus llamadas a Supabase.
+              <EditorPlanilla
+                planilla={editando === 'nueva' ? null : editando}
+                operadores={operadores}
+                usuarioId={usuarioId}
+                configuracion={configuracion}
+                onCerrar={() => setEditando(null)}
+                onGuardado={async () => {
+                  setEditando(null);
+                  await cargarPlanillas();
+                }}
+              />
+            ) : (
+              <div className="fixed inset-2 sm:inset-6 lg:inset-0 z-30 lg:flex lg:items-center lg:justify-center lg:p-4">
+                <div className="h-full lg:h-auto lg:w-full lg:max-w-4xl bg-panel-800 border border-panel-600/60 rounded-xl lg:rounded-2xl shadow-xl flex items-center justify-center p-4">
                   <p className="text-sm text-slate-600">Cargando…</p>
-                )
-              ) : (
+                </div>
+              </div>
+            )
+          ) : (
+            <div className="fixed inset-2 sm:inset-6 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-panel-600/40">
+                <h2 className="font-semibold text-sm"></h2>
+                <button onClick={() => setAbierto(false)} className="text-slate-600 hover:text-slate-900 text-lg leading-none">
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4">
                 <div className="max-w-2xl mx-auto space-y-3">
                     <h1 className="text-xl font-bold text-slate-900 text-center">Planillas de horas extras</h1>
                     <p className="text-sm font-semibold text-slate-700">Buscar planilla</p>
@@ -402,9 +425,9 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                       + Nueva planilla
                     </button>
                   </div>
-                )}
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
     </div>
@@ -1159,11 +1182,288 @@ function EditorPlanilla({
     generarPdf();
   }
 
-  if (cargandoFilas) return <p className="text-sm text-slate-600">Cargando…</p>;
+  // Mismo encabezado (título + cerrar) para las dos cajas de abajo (celular y escritorio) — el
+  // modal se posiciona distinto según el ancho de pantalla, pero es un solo EditorPlanilla montado
+  // (ver PanelPlanillaHorasExtras), así que esto solo cambia de forma visualmente, no de estado.
+  const titulo = planilla ? 'Editar planilla' : 'Nueva planilla';
+  const encabezado = (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-panel-600/40 shrink-0">
+      <h2 className="font-semibold text-sm">{titulo}</h2>
+      <button onClick={onCerrar} className="text-slate-600 hover:text-slate-900 text-lg leading-none">
+        ✕
+      </button>
+    </div>
+  );
+
+  if (cargandoFilas) {
+    return (
+      <>
+        <div className="lg:hidden fixed inset-2 sm:inset-6 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl flex flex-col overflow-hidden">
+          {encabezado}
+          <div className="flex-1 flex items-center justify-center p-4">
+            <p className="text-sm text-slate-600">Cargando…</p>
+          </div>
+        </div>
+        <div className="hidden lg:flex fixed inset-0 items-center justify-center p-4 z-30">
+          <div className="bg-panel-800 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto">
+            {encabezado}
+            <div className="p-8 flex items-center justify-center">
+              <p className="text-sm text-slate-600">Cargando…</p>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const bloquesModalPlanilla = PANTALLAS_EDITABLES.find((p) => p.id === 'modal_nueva_planilla')!.bloques;
+
+  const props_encabezadoFechas: BloqueEncabezadoFechasProps = {
+    operadorId,
+    setOperadorId,
+    operadores,
+    campoClase,
+    nombreManual,
+    setNombreManual,
+    cargoTrabajador,
+    setCargoTrabajador,
+    area,
+    setArea,
+    direccion,
+    setDireccion,
+    fechaPresentacion,
+    setFechaPresentacion,
+    fechaDesde,
+    setFechaDesde,
+    fechaHasta,
+    setFechaHasta,
+  };
+  const props_jornadaNormal: BloqueJornadaNormalProps = {
+    campoClase,
+    jornadaInicioManana,
+    setJornadaInicioManana,
+    jornadaFinManana,
+    setJornadaFinManana,
+    jornadaInicioTarde,
+    setJornadaInicioTarde,
+    jornadaFinTarde,
+    setJornadaFinTarde,
+  };
+  const props_informeMemorando: BloqueInformeMemorandoProps = {
+    campoClase,
+    descripcionDefault,
+    setDescripcionDefault,
+    memorandoDefault,
+    setMemorandoDefault,
+    traerDiasDeCalendario,
+    trayendoDias,
+    agregarFilaManual,
+    mensaje,
+  };
+  const props_tablaDias: BloqueTablaDiasProps = {
+    filas,
+    jornada,
+    resaltarFaltantes,
+    campoClase,
+    actualizarFila,
+    quitarFila,
+    calcularIgual,
+    recalcularTodas,
+    erroresOrden,
+    avisosAlmuerzo,
+    setAvisosDescartados,
+  };
+  const props_acciones: BloqueAccionesProps = {
+    totalHorasExtra,
+    configuracion,
+    campoClase,
+    editarRevisado,
+    setEditarRevisado,
+    revisadoNombre,
+    setRevisadoNombre,
+    revisadoCargo,
+    setRevisadoCargo,
+    editarAprobado,
+    setEditarAprobado,
+    aprobadoNombre,
+    setAprobadoNombre,
+    aprobadoCargo,
+    setAprobadoCargo,
+    pdfBlob,
+    compartirPorWhatsApp,
+    compartiendo,
+    alGuardarClick,
+    guardando,
+    alGenerarPdfClick,
+    generandoPdf,
+    onCerrar,
+  };
 
   return (
+    <>
+      {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
+      <div className="lg:hidden fixed inset-2 sm:inset-6 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl flex flex-col overflow-hidden">
+        {encabezado}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="max-w-2xl mx-auto w-full space-y-4">
+            <BloqueEncabezadoFechas {...props_encabezadoFechas} />
+            <BloqueJornadaNormal {...props_jornadaNormal} />
+            <BloqueInformeMemorando {...props_informeMemorando} />
+          </div>
+          <BloqueTablaDias {...props_tablaDias} />
+          <BloqueAcciones {...props_acciones} />
+        </div>
+      </div>
+
+      {/* Escritorio (lg+): modal centrado, ancho máximo fijo, bloques acomodables por el
+          administrador desde Distribución de entorno de trabajo. */}
+      <div className="hidden lg:flex fixed inset-0 items-center justify-center p-4 z-30">
+        <div className="bg-panel-800 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto">
+          {encabezado}
+          <div className="p-4">
+            <GridEditable
+              pantallaId="modal_nueva_planilla"
+              bloques={bloquesModalPlanilla}
+              renderBloque={(bloqueId) => {
+                switch (bloqueId) {
+                  case 'encabezado_fechas':
+                    return <BloqueEncabezadoFechas {...props_encabezadoFechas} />;
+                  case 'jornada_normal':
+                    return <BloqueJornadaNormal {...props_jornadaNormal} />;
+                  case 'informe_memorando':
+                    return <BloqueInformeMemorando {...props_informeMemorando} />;
+                  case 'tabla_dias':
+                    return <BloqueTablaDias {...props_tablaDias} />;
+                  case 'acciones':
+                    return <BloqueAcciones {...props_acciones} />;
+                  default:
+                    return null;
+                }
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {accionPendiente && !confirmarSinCompletar && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setAccionPendiente(null)} />
+          <div className="fixed inset-x-4 top-1/3 z-50 max-w-sm mx-auto bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Faltan campos por completar</p>
+              <button
+                onClick={() => setAccionPendiente(null)}
+                className="text-slate-600 hover:text-slate-900 text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-slate-600">Todavía hay campos vacíos en esta planilla. ¿Qué deseas hacer?</p>
+            <div className="space-y-2">
+              <button onClick={() => setConfirmarSinCompletar(true)} className="boton-secundario w-full text-sm">
+                {accionPendiente === 'pdf' ? 'Generar PDF sin completar' : 'Guardar sin completar'}
+              </button>
+              <button
+                onClick={() => {
+                  setResaltarFaltantes(true);
+                  setAccionPendiente(null);
+                }}
+                className="boton-primario w-full text-sm"
+              >
+                Cerrar el mensaje y completar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {confirmarSinCompletar && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => {
+              setConfirmarSinCompletar(false);
+              setAccionPendiente(null);
+            }}
+          />
+          <div className="fixed inset-x-4 top-1/3 z-50 max-w-sm mx-auto bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl p-4 space-y-3">
+            <p className="text-sm font-semibold">
+              ¿Seguro que deseas {accionPendiente === 'pdf' ? 'generar el PDF' : 'guardar la planilla'} sin completar
+              todos los campos?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setConfirmarSinCompletar(false);
+                  const accion = accionPendiente;
+                  setAccionPendiente(null);
+                  if (accion === 'pdf') generarPdf();
+                  else guardar();
+                }}
+                className="boton-primario flex-1 text-sm"
+              >
+                Sí, {accionPendiente === 'pdf' ? 'generar' : 'guardar'}
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmarSinCompletar(false);
+                  setAccionPendiente(null);
+                }}
+                className="boton-secundario flex-1 text-sm"
+              >
+                No, cancelar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+interface BloqueEncabezadoFechasProps {
+  operadorId: string;
+  setOperadorId: Dispatch<SetStateAction<string>>;
+  operadores: Usuario[];
+  campoClase: (base: string, clave: string) => string;
+  nombreManual: string;
+  setNombreManual: Dispatch<SetStateAction<string>>;
+  cargoTrabajador: string;
+  setCargoTrabajador: Dispatch<SetStateAction<string>>;
+  area: string;
+  setArea: Dispatch<SetStateAction<string>>;
+  direccion: string;
+  setDireccion: Dispatch<SetStateAction<string>>;
+  fechaPresentacion: string;
+  setFechaPresentacion: Dispatch<SetStateAction<string>>;
+  fechaDesde: string;
+  setFechaDesde: Dispatch<SetStateAction<string>>;
+  fechaHasta: string;
+  setFechaHasta: Dispatch<SetStateAction<string>>;
+}
+
+function BloqueEncabezadoFechas({
+  operadorId,
+  setOperadorId,
+  operadores,
+  campoClase,
+  nombreManual,
+  setNombreManual,
+  cargoTrabajador,
+  setCargoTrabajador,
+  area,
+  setArea,
+  direccion,
+  setDireccion,
+  fechaPresentacion,
+  setFechaPresentacion,
+  fechaDesde,
+  setFechaDesde,
+  fechaHasta,
+  setFechaHasta,
+}: BloqueEncabezadoFechasProps) {
+  return (
     <div className="space-y-4">
-      <div className="max-w-2xl mx-auto w-full space-y-4">
       <div>
         <label className="etiqueta">Trabajador</label>
         <select className={campoClase('campo', 'operador')} value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
@@ -1245,68 +1545,122 @@ function EditorPlanilla({
           />
         </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="border border-panel-600/40 rounded-lg p-3 space-y-2">
-        <p className="text-xs font-semibold text-slate-700">Jornada normal (sin horas extra)</p>
-        <p className="text-[11px] text-slate-500">
-          Se usa para prellenar cada día nuevo y como límite del cálculo: si una marcación es más temprano que la
-          jornada no suma de más (ej. entrar antes de las 08:00), pero si es más tarde sí se descuenta — y al revés
-          para la salida (salir después no suma de más, salir antes sí se descuenta). Si un día no tiene marcación al
-          medio día, escribe solo la entrada de la mañana y la salida de la tarde en esa fila: se calcula directo
-          entre esas dos y se descuenta 1 hora de almuerzo.
-        </p>
-        <div className="grid grid-cols-4 gap-2">
-          <div>
-            <label className="etiqueta">Entrada</label>
-            <input
-              type="time" lang="en-GB"
-              className={campoClase('campo', 'jornadaInicioManana')}
-              value={jornadaInicioManana}
-              onChange={(e) => {
-                setJornadaInicioManana(e.target.value);
-                enfocarSiguienteHora(e);
-              }}
-            />
-          </div>
-          <div>
-            <label className="etiqueta">Sale</label>
-            <input
-              type="time" lang="en-GB"
-              className={campoClase('campo', 'jornadaFinManana')}
-              value={jornadaFinManana}
-              onChange={(e) => {
-                setJornadaFinManana(e.target.value);
-                enfocarSiguienteHora(e);
-              }}
-            />
-          </div>
-          <div>
-            <label className="etiqueta">Entrada</label>
-            <input
-              type="time" lang="en-GB"
-              className={campoClase('campo', 'jornadaInicioTarde')}
-              value={jornadaInicioTarde}
-              onChange={(e) => {
-                setJornadaInicioTarde(e.target.value);
-                enfocarSiguienteHora(e);
-              }}
-            />
-          </div>
-          <div>
-            <label className="etiqueta">Sale</label>
-            <input
-              type="time" lang="en-GB"
-              className={campoClase('campo', 'jornadaFinTarde')}
-              value={jornadaFinTarde}
-              onChange={(e) => {
-                setJornadaFinTarde(e.target.value);
-                enfocarSiguienteHora(e);
-              }}
-            />
-          </div>
+interface BloqueJornadaNormalProps {
+  campoClase: (base: string, clave: string) => string;
+  jornadaInicioManana: string;
+  setJornadaInicioManana: Dispatch<SetStateAction<string>>;
+  jornadaFinManana: string;
+  setJornadaFinManana: Dispatch<SetStateAction<string>>;
+  jornadaInicioTarde: string;
+  setJornadaInicioTarde: Dispatch<SetStateAction<string>>;
+  jornadaFinTarde: string;
+  setJornadaFinTarde: Dispatch<SetStateAction<string>>;
+}
+
+function BloqueJornadaNormal({
+  campoClase,
+  jornadaInicioManana,
+  setJornadaInicioManana,
+  jornadaFinManana,
+  setJornadaFinManana,
+  jornadaInicioTarde,
+  setJornadaInicioTarde,
+  jornadaFinTarde,
+  setJornadaFinTarde,
+}: BloqueJornadaNormalProps) {
+  return (
+    <div className="border border-panel-600/40 rounded-lg p-3 space-y-2">
+      <p className="text-xs font-semibold text-slate-700">Jornada normal (sin horas extra)</p>
+      <p className="text-[11px] text-slate-500">
+        Se usa para prellenar cada día nuevo y como límite del cálculo: si una marcación es más temprano que la
+        jornada no suma de más (ej. entrar antes de las 08:00), pero si es más tarde sí se descuenta — y al revés
+        para la salida (salir después no suma de más, salir antes sí se descuenta). Si un día no tiene marcación al
+        medio día, escribe solo la entrada de la mañana y la salida de la tarde en esa fila: se calcula directo
+        entre esas dos y se descuenta 1 hora de almuerzo.
+      </p>
+      <div className="grid grid-cols-4 gap-2">
+        <div>
+          <label className="etiqueta">Entrada</label>
+          <input
+            type="time" lang="en-GB"
+            className={campoClase('campo', 'jornadaInicioManana')}
+            value={jornadaInicioManana}
+            onChange={(e) => {
+              setJornadaInicioManana(e.target.value);
+              enfocarSiguienteHora(e);
+            }}
+          />
+        </div>
+        <div>
+          <label className="etiqueta">Sale</label>
+          <input
+            type="time" lang="en-GB"
+            className={campoClase('campo', 'jornadaFinManana')}
+            value={jornadaFinManana}
+            onChange={(e) => {
+              setJornadaFinManana(e.target.value);
+              enfocarSiguienteHora(e);
+            }}
+          />
+        </div>
+        <div>
+          <label className="etiqueta">Entrada</label>
+          <input
+            type="time" lang="en-GB"
+            className={campoClase('campo', 'jornadaInicioTarde')}
+            value={jornadaInicioTarde}
+            onChange={(e) => {
+              setJornadaInicioTarde(e.target.value);
+              enfocarSiguienteHora(e);
+            }}
+          />
+        </div>
+        <div>
+          <label className="etiqueta">Sale</label>
+          <input
+            type="time" lang="en-GB"
+            className={campoClase('campo', 'jornadaFinTarde')}
+            value={jornadaFinTarde}
+            onChange={(e) => {
+              setJornadaFinTarde(e.target.value);
+              enfocarSiguienteHora(e);
+            }}
+          />
         </div>
       </div>
+    </div>
+  );
+}
 
+interface BloqueInformeMemorandoProps {
+  campoClase: (base: string, clave: string) => string;
+  descripcionDefault: string;
+  setDescripcionDefault: Dispatch<SetStateAction<string>>;
+  memorandoDefault: string;
+  setMemorandoDefault: Dispatch<SetStateAction<string>>;
+  traerDiasDeCalendario: () => void;
+  trayendoDias: boolean;
+  agregarFilaManual: () => void;
+  mensaje: string | null;
+}
+
+function BloqueInformeMemorando({
+  campoClase,
+  descripcionDefault,
+  setDescripcionDefault,
+  memorandoDefault,
+  setMemorandoDefault,
+  traerDiasDeCalendario,
+  trayendoDias,
+  agregarFilaManual,
+  mensaje,
+}: BloqueInformeMemorandoProps) {
+  return (
+    <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="etiqueta">N.º de informe de actividades</label>
@@ -1337,8 +1691,39 @@ function EditorPlanilla({
         </button>
       </div>
       {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
-      </div>
+    </div>
+  );
+}
 
+interface BloqueTablaDiasProps {
+  filas: FilaEdit[];
+  jornada: JornadaReferencia;
+  resaltarFaltantes: boolean;
+  campoClase: (base: string, clave: string) => string;
+  actualizarFila: (id: string, cambios: Partial<FilaEdit>) => void;
+  quitarFila: (id: string) => void;
+  calcularIgual: (id: string) => void;
+  recalcularTodas: () => void;
+  erroresOrden: { fecha: string; error: string }[];
+  avisosAlmuerzo: { id: string; fecha: string; aviso: NonNullable<ReturnType<typeof avisoAlmuerzoLargo>> }[];
+  setAvisosDescartados: Dispatch<SetStateAction<Set<string>>>;
+}
+
+function BloqueTablaDias({
+  filas,
+  jornada,
+  resaltarFaltantes,
+  campoClase,
+  actualizarFila,
+  quitarFila,
+  calcularIgual,
+  recalcularTodas,
+  erroresOrden,
+  avisosAlmuerzo,
+  setAvisosDescartados,
+}: BloqueTablaDiasProps) {
+  return (
+    <div className="space-y-3">
       {filas.length > 0 && (
         <button
           type="button"
@@ -1575,133 +1960,115 @@ function EditorPlanilla({
           ))}
         </div>
       )}
+    </div>
+  );
+}
 
+interface BloqueAccionesProps {
+  totalHorasExtra: number;
+  configuracion: ConfiguracionPlanillaHorasExtras;
+  campoClase: (base: string, clave: string) => string;
+  editarRevisado: boolean;
+  setEditarRevisado: Dispatch<SetStateAction<boolean>>;
+  revisadoNombre: string;
+  setRevisadoNombre: Dispatch<SetStateAction<string>>;
+  revisadoCargo: string;
+  setRevisadoCargo: Dispatch<SetStateAction<string>>;
+  editarAprobado: boolean;
+  setEditarAprobado: Dispatch<SetStateAction<boolean>>;
+  aprobadoNombre: string;
+  setAprobadoNombre: Dispatch<SetStateAction<string>>;
+  aprobadoCargo: string;
+  setAprobadoCargo: Dispatch<SetStateAction<string>>;
+  pdfBlob: Blob | null;
+  compartirPorWhatsApp: () => void;
+  compartiendo: boolean;
+  alGuardarClick: () => void;
+  guardando: boolean;
+  alGenerarPdfClick: () => void;
+  generandoPdf: boolean;
+  onCerrar: () => void;
+}
+
+function BloqueAcciones({
+  totalHorasExtra,
+  configuracion,
+  campoClase,
+  editarRevisado,
+  setEditarRevisado,
+  revisadoNombre,
+  setRevisadoNombre,
+  revisadoCargo,
+  setRevisadoCargo,
+  editarAprobado,
+  setEditarAprobado,
+  aprobadoNombre,
+  setAprobadoNombre,
+  aprobadoCargo,
+  setAprobadoCargo,
+  pdfBlob,
+  compartirPorWhatsApp,
+  compartiendo,
+  alGuardarClick,
+  guardando,
+  alGenerarPdfClick,
+  generandoPdf,
+  onCerrar,
+}: BloqueAccionesProps) {
+  return (
+    <div className="space-y-4">
       <div className="max-w-2xl mx-auto w-full space-y-4">
-      <p className="text-sm text-slate-800 text-right font-semibold">Total horas extras: {formatHoras(totalHorasExtra)}</p>
+        <p className="text-sm text-slate-800 text-right font-semibold">Total horas extras: {formatHoras(totalHorasExtra)}</p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="border border-panel-600/40 rounded-lg p-3 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-700">Revisado por</p>
-            <button type="button" onClick={() => setEditarRevisado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
-              {editarRevisado ? 'Usar el de siempre' : 'Cambiar'}
-            </button>
-          </div>
-          {editarRevisado ? (
-            <>
-              <input type="text" className={campoClase('campo text-xs', 'revisadoNombre')} placeholder="Nombre" value={revisadoNombre} onChange={(e) => setRevisadoNombre(e.target.value)} />
-              <input type="text" className={campoClase('campo text-xs', 'revisadoCargo')} placeholder="Cargo" value={revisadoCargo} onChange={(e) => setRevisadoCargo(e.target.value)} />
-            </>
-          ) : (
-            <p className="text-xs text-slate-600">
-              {configuracion.revisado_nombre}
-              <br />
-              {configuracion.revisado_cargo}
-            </p>
-          )}
-        </div>
-        <div className="border border-panel-600/40 rounded-lg p-3 space-y-1.5">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-700">Aprobado por</p>
-            <button type="button" onClick={() => setEditarAprobado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
-              {editarAprobado ? 'Usar el de siempre' : 'Cambiar'}
-            </button>
-          </div>
-          {editarAprobado ? (
-            <>
-              <input type="text" className={campoClase('campo text-xs', 'aprobadoNombre')} placeholder="Nombre" value={aprobadoNombre} onChange={(e) => setAprobadoNombre(e.target.value)} />
-              <input type="text" className={campoClase('campo text-xs', 'aprobadoCargo')} placeholder="Cargo" value={aprobadoCargo} onChange={(e) => setAprobadoCargo(e.target.value)} />
-            </>
-          ) : (
-            <p className="text-xs text-slate-600">
-              {configuracion.aprobado_nombre}
-              <br />
-              {configuracion.aprobado_cargo}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {pdfBlob && (
-        <button onClick={compartirPorWhatsApp} disabled={compartiendo} className="boton-primario w-full">
-          {compartiendo ? 'Abriendo…' : '📤 Compartir por WhatsApp'}
-        </button>
-      )}
-
-      </div>
-
-      {accionPendiente && !confirmarSinCompletar && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setAccionPendiente(null)} />
-          <div className="fixed inset-x-4 top-1/3 z-50 max-w-sm mx-auto bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="border border-panel-600/40 rounded-lg p-3 space-y-1.5">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Faltan campos por completar</p>
-              <button
-                onClick={() => setAccionPendiente(null)}
-                className="text-slate-600 hover:text-slate-900 text-lg leading-none"
-              >
-                ✕
+              <p className="text-xs font-semibold text-slate-700">Revisado por</p>
+              <button type="button" onClick={() => setEditarRevisado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
+                {editarRevisado ? 'Usar el de siempre' : 'Cambiar'}
               </button>
             </div>
-            <p className="text-xs text-slate-600">Todavía hay campos vacíos en esta planilla. ¿Qué deseas hacer?</p>
-            <div className="space-y-2">
-              <button onClick={() => setConfirmarSinCompletar(true)} className="boton-secundario w-full text-sm">
-                {accionPendiente === 'pdf' ? 'Generar PDF sin completar' : 'Guardar sin completar'}
-              </button>
-              <button
-                onClick={() => {
-                  setResaltarFaltantes(true);
-                  setAccionPendiente(null);
-                }}
-                className="boton-primario w-full text-sm"
-              >
-                Cerrar el mensaje y completar
-              </button>
-            </div>
+            {editarRevisado ? (
+              <>
+                <input type="text" className={campoClase('campo text-xs', 'revisadoNombre')} placeholder="Nombre" value={revisadoNombre} onChange={(e) => setRevisadoNombre(e.target.value)} />
+                <input type="text" className={campoClase('campo text-xs', 'revisadoCargo')} placeholder="Cargo" value={revisadoCargo} onChange={(e) => setRevisadoCargo(e.target.value)} />
+              </>
+            ) : (
+              <p className="text-xs text-slate-600">
+                {configuracion.revisado_nombre}
+                <br />
+                {configuracion.revisado_cargo}
+              </p>
+            )}
           </div>
-        </>
-      )}
+          <div className="border border-panel-600/40 rounded-lg p-3 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-slate-700">Aprobado por</p>
+              <button type="button" onClick={() => setEditarAprobado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
+                {editarAprobado ? 'Usar el de siempre' : 'Cambiar'}
+              </button>
+            </div>
+            {editarAprobado ? (
+              <>
+                <input type="text" className={campoClase('campo text-xs', 'aprobadoNombre')} placeholder="Nombre" value={aprobadoNombre} onChange={(e) => setAprobadoNombre(e.target.value)} />
+                <input type="text" className={campoClase('campo text-xs', 'aprobadoCargo')} placeholder="Cargo" value={aprobadoCargo} onChange={(e) => setAprobadoCargo(e.target.value)} />
+              </>
+            ) : (
+              <p className="text-xs text-slate-600">
+                {configuracion.aprobado_nombre}
+                <br />
+                {configuracion.aprobado_cargo}
+              </p>
+            )}
+          </div>
+        </div>
 
-      {confirmarSinCompletar && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/50 z-40"
-            onClick={() => {
-              setConfirmarSinCompletar(false);
-              setAccionPendiente(null);
-            }}
-          />
-          <div className="fixed inset-x-4 top-1/3 z-50 max-w-sm mx-auto bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl p-4 space-y-3">
-            <p className="text-sm font-semibold">
-              ¿Seguro que deseas {accionPendiente === 'pdf' ? 'generar el PDF' : 'guardar la planilla'} sin completar
-              todos los campos?
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setConfirmarSinCompletar(false);
-                  const accion = accionPendiente;
-                  setAccionPendiente(null);
-                  if (accion === 'pdf') generarPdf();
-                  else guardar();
-                }}
-                className="boton-primario flex-1 text-sm"
-              >
-                Sí, {accionPendiente === 'pdf' ? 'generar' : 'guardar'}
-              </button>
-              <button
-                onClick={() => {
-                  setConfirmarSinCompletar(false);
-                  setAccionPendiente(null);
-                }}
-                className="boton-secundario flex-1 text-sm"
-              >
-                No, cancelar
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+        {pdfBlob && (
+          <button onClick={compartirPorWhatsApp} disabled={compartiendo} className="boton-primario w-full">
+            {compartiendo ? 'Abriendo…' : '📤 Compartir por WhatsApp'}
+          </button>
+        )}
+      </div>
 
       <div className="sticky bottom-0 bg-panel-800 pb-1">
         <div className="max-w-2xl mx-auto flex gap-2 pt-2">
