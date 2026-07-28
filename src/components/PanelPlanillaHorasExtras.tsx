@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
   type SetStateAction,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, JornadaOperadorDefault, PlanillaHorasExtras, Usuario } from '../lib/types';
 import {
@@ -226,7 +227,12 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
         de horas extras en horizontal.
       </p>
 
-      {abierto && (
+      {abierto &&
+        // Portal a document.body: este panel puede terminar dentro de una celda de GridEditable
+        // (react-grid-layout posiciona sus celdas con CSS transform), y transform crea un nuevo
+        // "containing block" para todo lo que sea position:fixed adentro — sin el portal, este
+        // modal quedaba atrapado dentro del tamaño de esa celda en vez de cubrir toda la pantalla.
+        createPortal(
         <>
           <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setAbierto(false)} />
 
@@ -428,7 +434,8 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
               </div>
             </div>
           )}
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );
@@ -1204,10 +1211,10 @@ function EditorPlanilla({
             <p className="text-sm text-slate-600">Cargando…</p>
           </div>
         </div>
-        <div className="hidden lg:flex fixed inset-0 items-center justify-center p-4 z-30">
-          <div className="bg-panel-800 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto">
+        <div className="hidden lg:flex fixed inset-6 z-30">
+          <div className="bg-panel-800 rounded-2xl w-full flex flex-col overflow-hidden">
             {encabezado}
-            <div className="p-8 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center p-8">
               <p className="text-sm text-slate-600">Cargando…</p>
             </div>
           </div>
@@ -1315,12 +1322,12 @@ function EditorPlanilla({
         </div>
       </div>
 
-      {/* Escritorio (lg+): modal centrado, ancho máximo fijo, bloques acomodables por el
-          administrador desde Distribución de entorno de trabajo. */}
-      <div className="hidden lg:flex fixed inset-0 items-center justify-center p-4 z-30">
-        <div className="bg-panel-800 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto">
+      {/* Escritorio (lg+): ocupa casi toda la pantalla (no una caja chica centrada) para que los
+          5 bloques tengan espacio de sobra y no haga falta scroll para verlos todos. */}
+      <div className="hidden lg:flex fixed inset-6 z-30">
+        <div className="bg-panel-800 rounded-2xl w-full flex flex-col overflow-hidden">
           {encabezado}
-          <div className="p-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4">
             <GridEditable
               pantallaId="modal_nueva_planilla"
               bloques={bloquesModalPlanilla}
