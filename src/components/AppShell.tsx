@@ -118,46 +118,71 @@ export function AppShell() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="bg-panel-800 border-b border-panel-600/60 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-2">
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      <aside className="hidden lg:flex lg:flex-col lg:w-[220px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto bg-panel-800 border-r border-panel-600/60">
+        <div className="px-4 py-3 border-b border-panel-600/60">
           <span className="text-lg font-bold tracking-tight">EBAR<span className="text-gauge-ok">·</span>Monitor</span>
-          {!enLinea && (
-            <span className="text-[10px] bg-gauge-warn/15 text-gauge-warn border border-gauge-warn/30 px-2 py-0.5 rounded-full">
-              Sin conexión
-            </span>
-          )}
-          {pendientes > 0 && (
-            <button
-              onClick={abrirPanel}
-              className="text-[10px] bg-gauge-warn/15 text-gauge-warn border border-gauge-warn/30 px-2 py-0.5 rounded-full hover:bg-gauge-warn/25 transition"
+        </div>
+        <nav className="flex flex-col gap-1 p-3">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                  isActive ? 'bg-panel-900 text-gauge-ok' : 'text-slate-600'
+                }`
+              }
             >
-              {pendientes} por sincronizar
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-600 truncate max-w-[7rem] sm:max-w-none">
-            {usuario?.nombre_completo ? nombreCorto(usuario.nombre_completo) : ''}
-          </span>
-          <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-600 hover:text-slate-900">
-            🔑
-          </button>
-          <button onClick={manejarClickSalir} className="text-sm text-slate-600 hover:text-slate-900">
-            Salir
-          </button>
-        </div>
-      </header>
+              <span className="text-lg leading-none">{item.icon}</span>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
 
-      <main className="flex-1 px-4 py-4 max-w-3xl w-full mx-auto pb-24">
-        <Outlet />
-      </main>
+      <div className="flex flex-col flex-1 min-w-0">
+        <header className="bg-panel-800 border-b border-panel-600/60 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-bold tracking-tight lg:hidden">EBAR<span className="text-gauge-ok">·</span>Monitor</span>
+            {!enLinea && (
+              <span className="text-[10px] bg-gauge-warn/15 text-gauge-warn border border-gauge-warn/30 px-2 py-0.5 rounded-full">
+                Sin conexión
+              </span>
+            )}
+            {pendientes > 0 && (
+              <button
+                onClick={abrirPanel}
+                className="text-[10px] bg-gauge-warn/15 text-gauge-warn border border-gauge-warn/30 px-2 py-0.5 rounded-full hover:bg-gauge-warn/25 transition"
+              >
+                {pendientes} por sincronizar
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-slate-600 truncate max-w-[7rem] sm:max-w-none">
+              {usuario?.nombre_completo ? nombreCorto(usuario.nombre_completo) : ''}
+            </span>
+            <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-600 hover:text-slate-900">
+              🔑
+            </button>
+            <button onClick={manejarClickSalir} className="text-sm text-slate-600 hover:text-slate-900">
+              Salir
+            </button>
+          </div>
+        </header>
+
+        <main className="flex-1 px-4 py-4 max-w-3xl w-full mx-auto pb-24 lg:max-w-none lg:mx-0 lg:pb-4">
+          <Outlet />
+        </main>
+      </div>
 
       {/* overflow-x-auto: en celulares angostos, 6 opciones no entran todas a la vez — se
           desliza el dedo sobre la cinta para ver/tocar las que quedan fuera de pantalla (ej.
           "Usuarios" a la derecha). shrink-0 evita que el navegador las achique en vez de dejarlas
           desplazables. */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-panel-800 border-t border-panel-600/60 flex justify-around overflow-x-auto py-2 z-10">
+      <nav className="fixed bottom-0 left-0 right-0 bg-panel-800 border-t border-panel-600/60 flex justify-around overflow-x-auto py-2 z-10 lg:hidden">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
