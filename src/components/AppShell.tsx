@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -27,6 +27,7 @@ const NAV_PERMISOS = { to: '/permisos', label: 'Permisos', icon: '🔐' };
 
 export function AppShell() {
   const { usuario, logout, tienePermiso } = useAuth();
+  const navigate = useNavigate();
   const [pendientes, setPendientes] = useState(0);
   const [enLinea, setEnLinea] = useState(navigator.onLine);
   const [mostrarPanel, setMostrarPanel] = useState(false);
@@ -53,9 +54,13 @@ export function AppShell() {
       setVolviendo(false);
       return;
     }
-    // Recarga completa a propósito: la sesión cambió de cuenta, todo el estado de la app debe
-    // volver a cargarse desde cero (ver mismo criterio en Users.tsx → manejarEntrarComo).
-    window.location.href = '/';
+    // Navegación normal de React Router, NO window.location.href: una recarga real de página
+    // pasa por el Service Worker (necesario para que la app abra sin señal), que puede servir
+    // una versión vieja guardada y dejar la pantalla en blanco hasta forzar un refresco manual.
+    // AuthContext ya se entera solo del cambio de sesión (onAuthStateChange) y actualiza
+    // `usuario`; el <Outlet key={usuario?.id}> de abajo se encarga de refrescar cada pantalla.
+    setVolviendo(false);
+    navigate('/');
   }
 
   useEffect(() => {
@@ -216,7 +221,11 @@ export function AppShell() {
         </header>
 
         <main className="flex-1 px-4 py-4 max-w-3xl w-full mx-auto pb-24 lg:max-w-none lg:mx-0 lg:pb-4">
-          <Outlet />
+          {/* key={usuario?.id}: si cambia la identidad (Entrar como / Volver a ser
+              administrador) sin cambiar de ruta (ej. ya estabas en "/"), esto fuerza a React a
+              desmontar y volver a montar la pantalla activa para que recargue sus propios datos
+              con la sesión nueva — si no, quedaría mostrando datos de la identidad anterior. */}
+          <Outlet key={usuario?.id} />
         </main>
       </div>
       </div>

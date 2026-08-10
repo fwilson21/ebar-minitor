@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { entrarComo } from '../lib/impersonar';
@@ -13,6 +14,7 @@ const ROL_CLASE: Record<UserRole, string> = {
 
 export function Users() {
   const { usuario, tienePermiso } = useAuth();
+  const navigate = useNavigate();
   const esAdmin = usuario?.rol === 'administrador';
   // Quien tiene el permiso "Gestionar usuarios" (ver /permisos) puede hacer casi todo lo que
   // hace acá un administrador, EXCEPTO cambiar el rol de alguien — eso queda reservado abajo
@@ -95,9 +97,11 @@ export function Users() {
       setEntrandoComoId(null);
       return;
     }
-    // Recarga completa a propósito: la sesión cambió de cuenta, así que todo el estado de la
-    // app (perfil, permisos, cachés offline) debe volver a cargarse desde cero para esa persona.
-    window.location.href = '/';
+    // Navegación normal de React Router, NO window.location.href: ver la nota en
+    // AppShell.tsx → manejarVolverAAdmin sobre por qué una recarga real de página puede
+    // quedar en blanco (Service Worker sirviendo una versión vieja guardada).
+    setEntrandoComoId(null);
+    navigate('/');
   }
 
   async function liberarDispositivo(id: string) {
