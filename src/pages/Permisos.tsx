@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { FUNCIONES_PERMISOS } from '../lib/funcionesPermisos';
+import { GridEditable } from '../components/GridEditable';
+import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import type { UserRole } from '../lib/types';
 
 // Roles a los que se les puede activar/desactivar funciones. El administrador siempre tiene
@@ -61,56 +63,88 @@ export function Permisos() {
   if (!usuario) return null;
   if (usuario.rol !== 'administrador') return <Navigate to="/" replace />;
 
+  function renderEncabezadoSelector(): ReactNode {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-lg font-bold">Permisos por rol</h1>
+          <p className="text-sm text-slate-600">
+            Activa o desactiva funciones puntuales para Supervisor y Operador, sin cambiarles el rol. El Administrador
+            siempre tiene acceso a todo — eso no se puede desactivar.
+          </p>
+        </div>
+
+        {mensaje && <p className="text-sm text-gauge-danger">{mensaje}</p>}
+
+        <div>
+          <label className="etiqueta">Rol</label>
+          <select
+            className="campo max-w-xs"
+            value={rolSeleccionado}
+            onChange={(e) => setRolSeleccionado(e.target.value as UserRole)}
+          >
+            {ROLES_EDITABLES.map(({ rol, nombre }) => (
+              <option key={rol} value={rol}>{nombre}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+    );
+  }
+
+  function renderListaFunciones(): ReactNode {
+    if (cargando) return <p className="text-slate-600">Cargando…</p>;
+    return (
+      <div className="tarjeta divide-y divide-panel-600/40 lg:h-full lg:overflow-auto">
+        {FUNCIONES_PERMISOS.map((f) => {
+          const k = clave(rolSeleccionado, f.clave);
+          const activo = habilitados.has(k);
+          return (
+            <label key={f.clave} className="flex items-start gap-3 p-4 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-4 h-4 mt-0.5 accent-gauge-ok flex-shrink-0"
+                checked={activo}
+                disabled={guardando === k}
+                onChange={() => alternar(rolSeleccionado, f.clave)}
+              />
+              <div>
+                <p className="font-semibold text-slate-900 text-sm">{f.nombre}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{f.descripcion}</p>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-lg font-bold">Permisos por rol</h1>
-        <p className="text-sm text-slate-600">
-          Activa o desactiva funciones puntuales para Supervisor y Operador, sin cambiarles el rol. El Administrador
-          siempre tiene acceso a todo — eso no se puede desactivar.
-        </p>
+      {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
+      <div className="lg:hidden space-y-5">
+        {renderEncabezadoSelector()}
+        {renderListaFunciones()}
       </div>
 
-      {mensaje && <p className="text-sm text-gauge-danger">{mensaje}</p>}
-
-      <div>
-        <label className="etiqueta">Rol</label>
-        <select
-          className="campo max-w-xs"
-          value={rolSeleccionado}
-          onChange={(e) => setRolSeleccionado(e.target.value as UserRole)}
-        >
-          {ROLES_EDITABLES.map(({ rol, nombre }) => (
-            <option key={rol} value={rol}>{nombre}</option>
-          ))}
-        </select>
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
+          entorno de trabajo (o el acomodo por defecto). */}
+      <div className="hidden lg:block">
+        <GridEditable
+          pantallaId="permisos"
+          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'permisos')!.bloques}
+          renderBloque={(bloqueId) => {
+            switch (bloqueId) {
+              case 'encabezado_selector':
+                return renderEncabezadoSelector();
+              case 'lista_funciones':
+                return renderListaFunciones();
+              default:
+                return null;
+            }
+          }}
+        />
       </div>
-
-      {cargando ? (
-        <p className="text-slate-600">Cargando…</p>
-      ) : (
-        <div className="tarjeta divide-y divide-panel-600/40">
-          {FUNCIONES_PERMISOS.map((f) => {
-            const k = clave(rolSeleccionado, f.clave);
-            const activo = habilitados.has(k);
-            return (
-              <label key={f.clave} className="flex items-start gap-3 p-4 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 mt-0.5 accent-gauge-ok flex-shrink-0"
-                  checked={activo}
-                  disabled={guardando === k}
-                  onChange={() => alternar(rolSeleccionado, f.clave)}
-                />
-                <div>
-                  <p className="font-semibold text-slate-900 text-sm">{f.nombre}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{f.descripcion}</p>
-                </div>
-              </label>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

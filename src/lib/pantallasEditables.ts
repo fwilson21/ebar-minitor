@@ -53,6 +53,14 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
     ],
   },
   {
+    id: 'permisos',
+    nombre: 'Permisos',
+    bloques: [
+      { id: 'encabezado_selector', titulo: 'Encabezado y selector de rol', defaultLayout: { x: 0, y: 0, w: 4, h: 3 } },
+      { id: 'lista_funciones', titulo: 'Lista de funciones', defaultLayout: { x: 4, y: 0, w: 8, h: 6 } },
+    ],
+  },
+  {
     id: 'usuarios',
     nombre: 'Usuarios',
     bloques: [
