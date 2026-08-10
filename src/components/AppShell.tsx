@@ -144,7 +144,10 @@ export function AppShell() {
   const navItems = [
     ...NAV_BASE,
     ...(usuario?.rol === 'administrador' || usuario?.rol === 'supervisor' ? [NAV_ADMIN_SUPERVISOR] : []),
-    ...(usuario?.rol === 'administrador' || tienePermiso('gestionar_usuarios') ? [NAV_ADMIN] : []),
+    ...(usuario?.rol === 'administrador' ||
+    ['crear_usuarios', 'editar_usuarios', 'activar_desactivar_usuarios', 'restablecer_password_usuarios', 'eliminar_usuarios'].some(tienePermiso)
+      ? [NAV_ADMIN]
+      : []),
     ...(usuario?.rol === 'administrador' ? [NAV_TURNOS, NAV_DISTRIBUCION, NAV_PERMISOS] : []),
   ];
 

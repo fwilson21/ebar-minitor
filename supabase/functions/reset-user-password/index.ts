@@ -4,7 +4,7 @@
 // existente (por ejemplo cuando la olvidó) sin depender del correo de
 // recuperación de Supabase Auth, cuya entrega a Hotmail/Outlook resultó poco
 // confiable (ver notas del proyecto). Solo puede ser invocada por un
-// administrador, o por alguien con el permiso "gestionar_usuarios" activado
+// administrador, o por alguien con el permiso "restablecer_password_usuarios" activado
 // en /permisos: se verifica el JWT de quien llama antes de usar la service
 // role key.
 
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     const { data: perfil } = await supabaseCaller.from('usuarios').select('rol').eq('id', user.id).single();
     if (perfil?.rol !== 'administrador') {
       // Ver nota equivalente en delete-user: no depender de permisos_rol para el administrador real.
-      const { data: permitido } = await supabaseCaller.rpc('tiene_permiso', { p_funcion: 'gestionar_usuarios' });
+      const { data: permitido } = await supabaseCaller.rpc('tiene_permiso', { p_funcion: 'restablecer_password_usuarios' });
       if (!permitido) return json({ error: 'No tenés permiso para restablecer contraseñas.' }, 403);
     }
 

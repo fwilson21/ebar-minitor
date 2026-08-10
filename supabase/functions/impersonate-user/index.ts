@@ -7,9 +7,10 @@
 // de la persona — el token generado se usa directo en el navegador del administrador (no se
 // envía ningún correo). Deja un registro en `impersonaciones_log` (quién entró como quién y
 // cuándo, ver migración 0029).
-// Solo puede ser invocada por un administrador autenticado — a propósito NO acepta el permiso
-// "gestionar_usuarios" de /permisos: dejar entrar-como a alguien que no es administrador real
-// sería una forma de escalar privilegios.
+// Solo puede ser invocada por un administrador autenticado — a propósito NO acepta ninguno de
+// los permisos de /permisos (crear/editar/activar-desactivar/restablecer/eliminar usuarios):
+// dejar entrar-como a alguien que no es administrador real sería una forma de escalar
+// privilegios, sin importar cuál de esos permisos tenga.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { corsHeaders } from '../_shared/cors.ts';

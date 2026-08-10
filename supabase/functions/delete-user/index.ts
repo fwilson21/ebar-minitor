@@ -8,7 +8,7 @@
 // No se puede eliminar la propia cuenta, ni al último administrador activo
 // (para no quedar sin nadie que pueda administrar la app).
 // Solo puede ser invocada por un administrador, o por alguien con el permiso
-// "gestionar_usuarios" activado en /permisos.
+// "eliminar_usuarios" activado en /permisos.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -45,11 +45,11 @@ Deno.serve(async (req) => {
 
     const { data: perfil } = await supabaseCaller.from('usuarios').select('rol').eq('id', user.id).single();
     if (perfil?.rol !== 'administrador') {
-      // No es administrador real: solo pasa si tiene el permiso "gestionar_usuarios" (tabla
+      // No es administrador real: solo pasa si tiene el permiso "eliminar_usuarios" (tabla
       // permisos_rol, migración 0028). Se consulta con rpc() y no con `perfil.rol` directo para
       // no depender de esa tabla en el camino del administrador real (si la migración 0028
       // todavía no corrió, el administrador no debe quedar bloqueado).
-      const { data: permitido } = await supabaseCaller.rpc('tiene_permiso', { p_funcion: 'gestionar_usuarios' });
+      const { data: permitido } = await supabaseCaller.rpc('tiene_permiso', { p_funcion: 'eliminar_usuarios' });
       if (!permitido) return json({ error: 'No tenés permiso para eliminar usuarios.' }, 403);
     }
 

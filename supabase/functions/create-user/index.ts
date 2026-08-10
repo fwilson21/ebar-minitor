@@ -10,7 +10,7 @@
 // administrador se la puede restablecer desde Usuarios (ver Edge Function
 // reset-user-password).
 // Solo puede ser invocada por un administrador, o por alguien con el permiso
-// "gestionar_usuarios" activado en /permisos (ver tiene_permiso() en la
+// "crear_usuarios" activado en /permisos (ver tiene_permiso() en la
 // migración 0028): se verifica el JWT de quien llama antes de usar la service
 // role key para crear la cuenta. Quien no es administrador real no puede
 // elegir el rol del usuario nuevo — siempre queda como 'operador'.
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     const esAdministrador = perfil?.rol === 'administrador';
 
     if (!esAdministrador) {
-      const { data: permitido } = await supabaseCaller.rpc('tiene_permiso', { p_funcion: 'gestionar_usuarios' });
+      const { data: permitido } = await supabaseCaller.rpc('tiene_permiso', { p_funcion: 'crear_usuarios' });
       if (!permitido) return json({ error: 'No tenés permiso para crear usuarios.' }, 403);
     }
 
@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
     // El trigger handle_new_auth_user crea la fila en `usuarios` con rol 'operador' por defecto;
     // acá se completa el nombre de usuario (para poder mostrarlo luego en la pantalla de Usuarios),
     // la cédula, el cargo, y se ajusta el rol si no es el operador por defecto. Quien crea el
-    // usuario con el permiso 'gestionar_usuarios' (sin ser administrador real) NO puede elegir el
+    // usuario con el permiso 'crear_usuarios' (sin ser administrador real) NO puede elegir el
     // rol del nuevo usuario aunque lo mande en el payload — siempre queda en 'operador', para que
     // no pueda crearse a sí mismo un usuario con más privilegios por esta vía.
     const rolFinal = esAdministrador ? rol : undefined;

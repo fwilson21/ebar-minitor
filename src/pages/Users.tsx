@@ -16,10 +16,15 @@ export function Users() {
   const { usuario, tienePermiso } = useAuth();
   const navigate = useNavigate();
   const esAdmin = usuario?.rol === 'administrador';
-  // Quien tiene el permiso "Gestionar usuarios" (ver /permisos) puede hacer casi todo lo que
-  // hace acá un administrador, EXCEPTO cambiar el rol de alguien — eso queda reservado abajo
-  // con `esAdmin` a secas (ver migración 0028 y feedback del usuario sobre este punto).
-  const puedeGestionar = esAdmin || tienePermiso('gestionar_usuarios');
+  // Cada botón de esta pantalla depende de su propio permiso (ver /permisos y migración 0030) —
+  // antes eran todos un solo "gestionar_usuarios", se separaron a pedido del usuario. Cambiar el
+  // rol de alguien queda SIEMPRE reservado a `esAdmin` a secas, en ningún caso vía permiso (ver
+  // feedback del usuario al armar esto: evita que alguien se auto-ascienda a administrador).
+  const puedeCrear = esAdmin || tienePermiso('crear_usuarios');
+  const puedeEditar = esAdmin || tienePermiso('editar_usuarios');
+  const puedeActivarDesactivar = esAdmin || tienePermiso('activar_desactivar_usuarios');
+  const puedeRestablecerPassword = esAdmin || tienePermiso('restablecer_password_usuarios');
+  const puedeEliminar = esAdmin || tienePermiso('eliminar_usuarios');
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [entrandoComoId, setEntrandoComoId] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -304,7 +309,7 @@ export function Users() {
     <div className="space-y-4">
       <div className="relative flex items-center justify-center">
         <h1 className="text-2xl font-extrabold text-slate-900">Usuarios</h1>
-        {puedeGestionar && (
+        {puedeCrear && (
           <button
             className="absolute right-0 text-sm text-gauge-ok"
             onClick={() => { setMostrarForm((v) => !v); setMensajeInvitar(null); }}
@@ -314,7 +319,7 @@ export function Users() {
         )}
       </div>
 
-      {puedeGestionar && mostrarForm && (
+      {puedeCrear && mostrarForm && (
         <form onSubmit={manejarInvitar} className="tarjeta p-4 space-y-3">
           <div>
             <label className="etiqueta">Usuario</label>
@@ -456,7 +461,7 @@ export function Users() {
             )}
 
             <div className="flex flex-wrap gap-2 mt-2">
-              {puedeGestionar && (
+              {puedeActivarDesactivar && (
                 <button
                   className={`text-xs px-3 py-1.5 rounded-lg border transition ${
                     u.activo
@@ -470,7 +475,7 @@ export function Users() {
                 </button>
               )}
 
-              {puedeGestionar && (
+              {puedeEditar && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirEditarNombre(u.id, u.nombre_completo)}
@@ -479,7 +484,7 @@ export function Users() {
                 </button>
               )}
 
-              {puedeGestionar && (
+              {puedeRestablecerPassword && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirReset(u.id)}
@@ -488,7 +493,7 @@ export function Users() {
                 </button>
               )}
 
-              {puedeGestionar && (
+              {puedeEditar && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirRenombrar(u.id, u.nombre_usuario)}
@@ -497,7 +502,7 @@ export function Users() {
                 </button>
               )}
 
-              {puedeGestionar && (
+              {puedeEditar && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirEditarCedula(u.id, u.cedula)}
@@ -506,7 +511,7 @@ export function Users() {
                 </button>
               )}
 
-              {puedeGestionar && (
+              {puedeEditar && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirEditarCargo(u.id, u.cargo)}
@@ -515,7 +520,7 @@ export function Users() {
                 </button>
               )}
 
-              {puedeGestionar && u.rol === 'operador' && u.device_id && (
+              {puedeEditar && u.rol === 'operador' && u.device_id && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   disabled={guardando === u.id}
@@ -535,7 +540,7 @@ export function Users() {
                 </button>
               )}
 
-              {puedeGestionar && u.id !== usuario?.id && (
+              {puedeEliminar && u.id !== usuario?.id && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-gauge-danger/40 text-gauge-danger hover:bg-gauge-danger/10"
                   disabled={guardando === u.id}
@@ -546,7 +551,7 @@ export function Users() {
               )}
             </div>
 
-            {puedeGestionar && restableciendoId === u.id && (
+            {puedeRestablecerPassword && restableciendoId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Nueva contraseña para {u.nombre_completo}</label>
                 <div className="flex gap-2">
@@ -574,7 +579,7 @@ export function Users() {
               </div>
             )}
 
-            {puedeGestionar && editandoNombreId === u.id && (
+            {puedeEditar && editandoNombreId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Nombre completo</label>
                 <div className="flex gap-2">
@@ -601,7 +606,7 @@ export function Users() {
               </div>
             )}
 
-            {puedeGestionar && renombrandoId === u.id && (
+            {puedeEditar && renombrandoId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Nuevo usuario para {u.nombre_completo}</label>
                 <div className="flex gap-2">
@@ -634,7 +639,7 @@ export function Users() {
               </div>
             )}
 
-            {puedeGestionar && editandoCedulaId === u.id && (
+            {puedeEditar && editandoCedulaId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Cédula de {u.nombre_completo}</label>
                 <div className="flex gap-2">
@@ -664,7 +669,7 @@ export function Users() {
               </div>
             )}
 
-            {puedeGestionar && editandoCargoId === u.id && (
+            {puedeEditar && editandoCargoId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Cargo/Ocupación de {u.nombre_completo}</label>
                 <div className="flex gap-2">
