@@ -53,6 +53,14 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
     ],
   },
   {
+    id: 'reportes',
+    nombre: 'Reportes',
+    bloques: [
+      { id: 'filtros_generar', titulo: 'Filtros y Generar PDF', defaultLayout: { x: 0, y: 0, w: 7, h: 9 } },
+      { id: 'compartir', titulo: 'Compartir', defaultLayout: { x: 7, y: 0, w: 5, h: 9 } },
+    ],
+  },
+  {
     id: 'modal_nueva_planilla',
     nombre: 'Modal: Nueva planilla',
     bloques: [

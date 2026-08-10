@@ -5,6 +5,8 @@ import { abrirBlob, descargarBlob, generarReporteVisitas, type VisitaParaReporte
 import { incrustarFotosVisitas } from '../lib/fotos';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
 import type { EstacionEbar, Usuario } from '../lib/types';
+import { GridEditable } from '../components/GridEditable';
+import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
 
@@ -157,122 +159,207 @@ export function Reports() {
     }
   }
 
+  function cambiarTipo(nuevoTipo: TipoReporte) {
+    setTipo(nuevoTipo);
+    setEstacionId('');
+    setOperadorId(nuevoTipo === 'diario_operador' ? (usuario?.id ?? '') : '');
+  }
+
   return (
     <div className="space-y-5">
       <h1 className="text-lg font-bold">Reportes</h1>
 
-      <div className="tarjeta p-4 space-y-3">
+      {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
+      <div className="lg:hidden space-y-5">
+        <BloqueFiltrosGenerar
+          tipo={tipo}
+          onCambiarTipo={cambiarTipo}
+          esAdmin={esAdmin}
+          operadores={operadores}
+          operadorId={operadorId}
+          setOperadorId={setOperadorId}
+          estaciones={estaciones}
+          estacionId={estacionId}
+          setEstacionId={setEstacionId}
+          esRango={esRango}
+          fechaInicio={fechaInicio}
+          setFechaInicio={setFechaInicio}
+          fechaFin={fechaFin}
+          setFechaFin={setFechaFin}
+          generando={generando}
+          manejarGenerar={manejarGenerar}
+        />
+        <BloqueCompartir enviando={enviando} ultimoPdf={ultimoPdf} manejarCompartir={manejarCompartir} mensaje={mensaje} />
+      </div>
+
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
+          entorno de trabajo (o el acomodo por defecto). */}
+      <div className="hidden lg:block">
+        <GridEditable
+          pantallaId="reportes"
+          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'reportes')!.bloques}
+          renderBloque={(bloqueId) => {
+            switch (bloqueId) {
+              case 'filtros_generar':
+                return (
+                  <BloqueFiltrosGenerar
+                    tipo={tipo}
+                    onCambiarTipo={cambiarTipo}
+                    esAdmin={esAdmin}
+                    operadores={operadores}
+                    operadorId={operadorId}
+                    setOperadorId={setOperadorId}
+                    estaciones={estaciones}
+                    estacionId={estacionId}
+                    setEstacionId={setEstacionId}
+                    esRango={esRango}
+                    fechaInicio={fechaInicio}
+                    setFechaInicio={setFechaInicio}
+                    fechaFin={fechaFin}
+                    setFechaFin={setFechaFin}
+                    generando={generando}
+                    manejarGenerar={manejarGenerar}
+                  />
+                );
+              case 'compartir':
+                return <BloqueCompartir enviando={enviando} ultimoPdf={ultimoPdf} manejarCompartir={manejarCompartir} mensaje={mensaje} />;
+              default:
+                return null;
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BloqueFiltrosGenerar({
+  tipo,
+  onCambiarTipo,
+  esAdmin,
+  operadores,
+  operadorId,
+  setOperadorId,
+  estaciones,
+  estacionId,
+  setEstacionId,
+  esRango,
+  fechaInicio,
+  setFechaInicio,
+  fechaFin,
+  setFechaFin,
+  generando,
+  manejarGenerar,
+}: {
+  tipo: TipoReporte;
+  onCambiarTipo: (t: TipoReporte) => void;
+  esAdmin: boolean;
+  operadores: Usuario[];
+  operadorId: string;
+  setOperadorId: (v: string) => void;
+  estaciones: EstacionEbar[];
+  estacionId: string;
+  setEstacionId: (v: string) => void;
+  esRango: boolean;
+  fechaInicio: string;
+  setFechaInicio: (v: string) => void;
+  fechaFin: string;
+  setFechaFin: (v: string) => void;
+  generando: boolean;
+  manejarGenerar: () => void;
+}) {
+  return (
+    <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
+      <div>
+        <label className="etiqueta">Tipo de reporte</label>
+        <select className="campo" value={tipo} onChange={(e) => onCambiarTipo(e.target.value as TipoReporte)}>
+          <option value="consolidado_fecha">Consolidado por fecha</option>
+          <option value="diario_operador">Diario por operador</option>
+          <option value="individual_estacion">Individual por estación</option>
+        </select>
+      </div>
+
+      {esAdmin && operadores.length > 0 && (
         <div>
-          <label className="etiqueta">Tipo de reporte</label>
-          <select
-            className="campo"
-            value={tipo}
-            onChange={(e) => {
-              setTipo(e.target.value as TipoReporte);
-              setEstacionId('');
-              setOperadorId(e.target.value === 'diario_operador' ? (usuario?.id ?? '') : '');
-            }}
-          >
-            <option value="consolidado_fecha">Consolidado por fecha</option>
-            <option value="diario_operador">Diario por operador</option>
-            <option value="individual_estacion">Individual por estación</option>
+          <label className="etiqueta">Operador</label>
+          <select className="campo" value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
+            {tipo !== 'diario_operador' && <option value="">Todos los operadores</option>}
+            {operadores.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nombre_completo}
+              </option>
+            ))}
           </select>
         </div>
+      )}
 
-        {esAdmin && operadores.length > 0 && (
+      {estaciones.length > 0 && (
+        <div>
+          <label className="etiqueta">Estación</label>
+          <select className="campo" value={estacionId} onChange={(e) => setEstacionId(e.target.value)}>
+            {tipo === 'individual_estacion' ? (
+              <option value="" disabled>Selecciona una estación…</option>
+            ) : (
+              <option value="">Todas las estaciones</option>
+            )}
+            {estaciones.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.codigo} — {e.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {esRango ? (
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="etiqueta">Operador</label>
-            <select
-              className="campo"
-              value={operadorId}
-              onChange={(e) => setOperadorId(e.target.value)}
-            >
-              {tipo !== 'diario_operador' && <option value="">Todos los operadores</option>}
-              {operadores.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.nombre_completo}
-                </option>
-              ))}
-            </select>
+            <label className="etiqueta">Fecha inicio</label>
+            <input type="date" className="campo" value={fechaInicio} max={fechaFin} onChange={(e) => setFechaInicio(e.target.value)} />
           </div>
-        )}
-
-        {estaciones.length > 0 && (
           <div>
-            <label className="etiqueta">Estación</label>
-            <select className="campo" value={estacionId} onChange={(e) => setEstacionId(e.target.value)}>
-              {tipo === 'individual_estacion' ? (
-                <option value="" disabled>Selecciona una estación…</option>
-              ) : (
-                <option value="">Todas las estaciones</option>
-              )}
-              {estaciones.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.codigo} — {e.nombre}
-                </option>
-              ))}
-            </select>
+            <label className="etiqueta">Fecha fin</label>
+            <input type="date" className="campo" value={fechaFin} min={fechaInicio} onChange={(e) => setFechaFin(e.target.value)} />
           </div>
-        )}
+        </div>
+      ) : (
+        <div>
+          <label className="etiqueta">Fecha</label>
+          <input type="date" className="campo" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+        </div>
+      )}
 
-        {esRango ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="etiqueta">Fecha inicio</label>
-              <input
-                type="date"
-                className="campo"
-                value={fechaInicio}
-                max={fechaFin}
-                onChange={(e) => setFechaInicio(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="etiqueta">Fecha fin</label>
-              <input
-                type="date"
-                className="campo"
-                value={fechaFin}
-                min={fechaInicio}
-                onChange={(e) => setFechaFin(e.target.value)}
-              />
-            </div>
-          </div>
-        ) : (
-          <div>
-            <label className="etiqueta">Fecha</label>
-            <input
-              type="date"
-              className="campo"
-              value={fechaInicio}
-              onChange={(e) => setFechaInicio(e.target.value)}
-            />
-          </div>
-        )}
+      <button
+        onClick={manejarGenerar}
+        disabled={generando || (tipo === 'individual_estacion' && !estacionId)}
+        className="boton-primario w-full"
+      >
+        {generando ? 'Generando…' : '📄 Generar PDF'}
+      </button>
+    </div>
+  );
+}
 
-        <button
-          onClick={manejarGenerar}
-          disabled={generando || (tipo === 'individual_estacion' && !estacionId)}
-          className="boton-primario w-full"
-        >
-          {generando ? 'Generando…' : '📄 Generar PDF'}
-        </button>
-      </div>
-
-      <div className="tarjeta p-4 space-y-2">
-        <p className="etiqueta mb-1">Compartir</p>
-        <button
-          onClick={manejarCompartir}
-          disabled={enviando || !ultimoPdf}
-          className="boton-secundario w-full"
-        >
-          📤 Descargar y compartir
-        </button>
-        <p className="text-xs text-slate-500">
-          El PDF ya se descarga al generarlo. Este botón abre el menú para reenviarlo por WhatsApp, correo u otra app.
-        </p>
-      </div>
-
+function BloqueCompartir({
+  enviando,
+  ultimoPdf,
+  manejarCompartir,
+  mensaje,
+}: {
+  enviando: boolean;
+  ultimoPdf: Blob | null;
+  manejarCompartir: () => void;
+  mensaje: string | null;
+}) {
+  return (
+    <div className="tarjeta p-4 space-y-2 lg:h-full lg:overflow-auto">
+      <p className="etiqueta mb-1">Compartir</p>
+      <button onClick={manejarCompartir} disabled={enviando || !ultimoPdf} className="boton-secundario w-full">
+        📤 Descargar y compartir
+      </button>
+      <p className="text-xs text-slate-500">
+        El PDF ya se descarga al generarlo. Este botón abre el menú para reenviarlo por WhatsApp, correo u otra app.
+      </p>
       {mensaje && <p className="text-sm text-slate-700">{mensaje}</p>}
     </div>
   );
