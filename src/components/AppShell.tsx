@@ -26,7 +26,7 @@ const NAV_DISTRIBUCION = { to: '/distribucion-entorno', label: 'Distribución', 
 const NAV_PERMISOS = { to: '/permisos', label: 'Permisos', icon: '🔐' };
 
 export function AppShell() {
-  const { usuario, logout, tienePermiso } = useAuth();
+  const { usuario, logout, tienePermiso, anchoContenido } = useAuth();
   const navigate = useNavigate();
   const [pendientes, setPendientes] = useState(0);
   const [enLinea, setEnLinea] = useState(navigator.onLine);
@@ -223,7 +223,14 @@ export function AppShell() {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-4 max-w-3xl w-full mx-auto pb-24 lg:max-w-none lg:mx-0 lg:pb-4">
+        {/* max-w-3xl/lg:max-w-none de antes se reemplaza por un ancho dinámico (ajustable por el
+            administrador desde /distribucion-entorno, ver anchoContenido.ts): en celular el
+            viewport ya es más angosto que cualquier valor configurado (900-2200px), así que no
+            hace falta un breakpoint aparte — el mismo style aplica sin efecto en celular. */}
+        <main
+          className="flex-1 px-4 py-4 w-full mx-auto pb-24 lg:pb-4"
+          style={{ maxWidth: `${anchoContenido}px` }}
+        >
           {/* key={usuario?.id}: si cambia la identidad (Entrar como / Volver a ser
               administrador) sin cambiar de ruta (ej. ya estabas en "/"), esto fuerza a React a
               desmontar y volver a montar la pantalla activa para que recargue sus propios datos

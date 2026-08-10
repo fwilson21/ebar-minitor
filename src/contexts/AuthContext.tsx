@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { obtenerIdDispositivo } from '../lib/dispositivo';
 import { guardarSesionEspejo, limpiarSesionEspejo } from '../lib/offlineDB';
 import { descartarSesionGuardada } from '../lib/impersonar';
+import { obtenerAnchoContenido, ANCHO_CONTENIDO_DEFAULT } from '../lib/anchoContenido';
 import type { Usuario } from '../lib/types';
 
 interface AuthState {
@@ -11,6 +12,12 @@ interface AuthState {
   cargando: boolean;
   /** ¿El usuario actual tiene habilitada esta función? (ver /permisos). Administrador: siempre true. */
   tienePermiso: (funcion: string) => boolean;
+  /** Ancho máximo del contenido en escritorio (ver /distribucion-entorno). Vive acá (no local a
+   * AppShell) para que al arrastrar el control en DistribucionEntorno.tsx se vea el cambio en
+   * vivo en toda la app, no solo el número — setAnchoContenido no persiste nada por sí solo, eso
+   * lo hace guardarAnchoContenido() al tocar "Guardar ancho". */
+  anchoContenido: number;
+  setAnchoContenido: (v: number) => void;
   login: (usuarioOCorreo: string, password: string) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
 }
@@ -55,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [cargando, setCargando] = useState(true);
   const [permisos, setPermisos] = useState<Set<string>>(new Set());
+  const [anchoContenido, setAnchoContenido] = useState(ANCHO_CONTENIDO_DEFAULT);
 
   // El administrador siempre tiene todo (ver tiene_permiso() en la base) — para los demás
   // roles se trae qué funciones tienen habilitadas desde /permisos. Si falla (sin conexión),
@@ -74,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUsuario(data as Usuario);
       localStorage.setItem(CLAVE_PERFIL_CACHE, JSON.stringify(data));
       cargarPermisos((data as Usuario).rol);
+      obtenerAnchoContenido().then(setAnchoContenido);
       return;
     }
     // Sin conexión (u otro error de red): usar el último perfil guardado de este mismo usuario
@@ -142,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ usuario, cargando, tienePermiso, login, logout }}>
+    <AuthContext.Provider value={{ usuario, cargando, tienePermiso, anchoContenido, setAnchoContenido, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
