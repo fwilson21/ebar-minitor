@@ -39,6 +39,15 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
     nombre: 'Inicio (Dashboard)',
     bloques: [
       { id: 'resumen_general', titulo: 'Resumen general', defaultLayout: { x: 0, y: 0, w: 12, h: 4 } },
+      // "Tus EBAR de hoy" solo lo ve el operador; los otros 3 de abajo solo admin/supervisor —
+      // igual quedan todos en el layout compartido: a quien no le toca ver un bloque, esa celda
+      // le queda vacía (mismo criterio que ya se acepta hoy sin distribución, ej. "Pendientes de
+      // visita" ya desaparece solo si no hay ninguna).
+      { id: 'tus_ebar_hoy', titulo: 'Tus EBAR de hoy (operador)', defaultLayout: { x: 0, y: 4, w: 6, h: 5 } },
+      { id: 'pendientes_visita', titulo: 'Pendientes de visita', defaultLayout: { x: 6, y: 4, w: 6, h: 4 } },
+      { id: 'requieren_atencion', titulo: 'Requieren atención', defaultLayout: { x: 0, y: 9, w: 6, h: 5 } },
+      { id: 'visitas_sospechosas', titulo: 'Visitas con horario sospechoso (admin/supervisor)', defaultLayout: { x: 6, y: 8, w: 6, h: 4 } },
+      { id: 'bajo_minimo', titulo: 'Por debajo del mínimo (admin/supervisor)', defaultLayout: { x: 0, y: 14, w: 12, h: 4 } },
     ],
   },
   {

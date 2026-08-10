@@ -7,6 +7,8 @@ import type { DashboardResumen, EstacionEbar } from '../lib/types';
 import { StationCard } from '../components/StationCard';
 import { detectarVisitasSospechosas, type ParSospechoso, type VisitaParaChequeo } from '../lib/visitasSospechosas';
 import { esDiaNoRegular } from '../lib/feriadosEcuador';
+import { GridEditable } from '../components/GridEditable';
+import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 
 const HOY = new Date().toISOString().slice(0, 10);
 const MINIMO_VISITAS_DIA_REGULAR = 2;
@@ -239,165 +241,263 @@ export function Dashboard() {
 
   if (cargando) return <p className="text-slate-600">Cargando…</p>;
 
+  function cambiarFecha(nueva: string) {
+    setCargando(true);
+    setFecha(nueva);
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h1 className="text-lg font-bold">{tituloFecha}</h1>
-          {esAdmin && (
-            <input
-              type="date"
-              className="campo py-1 text-sm w-auto"
-              value={fecha}
-              max={HOY}
-              onChange={(e) => { setCargando(true); setFecha(e.target.value); }}
-            />
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Metrica label="Visitas registradas" valor={resumen?.total_visitas ?? 0} acento="ok" />
-          <Metrica label="Estaciones sin visitar" valor={resumen?.estaciones_sin_visitar ?? 0} acento="idle" />
-          <Metrica label="Equipos con falla o por mantener" valor={resumen?.equipos_con_alerta ?? 0} acento="danger" />
-          <Metrica label="Estaciones con problemas" valor={resumen?.estaciones_con_problemas ?? 0} acento="warn" />
-          <Metrica label="Alertas de voltaje" valor={resumen?.alertas_voltaje ?? 0} acento="danger" />
-        </div>
+      {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
+      <div className="lg:hidden space-y-6">
+        <BloqueResumenGeneral tituloFecha={tituloFecha} esAdmin={esAdmin} fecha={fecha} hoy={HOY} onCambiarFecha={cambiarFecha} resumen={resumen} />
+        {!esAdmin && <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} />}
+        <BloquePendientesVisita sinVisitar={sinVisitar} mostrarSinVisitar={mostrarSinVisitar} setMostrarSinVisitar={setMostrarSinVisitar} />
+        <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />
+        {esAdmin && <BloqueVisitasSospechosas sospechosas={sospechosas} />}
+        {esAdmin && <BloqueBajoMinimo bajoMinimo={bajoMinimo} />}
       </div>
 
-      {!esAdmin && (
-        <div>
-          <h2 className="text-sm font-semibold text-slate-700 mb-2">
-            Tus EBAR de hoy (
-            {misEstacionesHoy.filter((e) => e.visitasHoy >= (esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1)).length}/
-            {misEstacionesHoy.length} {esRegular ? `con ${MINIMO_VISITAS_DIA_REGULAR} visitas` : 'visitadas'})
-          </h2>
-          {!esRegular && misEstacionesHoy.length > 0 && (
-            <p className="text-xs text-slate-500 mb-2">
-              Hoy no aplica el mínimo de {MINIMO_VISITAS_DIA_REGULAR} visitas (fin de semana o feriado).
-            </p>
-          )}
-          {misEstacionesHoy.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Aún no tienes estaciones asignadas para hoy. Habla con tu administrador o supervisor.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {misEstacionesHoy.map((e) => {
-                const meta = esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1;
-                const completa = e.visitasHoy >= meta;
-                const color = completa ? 'text-gauge-ok' : e.visitasHoy > 0 ? 'text-gauge-warn' : 'text-gauge-danger';
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
+          entorno de trabajo (o el acomodo por defecto). "Tus EBAR de hoy" solo existe para
+          operador, y los de admin/supervisor no existen para operador — a quien no le toca ver
+          un bloque, esa celda del grid queda vacía. */}
+      <div className="hidden lg:block">
+        <GridEditable
+          pantallaId="dashboard"
+          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'dashboard')!.bloques}
+          renderBloque={(bloqueId) => {
+            switch (bloqueId) {
+              case 'resumen_general':
                 return (
-                  <Link
-                    key={e.id}
-                    to={`/estaciones/${e.id}/nueva-visita`}
-                    className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{e.nombre}</p>
-                      <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
-                    </div>
-                    <span className={`text-xs flex-shrink-0 ${color}`}>
-                      {esRegular
-                        ? `${Math.min(e.visitasHoy, MINIMO_VISITAS_DIA_REGULAR)}/${MINIMO_VISITAS_DIA_REGULAR} hoy`
-                        : e.visitasHoy > 0
-                          ? `${e.visitasHoy} visita${e.visitasHoy > 1 ? 's' : ''} hoy`
-                          : 'Sin visitar'}
-                    </span>
-                  </Link>
+                  <BloqueResumenGeneral
+                    tituloFecha={tituloFecha}
+                    esAdmin={esAdmin}
+                    fecha={fecha}
+                    hoy={HOY}
+                    onCambiarFecha={cambiarFecha}
+                    resumen={resumen}
+                  />
                 );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+              case 'tus_ebar_hoy':
+                return !esAdmin ? <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} /> : null;
+              case 'pendientes_visita':
+                return (
+                  <BloquePendientesVisita
+                    sinVisitar={sinVisitar}
+                    mostrarSinVisitar={mostrarSinVisitar}
+                    setMostrarSinVisitar={setMostrarSinVisitar}
+                  />
+                );
+              case 'requieren_atencion':
+                return <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />;
+              case 'visitas_sospechosas':
+                return esAdmin ? <BloqueVisitasSospechosas sospechosas={sospechosas} /> : null;
+              case 'bajo_minimo':
+                return esAdmin ? <BloqueBajoMinimo bajoMinimo={bajoMinimo} /> : null;
+              default:
+                return null;
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
-      {sinVisitar.length > 0 && (
-        <div>
-          <button
-            className="flex items-center justify-between w-full mb-2"
-            onClick={() => setMostrarSinVisitar((v) => !v)}
-          >
-            <h2 className="text-sm font-semibold text-slate-700">
-              Pendientes de visita ({sinVisitar.length})
-            </h2>
-            <span className="text-xs text-slate-500">{mostrarSinVisitar ? '▲ ocultar' : '▼ ver'}</span>
-          </button>
-          {mostrarSinVisitar && (
-            <div className="space-y-2">
-              {sinVisitar.map((e) => (
-                <Link
-                  key={e.id}
-                  to={`/estaciones/${e.id}/nueva-visita`}
-                  className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{e.nombre}</p>
-                    <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
-                  </div>
-                  <span className="text-xs text-gauge-ok flex-shrink-0">+ Visita →</span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+function BloqueResumenGeneral({
+  tituloFecha,
+  esAdmin,
+  fecha,
+  hoy,
+  onCambiarFecha,
+  resumen,
+}: {
+  tituloFecha: string;
+  esAdmin: boolean;
+  fecha: string;
+  hoy: string;
+  onCambiarFecha: (fecha: string) => void;
+  resumen: DashboardResumen | null;
+}) {
+  return (
+    <div className="lg:h-full lg:flex lg:flex-col lg:min-h-0">
+      <div className="flex items-center justify-between mb-3 lg:shrink-0">
+        <h1 className="text-lg font-bold">{tituloFecha}</h1>
+        {esAdmin && (
+          <input
+            type="date"
+            className="campo py-1 text-sm w-auto"
+            value={fecha}
+            max={hoy}
+            onChange={(e) => onCambiarFecha(e.target.value)}
+          />
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:flex-1 lg:min-h-0">
+        <Metrica label="Visitas registradas" valor={resumen?.total_visitas ?? 0} acento="ok" />
+        <Metrica label="Estaciones sin visitar" valor={resumen?.estaciones_sin_visitar ?? 0} acento="idle" />
+        <Metrica label="Equipos con falla o por mantener" valor={resumen?.equipos_con_alerta ?? 0} acento="danger" />
+        <Metrica label="Estaciones con problemas" valor={resumen?.estaciones_con_problemas ?? 0} acento="warn" />
+        <Metrica label="Alertas de voltaje" valor={resumen?.alertas_voltaje ?? 0} acento="danger" />
+      </div>
+    </div>
+  );
+}
 
-      {estacionesConProblemas.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-slate-700 mb-2">Requieren atención</h2>
-          <div className="space-y-2">
-            {estacionesConProblemas.map((e) => (
-              <StationCard key={e.id} estacion={e} ultimaVisita={ultimasVisitas[e.id]} />
-            ))}
-          </div>
-        </div>
+function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: EstacionAsignadaHoy[]; esRegular: boolean }) {
+  return (
+    <div className="lg:h-full lg:overflow-auto">
+      <h2 className="text-sm font-semibold text-slate-700 mb-2">
+        Tus EBAR de hoy (
+        {misEstacionesHoy.filter((e) => e.visitasHoy >= (esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1)).length}/
+        {misEstacionesHoy.length} {esRegular ? `con ${MINIMO_VISITAS_DIA_REGULAR} visitas` : 'visitadas'})
+      </h2>
+      {!esRegular && misEstacionesHoy.length > 0 && (
+        <p className="text-xs text-slate-500 mb-2">
+          Hoy no aplica el mínimo de {MINIMO_VISITAS_DIA_REGULAR} visitas (fin de semana o feriado).
+        </p>
       )}
-
-      {esAdmin && sospechosas.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-slate-700 mb-2">
-            ⚠️ Visitas con horario sospechoso ({sospechosas.length})
-          </h2>
-          <div className="space-y-2">
-            {sospechosas.map((s, i) => (
-              <div key={i} className="tarjeta p-3 border border-gauge-warn/40">
-                <p className="text-sm font-medium text-slate-900">{s.operador_nombre}</p>
-                <p className="text-xs text-slate-600">
-                  {s.visitaAnterior.estacion_nombre} → {s.visitaSiguiente.estacion_nombre}
-                  {' · '}
-                  {s.km.toFixed(1)} km en {Math.round(s.minutos)} min
-                </p>
-                <p className="text-xs text-slate-500">
-                  {formatFechaCorta(s.visitaAnterior.fecha_hora_llegada)} → {formatFechaCorta(s.visitaSiguiente.fecha_hora_llegada)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {esAdmin && bajoMinimo.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-slate-700 mb-2">
-            ⚠️ Por debajo del mínimo de {MINIMO_VISITAS_DIA_REGULAR} visitas ({bajoMinimo.length})
-          </h2>
-          <div className="space-y-2">
-            {bajoMinimo.map((b) => (
-              <div
-                key={`${b.operador_id}:${b.estacion_id}`}
-                className="tarjeta p-3 border border-gauge-warn/40 flex items-center justify-between"
+      {misEstacionesHoy.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          Aún no tienes estaciones asignadas para hoy. Habla con tu administrador o supervisor.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {misEstacionesHoy.map((e) => {
+            const meta = esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1;
+            const completa = e.visitasHoy >= meta;
+            const color = completa ? 'text-gauge-ok' : e.visitasHoy > 0 ? 'text-gauge-warn' : 'text-gauge-danger';
+            return (
+              <Link
+                key={e.id}
+                to={`/estaciones/${e.id}/nueva-visita`}
+                className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
               >
                 <div>
-                  <p className="text-sm font-medium text-slate-900">{b.operador_nombre}</p>
-                  <p className="text-xs text-slate-600">{b.estacion_codigo} — {b.estacion_nombre}</p>
+                  <p className="text-sm font-medium text-slate-900">{e.nombre}</p>
+                  <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
                 </div>
-                <span className="text-xs text-gauge-warn flex-shrink-0">
-                  {b.visitas}/{MINIMO_VISITAS_DIA_REGULAR}
+                <span className={`text-xs flex-shrink-0 ${color}`}>
+                  {esRegular
+                    ? `${Math.min(e.visitasHoy, MINIMO_VISITAS_DIA_REGULAR)}/${MINIMO_VISITAS_DIA_REGULAR} hoy`
+                    : e.visitasHoy > 0
+                      ? `${e.visitasHoy} visita${e.visitasHoy > 1 ? 's' : ''} hoy`
+                      : 'Sin visitar'}
                 </span>
-              </div>
-            ))}
-          </div>
+              </Link>
+            );
+          })}
         </div>
       )}
+    </div>
+  );
+}
+
+function BloquePendientesVisita({
+  sinVisitar,
+  mostrarSinVisitar,
+  setMostrarSinVisitar,
+}: {
+  sinVisitar: EstacionSimple[];
+  mostrarSinVisitar: boolean;
+  setMostrarSinVisitar: (updater: (v: boolean) => boolean) => void;
+}) {
+  if (sinVisitar.length === 0) return null;
+  return (
+    <div className="lg:h-full lg:overflow-auto">
+      <button className="flex items-center justify-between w-full mb-2" onClick={() => setMostrarSinVisitar((v) => !v)}>
+        <h2 className="text-sm font-semibold text-slate-700">Pendientes de visita ({sinVisitar.length})</h2>
+        <span className="text-xs text-slate-500">{mostrarSinVisitar ? '▲ ocultar' : '▼ ver'}</span>
+      </button>
+      {mostrarSinVisitar && (
+        <div className="space-y-2">
+          {sinVisitar.map((e) => (
+            <Link
+              key={e.id}
+              to={`/estaciones/${e.id}/nueva-visita`}
+              className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
+            >
+              <div>
+                <p className="text-sm font-medium text-slate-900">{e.nombre}</p>
+                <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
+              </div>
+              <span className="text-xs text-gauge-ok flex-shrink-0">+ Visita →</span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BloqueRequierenAtencion({
+  estacionesConProblemas,
+  ultimasVisitas,
+}: {
+  estacionesConProblemas: EstacionEbar[];
+  ultimasVisitas: Record<string, string>;
+}) {
+  if (estacionesConProblemas.length === 0) return null;
+  return (
+    <div className="lg:h-full lg:overflow-auto">
+      <h2 className="text-sm font-semibold text-slate-700 mb-2">Requieren atención</h2>
+      <div className="space-y-2">
+        {estacionesConProblemas.map((e) => (
+          <StationCard key={e.id} estacion={e} ultimaVisita={ultimasVisitas[e.id]} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BloqueVisitasSospechosas({ sospechosas }: { sospechosas: ParSospechoso[] }) {
+  if (sospechosas.length === 0) return null;
+  return (
+    <div className="lg:h-full lg:overflow-auto">
+      <h2 className="text-sm font-semibold text-slate-700 mb-2">⚠️ Visitas con horario sospechoso ({sospechosas.length})</h2>
+      <div className="space-y-2">
+        {sospechosas.map((s, i) => (
+          <div key={i} className="tarjeta p-3 border border-gauge-warn/40">
+            <p className="text-sm font-medium text-slate-900">{s.operador_nombre}</p>
+            <p className="text-xs text-slate-600">
+              {s.visitaAnterior.estacion_nombre} → {s.visitaSiguiente.estacion_nombre}
+              {' · '}
+              {s.km.toFixed(1)} km en {Math.round(s.minutos)} min
+            </p>
+            <p className="text-xs text-slate-500">
+              {formatFechaCorta(s.visitaAnterior.fecha_hora_llegada)} → {formatFechaCorta(s.visitaSiguiente.fecha_hora_llegada)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BloqueBajoMinimo({ bajoMinimo }: { bajoMinimo: AsignacionBajoMinimo[] }) {
+  if (bajoMinimo.length === 0) return null;
+  return (
+    <div className="lg:h-full lg:overflow-auto">
+      <h2 className="text-sm font-semibold text-slate-700 mb-2">
+        ⚠️ Por debajo del mínimo de {MINIMO_VISITAS_DIA_REGULAR} visitas ({bajoMinimo.length})
+      </h2>
+      <div className="space-y-2">
+        {bajoMinimo.map((b) => (
+          <div
+            key={`${b.operador_id}:${b.estacion_id}`}
+            className="tarjeta p-3 border border-gauge-warn/40 flex items-center justify-between"
+          >
+            <div>
+              <p className="text-sm font-medium text-slate-900">{b.operador_nombre}</p>
+              <p className="text-xs text-slate-600">{b.estacion_codigo} — {b.estacion_nombre}</p>
+            </div>
+            <span className="text-xs text-gauge-warn flex-shrink-0">
+              {b.visitas}/{MINIMO_VISITAS_DIA_REGULAR}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
