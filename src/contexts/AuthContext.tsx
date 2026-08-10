@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { obtenerIdDispositivo } from '../lib/dispositivo';
 import { guardarSesionEspejo, limpiarSesionEspejo } from '../lib/offlineDB';
+import { descartarSesionGuardada } from '../lib/impersonar';
 import type { Usuario } from '../lib/types';
 
 interface AuthState {
@@ -136,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     await supabase.auth.signOut();
     localStorage.removeItem(CLAVE_PERFIL_CACHE);
+    descartarSesionGuardada();
     setPermisos(new Set());
   }
 

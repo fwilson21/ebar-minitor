@@ -1,13 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { entrarComo } from '../lib/impersonar';
+import { ROL_LABEL } from '../lib/roles';
 import type { Usuario, UserRole } from '../lib/types';
-
-const ROL_LABEL: Record<UserRole, string> = {
-  administrador: 'Admin',
-  supervisor: 'Supervisor',
-  operador: 'Operador',
-};
 
 const ROL_CLASE: Record<UserRole, string> = {
   administrador: 'bg-gauge-ok/15 text-gauge-ok border-gauge-ok/40',
@@ -23,6 +19,7 @@ export function Users() {
   // con `esAdmin` a secas (ver migración 0028 y feedback del usuario sobre este punto).
   const puedeGestionar = esAdmin || tienePermiso('gestionar_usuarios');
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [entrandoComoId, setEntrandoComoId] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
@@ -83,6 +80,24 @@ export function Users() {
     if (!error) setUsuarios((prev) => prev.map((u) => (u.id === id ? { ...u, activo } : u)));
     else setMensaje('Error al actualizar el usuario.');
     setGuardando(null);
+  }
+
+  async function manejarEntrarComo(id: string, nombre: string) {
+    const continuar = window.confirm(
+      `¿Entrar como ${nombre}? Vas a usar la app con sus permisos reales hasta que toques "Volver a ser administrador".`,
+    );
+    if (!continuar) return;
+    setEntrandoComoId(id);
+    setMensaje(null);
+    const { error } = await entrarComo(id);
+    if (error) {
+      setMensaje(`No se pudo entrar como ${nombre}: ${error}`);
+      setEntrandoComoId(null);
+      return;
+    }
+    // Recarga completa a propósito: la sesión cambió de cuenta, así que todo el estado de la
+    // app (perfil, permisos, cachés offline) debe volver a cargarse desde cero para esa persona.
+    window.location.href = '/';
   }
 
   async function liberarDispositivo(id: string) {
@@ -503,6 +518,16 @@ export function Users() {
                   onClick={() => liberarDispositivo(u.id)}
                 >
                   {guardando === u.id ? '…' : '📱 Liberar celular'}
+                </button>
+              )}
+
+              {esAdmin && u.rol !== 'administrador' && u.activo && u.id !== usuario?.id && (
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
+                  disabled={entrandoComoId === u.id}
+                  onClick={() => manejarEntrarComo(u.id, u.nombre_completo)}
+                >
+                  {entrandoComoId === u.id ? '…' : '🎭 Entrar como'}
                 </button>
               )}
 

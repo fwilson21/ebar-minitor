@@ -11,6 +11,8 @@ import {
 } from '../lib/offline';
 import { guardarCambiosDelFormularioActivo, hayCambiosSinGuardar } from '../lib/formularioActivo';
 import { nombreCorto } from '../lib/nombres';
+import { estaImpersonando, volverAAdministrador } from '../lib/impersonar';
+import { ROL_LABEL } from '../lib/roles';
 
 const NAV_BASE = [
   { to: '/', label: 'Inicio', icon: '📊' },
@@ -34,6 +36,27 @@ export function AppShell() {
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [mostrarConfirmarSalir, setMostrarConfirmarSalir] = useState(false);
   const [guardandoYSaliendo, setGuardandoYSaliendo] = useState(false);
+  const [impersonando, setImpersonando] = useState(estaImpersonando());
+  const [volviendo, setVolviendo] = useState(false);
+
+  // Se re-chequea cada vez que cambia el perfil cargado (ej. justo después de "Entrar como",
+  // cuando la app recién terminó de recargar con la identidad de la otra persona).
+  useEffect(() => {
+    setImpersonando(estaImpersonando());
+  }, [usuario?.id]);
+
+  async function manejarVolverAAdmin() {
+    setVolviendo(true);
+    const { error } = await volverAAdministrador();
+    if (error) {
+      alert(`No se pudo volver a la cuenta de administrador: ${error}`);
+      setVolviendo(false);
+      return;
+    }
+    // Recarga completa a propósito: la sesión cambió de cuenta, todo el estado de la app debe
+    // volver a cargarse desde cero (ver mismo criterio en Users.tsx → manejarEntrarComo).
+    window.location.href = '/';
+  }
 
   useEffect(() => {
     const detener = iniciarAutoSincronizacion((r) => {
@@ -121,7 +144,23 @@ export function AppShell() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen flex flex-col">
+      {impersonando && (
+        <div className="bg-amber-400 text-amber-950 text-xs sm:text-sm px-4 py-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center sticky top-0 z-40">
+          <span>
+            🎭 Estás viendo la app como <strong>{usuario?.nombre_completo}</strong>
+            {usuario ? ` (${ROL_LABEL[usuario.rol]})` : ''} — cualquier cambio que hagas es real.
+          </span>
+          <button
+            onClick={manejarVolverAAdmin}
+            disabled={volviendo}
+            className="underline font-semibold whitespace-nowrap"
+          >
+            {volviendo ? 'Volviendo…' : 'Volver a ser administrador'}
+          </button>
+        </div>
+      )}
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
       <aside className="hidden lg:flex lg:flex-col lg:w-[220px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto bg-panel-800 border-r border-panel-600/60">
         <div className="px-4 py-3 border-b border-panel-600/60">
           <span className="text-lg font-bold tracking-tight">EBAR<span className="text-gauge-ok">·</span>Monitor</span>
@@ -179,6 +218,7 @@ export function AppShell() {
         <main className="flex-1 px-4 py-4 max-w-3xl w-full mx-auto pb-24 lg:max-w-none lg:mx-0 lg:pb-4">
           <Outlet />
         </main>
+      </div>
       </div>
 
       {/* overflow-x-auto: en celulares angostos, 6 opciones no entran todas a la vez — se

@@ -17,6 +17,7 @@ const clave = (rol: string, funcion: string): Clave => `${rol}|${funcion}`;
 
 export function Permisos() {
   const { usuario } = useAuth();
+  const [rolSeleccionado, setRolSeleccionado] = useState<UserRole>('supervisor');
   const [habilitados, setHabilitados] = useState<Set<Clave>>(new Set());
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState<Clave | null>(null);
@@ -72,36 +73,42 @@ export function Permisos() {
 
       {mensaje && <p className="text-sm text-gauge-danger">{mensaje}</p>}
 
+      <div>
+        <label className="etiqueta">Rol</label>
+        <select
+          className="campo max-w-xs"
+          value={rolSeleccionado}
+          onChange={(e) => setRolSeleccionado(e.target.value as UserRole)}
+        >
+          {ROLES_EDITABLES.map(({ rol, nombre }) => (
+            <option key={rol} value={rol}>{nombre}</option>
+          ))}
+        </select>
+      </div>
+
       {cargando ? (
         <p className="text-slate-600">Cargando…</p>
       ) : (
-        <div className="space-y-3">
-          {FUNCIONES_PERMISOS.map((f) => (
-            <div key={f.clave} className="tarjeta p-4 space-y-3">
-              <div>
-                <p className="font-semibold text-slate-900">{f.nombre}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{f.descripcion}</p>
-              </div>
-              <div className="flex flex-wrap gap-4">
-                {ROLES_EDITABLES.map(({ rol, nombre }) => {
-                  const k = clave(rol, f.clave);
-                  const activo = habilitados.has(k);
-                  return (
-                    <label key={rol} className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 accent-gauge-ok"
-                        checked={activo}
-                        disabled={guardando === k}
-                        onChange={() => alternar(rol, f.clave)}
-                      />
-                      {nombre}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <div className="tarjeta divide-y divide-panel-600/40">
+          {FUNCIONES_PERMISOS.map((f) => {
+            const k = clave(rolSeleccionado, f.clave);
+            const activo = habilitados.has(k);
+            return (
+              <label key={f.clave} className="flex items-start gap-3 p-4 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 mt-0.5 accent-gauge-ok flex-shrink-0"
+                  checked={activo}
+                  disabled={guardando === k}
+                  onChange={() => alternar(rolSeleccionado, f.clave)}
+                />
+                <div>
+                  <p className="font-semibold text-slate-900 text-sm">{f.nombre}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{f.descripcion}</p>
+                </div>
+              </label>
+            );
+          })}
         </div>
       )}
     </div>
