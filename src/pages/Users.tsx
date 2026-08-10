@@ -1,9 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { entrarComo } from '../lib/impersonar';
 import { ROL_LABEL } from '../lib/roles';
+import { GridEditable } from '../components/GridEditable';
+import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import type { Usuario, UserRole } from '../lib/types';
 
 const ROL_CLASE: Record<UserRole, string> = {
@@ -305,7 +307,12 @@ export function Users() {
 
   if (cargando) return <p className="text-slate-600">Cargando…</p>;
 
-  return (
+  // ~50 piezas de estado compartidas entre el formulario y la lista — en vez de pasarlas todas
+  // como props a funciones aparte (como en las demás pantallas con Distribución de entorno de
+  // trabajo), acá los 2 bloques quedan como funciones internas con acceso directo a todo el
+  // estado del componente.
+  function renderEncabezadoForm(): ReactNode {
+    return (
     <div className="space-y-4">
       <div className="relative flex items-center justify-center">
         <h1 className="text-2xl font-extrabold text-slate-900">Usuarios</h1>
@@ -415,7 +422,13 @@ export function Users() {
           </p>
         </form>
       )}
+    </div>
+    );
+  }
 
+  function renderListaUsuarios(): ReactNode {
+    return (
+    <div className="space-y-4">
       {mensaje && <p className="text-sm text-gauge-danger">{mensaje}</p>}
 
       <div className="space-y-2">
@@ -697,6 +710,36 @@ export function Users() {
             )}
           </div>
         ))}
+      </div>
+    </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
+      <div className="lg:hidden space-y-4">
+        {renderEncabezadoForm()}
+        {renderListaUsuarios()}
+      </div>
+
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
+          entorno de trabajo (o el acomodo por defecto). */}
+      <div className="hidden lg:block">
+        <GridEditable
+          pantallaId="usuarios"
+          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'usuarios')!.bloques}
+          renderBloque={(bloqueId) => {
+            switch (bloqueId) {
+              case 'encabezado_form':
+                return renderEncabezadoForm();
+              case 'lista_usuarios':
+                return renderListaUsuarios();
+              default:
+                return null;
+            }
+          }}
+        />
       </div>
     </div>
   );

@@ -53,6 +53,14 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
     ],
   },
   {
+    id: 'usuarios',
+    nombre: 'Usuarios',
+    bloques: [
+      { id: 'encabezado_form', titulo: 'Encabezado y Crear usuario', defaultLayout: { x: 0, y: 0, w: 4, h: 9 } },
+      { id: 'lista_usuarios', titulo: 'Lista de usuarios', defaultLayout: { x: 4, y: 0, w: 8, h: 9 } },
+    ],
+  },
+  {
     id: 'asignaciones',
     nombre: 'Asignar',
     bloques: [
