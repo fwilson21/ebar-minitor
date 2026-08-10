@@ -1,10 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
 import type { EstacionEbar, TipoEstacion, ZonaTipo } from '../lib/types';
 import { StationCard } from '../components/StationCard';
 import { guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
+import { GridEditable } from '../components/GridEditable';
+import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 
 const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 
@@ -94,6 +96,74 @@ export function Stations() {
 
   return (
     <div className="space-y-4">
+      {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
+      <div className="lg:hidden space-y-4">
+        <BloqueEncabezadoForm esAdmin={esAdmin} mostrarForm={mostrarForm} setMostrarForm={setMostrarForm} />
+        {sinConexion && (
+          <p className="text-xs text-gauge-warn bg-gauge-warn/10 border border-gauge-warn/30 rounded-lg px-3 py-2">
+            Sin conexión — mostrando la última lista guardada en este dispositivo.
+          </p>
+        )}
+        <BloqueFiltros busqueda={busqueda} setBusqueda={setBusqueda} filtroZona={filtroZona} setFiltroZona={setFiltroZona} />
+        <BloqueListaEstaciones
+          cargando={cargando}
+          filtradas={filtradas}
+          sinConexion={sinConexion}
+          rolOperador={usuario?.rol === 'operador'}
+          ultimasVisitas={ultimasVisitas}
+        />
+      </div>
+
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
+          entorno de trabajo (o el acomodo por defecto). */}
+      <div className="hidden lg:block">
+        {sinConexion && (
+          <p className="text-xs text-gauge-warn bg-gauge-warn/10 border border-gauge-warn/30 rounded-lg px-3 py-2 mb-4">
+            Sin conexión — mostrando la última lista guardada en este dispositivo.
+          </p>
+        )}
+        <GridEditable
+          pantallaId="estaciones"
+          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'estaciones')!.bloques}
+          renderBloque={(bloqueId) => {
+            switch (bloqueId) {
+              case 'encabezado_form':
+                return <BloqueEncabezadoForm esAdmin={esAdmin} mostrarForm={mostrarForm} setMostrarForm={setMostrarForm} />;
+              case 'filtros':
+                return (
+                  <BloqueFiltros busqueda={busqueda} setBusqueda={setBusqueda} filtroZona={filtroZona} setFiltroZona={setFiltroZona} />
+                );
+              case 'lista_estaciones':
+                return (
+                  <BloqueListaEstaciones
+                    cargando={cargando}
+                    filtradas={filtradas}
+                    sinConexion={sinConexion}
+                    rolOperador={usuario?.rol === 'operador'}
+                    ultimasVisitas={ultimasVisitas}
+                  />
+                );
+              default:
+                return null;
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BloqueEncabezadoForm({
+  esAdmin,
+  mostrarForm,
+  setMostrarForm,
+}: {
+  esAdmin: boolean;
+  mostrarForm: boolean;
+  setMostrarForm: Dispatch<SetStateAction<boolean>>;
+}) {
+  return (
+    <div className="space-y-4 lg:h-full lg:overflow-auto">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-bold">Estaciones EBAR</h1>
         {esAdmin && (
@@ -102,22 +172,30 @@ export function Stations() {
           </button>
         )}
       </div>
-
-      {sinConexion && (
-        <p className="text-xs text-gauge-warn bg-gauge-warn/10 border border-gauge-warn/30 rounded-lg px-3 py-2">
-          Sin conexión — mostrando la última lista guardada en este dispositivo.
-        </p>
-      )}
-
       {esAdmin && mostrarForm && <FormularioNuevaEstacion onCreada={() => setMostrarForm(false)} />}
+    </div>
+  );
+}
 
+function BloqueFiltros({
+  busqueda,
+  setBusqueda,
+  filtroZona,
+  setFiltroZona,
+}: {
+  busqueda: string;
+  setBusqueda: (v: string) => void;
+  filtroZona: ZonaTipo | 'todas';
+  setFiltroZona: (v: ZonaTipo | 'todas') => void;
+}) {
+  return (
+    <div className="space-y-3 lg:h-full lg:flex lg:flex-col lg:justify-center">
       <input
         className="campo"
         placeholder="Buscar por nombre o código…"
         value={busqueda}
         onChange={(e) => setBusqueda(e.target.value)}
       />
-
       <div className="flex gap-2">
         {(['todas', 'urbana', 'rural'] as const).map((z) => (
           <button
@@ -131,14 +209,32 @@ export function Stations() {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
 
+function BloqueListaEstaciones({
+  cargando,
+  filtradas,
+  sinConexion,
+  rolOperador,
+  ultimasVisitas,
+}: {
+  cargando: boolean;
+  filtradas: EstacionEbar[];
+  sinConexion: boolean;
+  rolOperador: boolean;
+  ultimasVisitas: Record<string, string>;
+}) {
+  return (
+    <div className="lg:h-full lg:overflow-auto">
       {cargando ? (
         <p className="text-slate-600">Cargando…</p>
       ) : filtradas.length === 0 ? (
         <p className="text-slate-600">
           {sinConexion
             ? 'No hay ninguna estación guardada todavía en este dispositivo. Conéctate al menos una vez para poder verlas sin señal.'
-            : usuario?.rol === 'operador'
+            : rolOperador
               ? 'Todavía no tienes estaciones asignadas. Habla con tu administrador o supervisor.'
               : 'No se encontraron estaciones.'}
         </p>

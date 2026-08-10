@@ -31,7 +31,9 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
     id: 'estaciones',
     nombre: 'Estaciones',
     bloques: [
-      { id: 'lista_estaciones', titulo: 'Lista de estaciones', defaultLayout: { x: 0, y: 0, w: 12, h: 8 } },
+      { id: 'encabezado_form', titulo: 'Encabezado y Nueva estación (admin)', defaultLayout: { x: 0, y: 0, w: 4, h: 9 } },
+      { id: 'filtros', titulo: 'Buscar y filtrar', defaultLayout: { x: 4, y: 0, w: 8, h: 2 } },
+      { id: 'lista_estaciones', titulo: 'Lista de estaciones', defaultLayout: { x: 4, y: 2, w: 8, h: 9 } },
     ],
   },
   {
