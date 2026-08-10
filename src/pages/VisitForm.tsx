@@ -217,6 +217,28 @@ export function VisitForm() {
     salir();
   }
 
+  // Opuesto de pausarYSalir: en vez de guardar el avance para retomarlo con el tiempo real
+  // transcurrido, lo descarta por completo — incluido cualquier borrador que ya se haya
+  // autoguardado solo (ver el useEffect de autoguardado más abajo), que si no quedaría huérfano
+  // en el dispositivo y reaparecería la próxima vez que se abra "Nueva visita" en esta estación.
+  async function descartarBorrador(salir: () => void) {
+    if (estacionId) await eliminarBorradorVisita(claveBorrador());
+    guardadoRef.current = true;
+    salir();
+  }
+
+  // Para el botón del encabezado (junto al temporizador): a diferencia del aviso de navegación
+  // de abajo (que ya es en sí mismo una confirmación), este actúa directo sobre la visita en
+  // curso sin que el operador haya intentado salir — pide confirmación aparte porque es
+  // irreversible.
+  function descartarYSalir() {
+    if (!estacionId) return;
+    const confirmar = window.confirm(
+      '¿Salir sin guardar? Vas a perder todo lo registrado en esta visita — el tiempo transcurrido no va a quedar contado.',
+    );
+    if (confirmar) descartarBorrador(() => navigate(`/estaciones/${estacionId}`));
+  }
+
   // Solo para "Editar visita": descarta los cambios hechos en esta pantalla y vuelve a la
   // estación, sin pasar por el modal de "datos sin guardar" (el botón ya es esa confirmación).
   function salirSinGuardar() {
@@ -844,13 +866,20 @@ export function VisitForm() {
               <p className="text-sm font-semibold text-gauge-ok tabular-nums">{tiempoEnSitio}</p>
             </>
           )}
-          <button
-            type="button"
-            className="text-xs text-slate-600 hover:text-slate-900 underline mt-1"
-            onClick={() => pausarYSalir(() => navigate(`/estaciones/${estacionId}`))}
-          >
-            ⏸ Pausar y continuar luego
-          </button>
+          <div className="flex flex-col items-end mt-1">
+            <button
+              type="button"
+              className="text-xs text-slate-600 hover:text-slate-900 underline"
+              onClick={() => pausarYSalir(() => navigate(`/estaciones/${estacionId}`))}
+            >
+              ⏸ Pausar y continuar luego
+            </button>
+            {!modoEdicion && (
+              <button type="button" className="text-xs text-gauge-danger hover:underline mt-0.5" onClick={descartarYSalir}>
+                🚫 Descartar y salir
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1191,7 +1220,7 @@ export function VisitForm() {
               </button>
               <button
                 className="rounded-lg px-4 py-2.5 text-sm font-medium border border-gauge-danger/50 text-gauge-danger hover:bg-gauge-danger/10 transition"
-                onClick={() => blocker.proceed?.()}
+                onClick={() => descartarBorrador(() => blocker.proceed?.())}
               >
                 Descartar y salir
               </button>
