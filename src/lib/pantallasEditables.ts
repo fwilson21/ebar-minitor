@@ -53,6 +53,18 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
     ],
   },
   {
+    id: 'asignaciones',
+    nombre: 'Asignar',
+    bloques: [
+      { id: 'resumen', titulo: 'Resumen de asignaciones', defaultLayout: { x: 0, y: 0, w: 6, h: 9 } },
+      { id: 'seleccionar_operador', titulo: 'Seleccionar operador', defaultLayout: { x: 6, y: 0, w: 6, h: 2 } },
+      // Estos 2 solo tienen contenido una vez elegido un operador arriba — hasta entonces, la
+      // celda queda vacía (mismo criterio que el resto de bloques condicionales de la app).
+      { id: 'asignacion_default', titulo: 'Asignación por defecto', defaultLayout: { x: 6, y: 2, w: 6, h: 5 } },
+      { id: 'asignacion_especial', titulo: 'Asignación especial por fecha', defaultLayout: { x: 6, y: 7, w: 6, h: 7 } },
+    ],
+  },
+  {
     id: 'reportes',
     nombre: 'Reportes',
     bloques: [

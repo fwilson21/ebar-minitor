@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { AsignacionEstacion, EstacionEbar, Usuario } from '../lib/types';
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
+import { GridEditable } from '../components/GridEditable';
+import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 
 function dentroDelRango(fecha: string, desde: string, hasta: string): boolean {
   return fecha >= desde && fecha <= hasta;
@@ -203,6 +205,36 @@ export function Asignaciones() {
       )
     : [];
 
+  const props = {
+    operadores,
+    estaciones,
+    operadorId,
+    setOperadorId,
+    mensaje,
+    todasAsignaciones,
+    filtroDesde,
+    setFiltroDesde,
+    filtroHasta,
+    setFiltroHasta,
+    hayFiltro,
+    filtroHastaEfectivo,
+    cargandoAsignaciones,
+    seleccionDefault,
+    setSeleccionDefault,
+    guardando,
+    guardarDefault,
+    fechaEspecial,
+    setFechaEspecial,
+    seleccionEspecial,
+    setSeleccionEspecial,
+    agregarEspecial,
+    asignacionesEspecialesFiltradas,
+    quitarEspecial,
+    alternar,
+    nombreEstacion,
+    codigoEstacion,
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -213,71 +245,160 @@ export function Asignaciones() {
         </p>
       </div>
 
-      <div className="tarjeta p-4 space-y-3">
-        <div>
-          <h2 className="text-base font-semibold">Resumen de asignaciones</h2>
-          <p className="text-xs text-slate-500">
-            Qué EBAR tiene cada operador por defecto. Elegí una fecha (o un rango) para ver también sus asignaciones
-            especiales de esos días.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="etiqueta">Ver desde</label>
-            <input type="date" className="campo" value={filtroDesde} onChange={(e) => setFiltroDesde(e.target.value)} />
-          </div>
-          <div>
-            <label className="etiqueta">Hasta (opcional)</label>
-            <input
-              type="date"
-              className="campo"
-              value={filtroHasta}
-              onChange={(e) => setFiltroHasta(e.target.value)}
-              disabled={!filtroDesde}
-            />
-          </div>
-        </div>
-
-        {operadores.length === 0 ? (
-          <p className="text-sm text-slate-500">No hay operadores activos.</p>
-        ) : (
-          <div className="space-y-3">
-            {operadores.map((o) => {
-              const deEsteOperador = todasAsignaciones.filter((a) => a.operador_id === o.id);
-              const porDefecto = deEsteOperador.filter((a) => a.fecha === null);
-              const especialesEnRango = hayFiltro
-                ? soloLaUltimaPorEstacion(
-                    deEsteOperador.filter((a) => a.fecha && dentroDelRango(a.fecha, filtroDesde, filtroHastaEfectivo)),
-                  )
-                : [];
-              return (
-                <div key={o.id} className="border-b border-panel-600/40 pb-3 last:border-0 last:pb-0">
-                  <p className="text-sm font-medium text-slate-900">{o.nombre_completo}</p>
-                  <p className="text-xs text-slate-600">
-                    Por defecto:{' '}
-                    {porDefecto.length > 0 ? porDefecto.map((a) => codigoEstacion(a.estacion_id)).join(', ') : 'Ninguna'}
-                  </p>
-                  {hayFiltro && (
-                    <div className="text-xs text-slate-500 mt-1">
-                      {especialesEnRango.length > 0 ? (
-                        especialesEnRango.map((a) => (
-                          <p key={a.id}>
-                            {a.fecha} · {codigoEstacion(a.estacion_id)}
-                          </p>
-                        ))
-                      ) : (
-                        <p className="italic">Sin asignación especial en ese rango.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+      {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
+      <div className="lg:hidden space-y-5">
+        <BloqueResumen {...props} />
+        <BloqueSeleccionarOperador {...props} />
+        {operadorId && cargandoAsignaciones && <p className="text-slate-600">Cargando asignaciones…</p>}
+        {operadorId && !cargandoAsignaciones && (
+          <>
+            <BloqueAsignacionDefault {...props} />
+            <BloqueAsignacionEspecial {...props} />
+          </>
         )}
       </div>
 
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
+          entorno de trabajo (o el acomodo por defecto). Los últimos 2 quedan vacíos hasta elegir
+          un operador arriba. */}
+      <div className="hidden lg:block">
+        <GridEditable
+          pantallaId="asignaciones"
+          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'asignaciones')!.bloques}
+          renderBloque={(bloqueId) => {
+            switch (bloqueId) {
+              case 'resumen':
+                return <BloqueResumen {...props} />;
+              case 'seleccionar_operador':
+                return <BloqueSeleccionarOperador {...props} />;
+              case 'asignacion_default':
+                if (!operadorId) return null;
+                return cargandoAsignaciones ? <p className="text-slate-600">Cargando…</p> : <BloqueAsignacionDefault {...props} />;
+              case 'asignacion_especial':
+                if (!operadorId) return null;
+                return cargandoAsignaciones ? <p className="text-slate-600">Cargando…</p> : <BloqueAsignacionEspecial {...props} />;
+              default:
+                return null;
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+type BloquesProps = {
+  operadores: Usuario[];
+  estaciones: EstacionEbar[];
+  operadorId: string;
+  setOperadorId: (v: string) => void;
+  mensaje: string | null;
+  todasAsignaciones: AsignacionEstacion[];
+  filtroDesde: string;
+  setFiltroDesde: (v: string) => void;
+  filtroHasta: string;
+  setFiltroHasta: (v: string) => void;
+  hayFiltro: boolean;
+  filtroHastaEfectivo: string;
+  cargandoAsignaciones: boolean;
+  seleccionDefault: Set<string>;
+  setSeleccionDefault: (s: Set<string>) => void;
+  guardando: boolean;
+  guardarDefault: () => void;
+  fechaEspecial: string;
+  setFechaEspecial: (v: string) => void;
+  seleccionEspecial: Set<string>;
+  setSeleccionEspecial: (s: Set<string>) => void;
+  agregarEspecial: () => void;
+  asignacionesEspecialesFiltradas: AsignacionEstacion[];
+  quitarEspecial: (id: string) => void;
+  alternar: (set: Set<string>, setSet: (s: Set<string>) => void, estacionId: string) => void;
+  nombreEstacion: (id: string) => string;
+  codigoEstacion: (id: string) => string;
+};
+
+function BloqueResumen({
+  operadores,
+  todasAsignaciones,
+  filtroDesde,
+  setFiltroDesde,
+  filtroHasta,
+  setFiltroHasta,
+  hayFiltro,
+  filtroHastaEfectivo,
+  codigoEstacion,
+}: BloquesProps) {
+  return (
+    <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
+      <div>
+        <h2 className="text-base font-semibold">Resumen de asignaciones</h2>
+        <p className="text-xs text-slate-500">
+          Qué EBAR tiene cada operador por defecto. Elegí una fecha (o un rango) para ver también sus asignaciones
+          especiales de esos días.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="etiqueta">Ver desde</label>
+          <input type="date" className="campo" value={filtroDesde} onChange={(e) => setFiltroDesde(e.target.value)} />
+        </div>
+        <div>
+          <label className="etiqueta">Hasta (opcional)</label>
+          <input
+            type="date"
+            className="campo"
+            value={filtroHasta}
+            onChange={(e) => setFiltroHasta(e.target.value)}
+            disabled={!filtroDesde}
+          />
+        </div>
+      </div>
+
+      {operadores.length === 0 ? (
+        <p className="text-sm text-slate-500">No hay operadores activos.</p>
+      ) : (
+        <div className="space-y-3">
+          {operadores.map((o) => {
+            const deEsteOperador = todasAsignaciones.filter((a) => a.operador_id === o.id);
+            const porDefecto = deEsteOperador.filter((a) => a.fecha === null);
+            const especialesEnRango = hayFiltro
+              ? soloLaUltimaPorEstacion(
+                  deEsteOperador.filter((a) => a.fecha && dentroDelRango(a.fecha, filtroDesde, filtroHastaEfectivo)),
+                )
+              : [];
+            return (
+              <div key={o.id} className="border-b border-panel-600/40 pb-3 last:border-0 last:pb-0">
+                <p className="text-sm font-medium text-slate-900">{o.nombre_completo}</p>
+                <p className="text-xs text-slate-600">
+                  Por defecto:{' '}
+                  {porDefecto.length > 0 ? porDefecto.map((a) => codigoEstacion(a.estacion_id)).join(', ') : 'Ninguna'}
+                </p>
+                {hayFiltro && (
+                  <div className="text-xs text-slate-500 mt-1">
+                    {especialesEnRango.length > 0 ? (
+                      especialesEnRango.map((a) => (
+                        <p key={a.id}>
+                          {a.fecha} · {codigoEstacion(a.estacion_id)}
+                        </p>
+                      ))
+                    ) : (
+                      <p className="italic">Sin asignación especial en ese rango.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BloqueSeleccionarOperador({ operadores, operadorId, setOperadorId, mensaje }: BloquesProps) {
+  return (
+    <div className="space-y-3 lg:h-full lg:overflow-auto">
       <div>
         <label className="etiqueta">Operador</label>
         <select className="campo" value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
@@ -289,115 +410,120 @@ export function Asignaciones() {
           ))}
         </select>
       </div>
-
       {mensaje && (
         <p className={`text-sm ${mensaje.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>{mensaje}</p>
       )}
+    </div>
+  );
+}
 
-      {operadorId && cargandoAsignaciones && <p className="text-slate-600">Cargando asignaciones…</p>}
-
-      {operadorId && !cargandoAsignaciones && (
-        <>
-          <div className="tarjeta p-4 space-y-3">
-            <div>
-              <h2 className="text-base font-semibold">Asignación por defecto</h2>
-              <p className="text-xs text-slate-500">EBAR que este operador visita habitualmente, todos los días.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {estaciones.map((e) => {
-                const activo = seleccionDefault.has(e.id);
-                return (
-                  <button
-                    key={e.id}
-                    type="button"
-                    onClick={() => alternar(seleccionDefault, setSeleccionDefault, e.id)}
-                    className={`text-sm px-3 py-1.5 rounded-full border ${
-                      activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-600'
-                    }`}
-                  >
-                    {e.codigo}
-                  </button>
-                );
-              })}
-            </div>
-            <button onClick={guardarDefault} disabled={guardando} className="boton-primario w-full">
-              {guardando ? 'Guardando…' : 'Guardar asignación por defecto'}
-            </button>
-          </div>
-
-          <div className="tarjeta p-4 space-y-3">
-            <div>
-              <h2 className="text-base font-semibold">Asignación especial por fecha</h2>
-              <p className="text-xs text-slate-500">
-                EBAR adicionales que este operador debe visitar solo ese día, sin afectar su asignación por defecto.
-              </p>
-            </div>
-
-            <div>
-              <label className="etiqueta">Fecha</label>
-              <input
-                type="date"
-                className="campo"
-                value={fechaEspecial}
-                onChange={(e) => setFechaEspecial(e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {estaciones.map((e) => {
-                const activo = seleccionEspecial.has(e.id);
-                return (
-                  <button
-                    key={e.id}
-                    type="button"
-                    onClick={() => alternar(seleccionEspecial, setSeleccionEspecial, e.id)}
-                    className={`text-sm px-3 py-1.5 rounded-full border ${
-                      activo ? 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn' : 'border-panel-600 text-slate-600'
-                    }`}
-                  >
-                    {e.codigo}
-                  </button>
-                );
-              })}
-            </div>
-
+function BloqueAsignacionDefault({ estaciones, seleccionDefault, setSeleccionDefault, guardando, guardarDefault, alternar }: BloquesProps) {
+  return (
+    <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
+      <div>
+        <h2 className="text-base font-semibold">Asignación por defecto</h2>
+        <p className="text-xs text-slate-500">EBAR que este operador visita habitualmente, todos los días.</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {estaciones.map((e) => {
+          const activo = seleccionDefault.has(e.id);
+          return (
             <button
-              onClick={agregarEspecial}
-              disabled={guardando || !fechaEspecial || seleccionEspecial.size === 0}
-              className="boton-primario w-full"
+              key={e.id}
+              type="button"
+              onClick={() => alternar(seleccionDefault, setSeleccionDefault, e.id)}
+              className={`text-sm px-3 py-1.5 rounded-full border ${
+                activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-600'
+              }`}
             >
-              {guardando ? 'Guardando…' : 'Agregar asignación especial'}
+              {e.codigo}
             </button>
+          );
+        })}
+      </div>
+      <button onClick={guardarDefault} disabled={guardando} className="boton-primario w-full">
+        {guardando ? 'Guardando…' : 'Guardar asignación por defecto'}
+      </button>
+    </div>
+  );
+}
 
-            {hayFiltro ? (
-              <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
-                <p className="text-xs text-slate-500">Asignaciones especiales de este operador en ese rango:</p>
-                {asignacionesEspecialesFiltradas.length > 0 ? (
-                  asignacionesEspecialesFiltradas.map((a) => (
-                    <div key={a.id} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-700">
-                        {a.fecha} · {nombreEstacion(a.estacion_id)}
-                      </span>
-                      <button
-                        onClick={() => quitarEspecial(a.id)}
-                        disabled={guardando}
-                        className="text-gauge-danger hover:underline text-xs"
-                      >
-                        Quitar
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-slate-500 italic">Sin asignaciones especiales en ese rango.</p>
-                )}
+function BloqueAsignacionEspecial({
+  estaciones,
+  fechaEspecial,
+  setFechaEspecial,
+  seleccionEspecial,
+  setSeleccionEspecial,
+  guardando,
+  agregarEspecial,
+  hayFiltro,
+  asignacionesEspecialesFiltradas,
+  quitarEspecial,
+  alternar,
+  nombreEstacion,
+}: BloquesProps) {
+  return (
+    <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
+      <div>
+        <h2 className="text-base font-semibold">Asignación especial por fecha</h2>
+        <p className="text-xs text-slate-500">
+          EBAR adicionales que este operador debe visitar solo ese día, sin afectar su asignación por defecto.
+        </p>
+      </div>
+
+      <div>
+        <label className="etiqueta">Fecha</label>
+        <input type="date" className="campo" value={fechaEspecial} onChange={(e) => setFechaEspecial(e.target.value)} />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {estaciones.map((e) => {
+          const activo = seleccionEspecial.has(e.id);
+          return (
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => alternar(seleccionEspecial, setSeleccionEspecial, e.id)}
+              className={`text-sm px-3 py-1.5 rounded-full border ${
+                activo ? 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn' : 'border-panel-600 text-slate-600'
+              }`}
+            >
+              {e.codigo}
+            </button>
+          );
+        })}
+      </div>
+
+      <button
+        onClick={agregarEspecial}
+        disabled={guardando || !fechaEspecial || seleccionEspecial.size === 0}
+        className="boton-primario w-full"
+      >
+        {guardando ? 'Guardando…' : 'Agregar asignación especial'}
+      </button>
+
+      {hayFiltro ? (
+        <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
+          <p className="text-xs text-slate-500">Asignaciones especiales de este operador en ese rango:</p>
+          {asignacionesEspecialesFiltradas.length > 0 ? (
+            asignacionesEspecialesFiltradas.map((a) => (
+              <div key={a.id} className="flex items-center justify-between text-sm">
+                <span className="text-slate-700">
+                  {a.fecha} · {nombreEstacion(a.estacion_id)}
+                </span>
+                <button onClick={() => quitarEspecial(a.id)} disabled={guardando} className="text-gauge-danger hover:underline text-xs">
+                  Quitar
+                </button>
               </div>
-            ) : (
-              <p className="text-xs text-slate-500 pt-2 border-t border-panel-600/40">
-                Elegí una fecha arriba, en "Resumen de asignaciones", para ver las que ya están cargadas.
-              </p>
-            )}
-          </div>
-        </>
+            ))
+          ) : (
+            <p className="text-xs text-slate-500 italic">Sin asignaciones especiales en ese rango.</p>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500 pt-2 border-t border-panel-600/40">
+          Elegí una fecha arriba, en "Resumen de asignaciones", para ver las que ya están cargadas.
+        </p>
       )}
     </div>
   );
