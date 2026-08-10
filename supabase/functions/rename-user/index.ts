@@ -9,7 +9,8 @@
 // Solo aplica a cuentas creadas desde la app (correo con el dominio ficticio);
 // no permite renombrar cuentas viejas con correo real (ej. el primer
 // administrador), para no romper su acceso por error.
-// Solo puede ser invocada por un administrador autenticado.
+// Solo puede ser invocada por un administrador, o por alguien con el permiso
+// "gestionar_usuarios" activado en /permisos.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -47,14 +48,11 @@ Deno.serve(async (req) => {
     const { data: { user } } = await supabaseCaller.auth.getUser();
     if (!user) return json({ error: 'No autorizado.' }, 401);
 
-    const { data: perfil } = await supabaseCaller
-      .from('usuarios')
-      .select('rol')
-      .eq('id', user.id)
-      .single();
-
+    const { data: perfil } = await supabaseCaller.from('usuarios').select('rol').eq('id', user.id).single();
     if (perfil?.rol !== 'administrador') {
-      return json({ error: 'Solo un administrador puede cambiar nombres de usuario.' }, 403);
+      // Ver nota equivalente en delete-user: no depender de permisos_rol para el administrador real.
+      const { data: permitido } = await supabaseCaller.rpc('tiene_permiso', { p_funcion: 'gestionar_usuarios' });
+      if (!permitido) return json({ error: 'No tenés permiso para cambiar nombres de usuario.' }, 403);
     }
 
     const { usuario_id, nuevo_usuario: nuevoUsuario }: Payload = await req.json();

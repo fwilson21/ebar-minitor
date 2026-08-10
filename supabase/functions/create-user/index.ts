@@ -9,9 +9,11 @@
 // usuario puede cambiar su contraseña luego desde la app; si la olvida, el
 // administrador se la puede restablecer desde Usuarios (ver Edge Function
 // reset-user-password).
-// Solo puede ser invocada por un administrador autenticado: se verifica el
-// JWT de quien llama contra la tabla `usuarios` antes de usar la service role
-// key para crear la cuenta.
+// Solo puede ser invocada por un administrador, o por alguien con el permiso
+// "gestionar_usuarios" activado en /permisos (ver tiene_permiso() en la
+// migración 0028): se verifica el JWT de quien llama antes de usar la service
+// role key para crear la cuenta. Quien no es administrador real no puede
+// elegir el rol del usuario nuevo — siempre queda como 'operador'.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -59,9 +61,11 @@ Deno.serve(async (req) => {
       .select('rol')
       .eq('id', user.id)
       .single();
+    const esAdministrador = perfil?.rol === 'administrador';
 
-    if (perfil?.rol !== 'administrador') {
-      return json({ error: 'Solo un administrador puede crear usuarios.' }, 403);
+    if (!esAdministrador) {
+      const { data: permitido } = await supabaseCaller.rpc('tiene_permiso', { p_funcion: 'gestionar_usuarios' });
+      if (!permitido) return json({ error: 'No tenés permiso para crear usuarios.' }, 403);
     }
 
     const { usuario: nombreUsuario, nombre_completo, password, cedula, cargo, rol }: Payload = await req.json();
@@ -94,10 +98,14 @@ Deno.serve(async (req) => {
 
     // El trigger handle_new_auth_user crea la fila en `usuarios` con rol 'operador' por defecto;
     // acá se completa el nombre de usuario (para poder mostrarlo luego en la pantalla de Usuarios),
-    // la cédula, el cargo, y se ajusta el rol si no es el operador por defecto.
+    // la cédula, el cargo, y se ajusta el rol si no es el operador por defecto. Quien crea el
+    // usuario con el permiso 'gestionar_usuarios' (sin ser administrador real) NO puede elegir el
+    // rol del nuevo usuario aunque lo mande en el payload — siempre queda en 'operador', para que
+    // no pueda crearse a sí mismo un usuario con más privilegios por esta vía.
+    const rolFinal = esAdministrador ? rol : undefined;
     const { error: errorActualizar } = await supabaseAdmin
       .from('usuarios')
-      .update({ nombre_usuario: nombreUsuario, cedula, cargo, ...(rol && rol !== 'operador' ? { rol } : {}) })
+      .update({ nombre_usuario: nombreUsuario, cedula, cargo, ...(rolFinal && rolFinal !== 'operador' ? { rol: rolFinal } : {}) })
       .eq('id', creado.user.id);
     if (errorActualizar) {
       const cedulaDuplicada = errorActualizar.message.toLowerCase().includes('cedula');

@@ -8,6 +8,8 @@ import type { Usuario } from '../lib/types';
 interface AuthState {
   usuario: Usuario | null;
   cargando: boolean;
+  /** ¿El usuario actual tiene habilitada esta función? (ver /permisos). Administrador: siempre true. */
+  tienePermiso: (funcion: string) => boolean;
   login: (usuarioOCorreo: string, password: string) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
 }
@@ -51,12 +53,26 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [permisos, setPermisos] = useState<Set<string>>(new Set());
+
+  // El administrador siempre tiene todo (ver tiene_permiso() en la base) — para los demás
+  // roles se trae qué funciones tienen habilitadas desde /permisos. Si falla (sin conexión),
+  // simplemente queda sin permisos extra hasta que vuelva a cargar con señal.
+  async function cargarPermisos(rol: Usuario['rol']) {
+    if (rol === 'administrador') {
+      setPermisos(new Set());
+      return;
+    }
+    const { data } = await supabase.from('permisos_rol').select('funcion').eq('rol', rol).eq('habilitado', true);
+    setPermisos(new Set((data ?? []).map((fila) => fila.funcion as string)));
+  }
 
   async function cargarPerfil(userId: string) {
     const { data } = await supabase.from('usuarios').select('*').eq('id', userId).single();
     if (data) {
       setUsuario(data as Usuario);
       localStorage.setItem(CLAVE_PERFIL_CACHE, JSON.stringify(data));
+      cargarPermisos((data as Usuario).rol);
       return;
     }
     // Sin conexión (u otro error de red): usar el último perfil guardado de este mismo usuario
@@ -64,6 +80,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cache = localStorage.getItem(CLAVE_PERFIL_CACHE);
     const perfilCache = cache ? (JSON.parse(cache) as Usuario) : null;
     setUsuario(perfilCache?.id === userId ? perfilCache : null);
+    if (perfilCache?.id === userId) cargarPermisos(perfilCache.rol);
+  }
+
+  function tienePermiso(funcion: string) {
+    return usuario?.rol === 'administrador' || permisos.has(funcion);
   }
 
   useEffect(() => {
@@ -76,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       espejarSesion(session);
       if (session?.user) cargarPerfil(session.user.id);
-      else setUsuario(null);
+      else { setUsuario(null); setPermisos(new Set()); }
     });
 
     return () => listener.subscription.unsubscribe();
@@ -115,10 +136,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     await supabase.auth.signOut();
     localStorage.removeItem(CLAVE_PERFIL_CACHE);
+    setPermisos(new Set());
   }
 
   return (
-    <AuthContext.Provider value={{ usuario, cargando, login, logout }}>
+    <AuthContext.Provider value={{ usuario, cargando, tienePermiso, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

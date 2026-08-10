@@ -16,8 +16,12 @@ const ROL_CLASE: Record<UserRole, string> = {
 };
 
 export function Users() {
-  const { usuario } = useAuth();
+  const { usuario, tienePermiso } = useAuth();
   const esAdmin = usuario?.rol === 'administrador';
+  // Quien tiene el permiso "Gestionar usuarios" (ver /permisos) puede hacer casi todo lo que
+  // hace acá un administrador, EXCEPTO cambiar el rol de alguien — eso queda reservado abajo
+  // con `esAdmin` a secas (ver migración 0028 y feedback del usuario sobre este punto).
+  const puedeGestionar = esAdmin || tienePermiso('gestionar_usuarios');
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState<string | null>(null);
@@ -281,7 +285,7 @@ export function Users() {
     <div className="space-y-4">
       <div className="relative flex items-center justify-center">
         <h1 className="text-2xl font-extrabold text-slate-900">Usuarios</h1>
-        {esAdmin && (
+        {puedeGestionar && (
           <button
             className="absolute right-0 text-sm text-gauge-ok"
             onClick={() => { setMostrarForm((v) => !v); setMensajeInvitar(null); }}
@@ -291,7 +295,7 @@ export function Users() {
         )}
       </div>
 
-      {esAdmin && mostrarForm && (
+      {puedeGestionar && mostrarForm && (
         <form onSubmit={manejarInvitar} className="tarjeta p-4 space-y-3">
           <div>
             <label className="etiqueta">Usuario</label>
@@ -357,14 +361,21 @@ export function Users() {
               placeholder="Mínimo 6 caracteres"
             />
           </div>
-          <div>
-            <label className="etiqueta">Rol</label>
-            <select className="campo" value={nuevoRol} onChange={(e) => setNuevoRol(e.target.value as UserRole)}>
-              <option value="operador">Operador</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="administrador">Administrador</option>
-            </select>
-          </div>
+          {esAdmin && (
+            <div>
+              <label className="etiqueta">Rol</label>
+              <select className="campo" value={nuevoRol} onChange={(e) => setNuevoRol(e.target.value as UserRole)}>
+                <option value="operador">Operador</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="administrador">Administrador</option>
+              </select>
+            </div>
+          )}
+          {!esAdmin && (
+            <p className="text-xs text-slate-500">
+              El usuario se crea como Operador. Solo un administrador puede crearlo con otro rol o cambiárselo después.
+            </p>
+          )}
 
           {mensajeInvitar && (
             <p className={`text-sm ${mensajeInvitar.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
@@ -412,31 +423,35 @@ export function Users() {
               </span>
             </div>
 
-            <select
-              className="campo py-1.5 text-xs w-full mt-3"
-              value={u.rol}
-              disabled={guardando === u.id}
-              onChange={(e) => cambiarRol(u.id, e.target.value as UserRole)}
-            >
-              <option value="operador">Operador</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="administrador">Administrador</option>
-            </select>
+            {esAdmin && (
+              <select
+                className="campo py-1.5 text-xs w-full mt-3"
+                value={u.rol}
+                disabled={guardando === u.id}
+                onChange={(e) => cambiarRol(u.id, e.target.value as UserRole)}
+              >
+                <option value="operador">Operador</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="administrador">Administrador</option>
+              </select>
+            )}
 
             <div className="flex flex-wrap gap-2 mt-2">
-              <button
-                className={`text-xs px-3 py-1.5 rounded-lg border transition ${
-                  u.activo
-                    ? 'border-gauge-danger/40 text-gauge-danger hover:bg-gauge-danger/10'
-                    : 'border-gauge-ok/40 text-gauge-ok hover:bg-gauge-ok/10'
-                }`}
-                disabled={guardando === u.id}
-                onClick={() => toggleActivo(u.id, !u.activo)}
-              >
-                {guardando === u.id ? '…' : u.activo ? 'Desactivar' : 'Activar'}
-              </button>
+              {puedeGestionar && (
+                <button
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition ${
+                    u.activo
+                      ? 'border-gauge-danger/40 text-gauge-danger hover:bg-gauge-danger/10'
+                      : 'border-gauge-ok/40 text-gauge-ok hover:bg-gauge-ok/10'
+                  }`}
+                  disabled={guardando === u.id}
+                  onClick={() => toggleActivo(u.id, !u.activo)}
+                >
+                  {guardando === u.id ? '…' : u.activo ? 'Desactivar' : 'Activar'}
+                </button>
+              )}
 
-              {esAdmin && (
+              {puedeGestionar && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirEditarNombre(u.id, u.nombre_completo)}
@@ -445,7 +460,7 @@ export function Users() {
                 </button>
               )}
 
-              {esAdmin && (
+              {puedeGestionar && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirReset(u.id)}
@@ -454,7 +469,7 @@ export function Users() {
                 </button>
               )}
 
-              {esAdmin && (
+              {puedeGestionar && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirRenombrar(u.id, u.nombre_usuario)}
@@ -463,7 +478,7 @@ export function Users() {
                 </button>
               )}
 
-              {esAdmin && (
+              {puedeGestionar && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirEditarCedula(u.id, u.cedula)}
@@ -472,7 +487,7 @@ export function Users() {
                 </button>
               )}
 
-              {esAdmin && (
+              {puedeGestionar && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   onClick={() => abrirEditarCargo(u.id, u.cargo)}
@@ -481,7 +496,7 @@ export function Users() {
                 </button>
               )}
 
-              {esAdmin && u.rol === 'operador' && u.device_id && (
+              {puedeGestionar && u.rol === 'operador' && u.device_id && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-panel-600 text-slate-600 hover:text-slate-900"
                   disabled={guardando === u.id}
@@ -491,7 +506,7 @@ export function Users() {
                 </button>
               )}
 
-              {esAdmin && u.id !== usuario?.id && (
+              {puedeGestionar && u.id !== usuario?.id && (
                 <button
                   className="text-xs px-3 py-1.5 rounded-lg border border-gauge-danger/40 text-gauge-danger hover:bg-gauge-danger/10"
                   disabled={guardando === u.id}
@@ -502,7 +517,7 @@ export function Users() {
               )}
             </div>
 
-            {esAdmin && restableciendoId === u.id && (
+            {puedeGestionar && restableciendoId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Nueva contraseña para {u.nombre_completo}</label>
                 <div className="flex gap-2">
@@ -530,7 +545,7 @@ export function Users() {
               </div>
             )}
 
-            {esAdmin && editandoNombreId === u.id && (
+            {puedeGestionar && editandoNombreId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Nombre completo</label>
                 <div className="flex gap-2">
@@ -557,7 +572,7 @@ export function Users() {
               </div>
             )}
 
-            {esAdmin && renombrandoId === u.id && (
+            {puedeGestionar && renombrandoId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Nuevo usuario para {u.nombre_completo}</label>
                 <div className="flex gap-2">
@@ -590,7 +605,7 @@ export function Users() {
               </div>
             )}
 
-            {esAdmin && editandoCedulaId === u.id && (
+            {puedeGestionar && editandoCedulaId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Cédula de {u.nombre_completo}</label>
                 <div className="flex gap-2">
@@ -620,7 +635,7 @@ export function Users() {
               </div>
             )}
 
-            {esAdmin && editandoCargoId === u.id && (
+            {puedeGestionar && editandoCargoId === u.id && (
               <div className="mt-3 pt-3 border-t border-panel-600/60 space-y-2">
                 <label className="etiqueta">Cargo/Ocupación de {u.nombre_completo}</label>
                 <div className="flex gap-2">
