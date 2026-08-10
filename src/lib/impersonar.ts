@@ -39,8 +39,10 @@ export async function entrarComo(usuarioId: string): Promise<{ error?: string }>
     }),
   );
 
+  // Solo token_hash + type: Supabase rechaza la llamada si además se manda `email` junto con
+  // token_hash ("Only the token_hash and type should be provided") — son dos formas alternativas
+  // de verificar (token_hash solo, o email + token de 6 dígitos), no se combinan.
   const { error: errorOtp } = await supabase.auth.verifyOtp({
-    email: data.email,
     token_hash: data.token_hash,
     type: 'magiclink',
   });
