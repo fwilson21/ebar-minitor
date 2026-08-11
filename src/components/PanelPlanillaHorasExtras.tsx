@@ -258,6 +258,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId, esAdmin }: Pro
                 usuarioId={usuarioId}
                 configuracion={configuracion}
                 soloLectura={modal.soloLectura}
+                esAdmin={esAdmin}
                 onEditar={() => setModal((m) => (m ? { ...m, soloLectura: false } : m))}
                 onCerrar={() => setModal(null)}
                 onGuardado={async () => {
@@ -632,6 +633,7 @@ function EditorPlanilla({
   onEditar,
   onCerrar,
   onGuardado,
+  esAdmin,
 }: {
   planilla: PlanillaHorasExtras | null;
   operadores: Usuario[];
@@ -643,9 +645,10 @@ function EditorPlanilla({
   onEditar: () => void;
   onCerrar: () => void;
   onGuardado: () => Promise<void>;
+  /** Este modal también lo abre el digitador (crea/edita planillas) — "Editar distribución"
+   * sigue siendo exclusivo de administrador, igual que en el resto de las pantallas. */
+  esAdmin: boolean;
 }) {
-  // Este modal solo se abre desde Calendario de turnos (pantalla exclusiva de administrador),
-  // así que "Editar distribución" acá no necesita gate de rol aparte.
   const editorDistribucion = useEditorDistribucion('modal_nueva_planilla');
   const { anchoPropioDePantalla } = useAuth();
   // A diferencia de las demás pantallas, este modal por defecto ocupa casi toda la pantalla (no
@@ -1404,11 +1407,11 @@ function EditorPlanilla({
         >
           {encabezado}
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-            <BarraDistribucion editor={editorDistribucion} />
+            {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
             <GridEditable
               pantallaId="modal_nueva_planilla"
               bloques={bloquesModalPlanilla}
-              modoEdicion={editorDistribucion.modoEdicion}
+              modoEdicion={esAdmin && editorDistribucion.modoEdicion}
               resetSignal={editorDistribucion.resetSignal}
               objetivoEdicion={editorDistribucion.objetivoActivo}
               onGuardar={editorDistribucion.guardar}

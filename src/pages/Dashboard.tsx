@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
@@ -244,6 +244,11 @@ export function Dashboard() {
         month: 'long',
         year: 'numeric',
       })}`;
+
+  // Digitador no tiene esta pantalla (su trabajo es Turnos/Reportes, no monitoreo) — se manda
+  // directo a Turnos en vez de mostrarle un mensaje de "no disponible" en lo primero que ve al
+  // entrar a la app.
+  if (usuario?.rol === 'digitador') return <Navigate to="/calendario-turnos" replace />;
 
   if (cargando) return <p className="text-slate-600">Cargando…</p>;
 

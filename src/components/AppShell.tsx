@@ -14,11 +14,10 @@ import { nombreCorto } from '../lib/nombres';
 import { estaImpersonando, volverAAdministrador } from '../lib/impersonar';
 import { ROL_LABEL } from '../lib/roles';
 
-const NAV_BASE = [
-  { to: '/', label: 'Inicio', icon: '📊' },
-  { to: '/estaciones', label: 'Estaciones', icon: '🏭' },
-  { to: '/reportes', label: 'Reportes', icon: '📄' },
-];
+// Digitador solo tiene Reportes y Turnos — nada de estaciones/monitoreo, que no es su trabajo.
+const NAV_INICIO = { to: '/', label: 'Inicio', icon: '📊' };
+const NAV_ESTACIONES = { to: '/estaciones', label: 'Estaciones', icon: '🏭' };
+const NAV_REPORTES = { to: '/reportes', label: 'Reportes', icon: '📄' };
 const NAV_ADMIN = { to: '/usuarios', label: 'Usuarios', icon: '👥' };
 const NAV_ADMIN_SUPERVISOR = { to: '/asignaciones', label: 'Asignar', icon: '🗺️' };
 const NAV_TURNOS = { to: '/calendario-turnos', label: 'Turnos', icon: '📅' };
@@ -156,16 +155,20 @@ export function AppShell() {
     logout();
   }
 
+  const esDigitador = usuario?.rol === 'digitador';
+
   const navItems = [
-    ...NAV_BASE,
+    // Digitador no tiene Inicio ni Estaciones — su trabajo es Turnos/Reportes, no monitoreo.
+    ...(esDigitador ? [] : [NAV_INICIO, NAV_ESTACIONES]),
+    NAV_REPORTES,
     ...(usuario?.rol === 'administrador' || usuario?.rol === 'supervisor' ? [NAV_ADMIN_SUPERVISOR] : []),
     ...(usuario?.rol === 'administrador' ||
     ['crear_usuarios', 'editar_usuarios', 'activar_desactivar_usuarios', 'restablecer_password_usuarios', 'eliminar_usuarios'].some(tienePermiso)
       ? [NAV_ADMIN]
       : []),
-    // Turnos: administrador (pantalla completa) o digitador (solo ve el bloque de Planilla de
-    // horas extras, ver CalendarioTurnos.tsx) — Permisos sigue siendo exclusivo del administrador.
-    ...(usuario?.rol === 'administrador' || usuario?.rol === 'digitador' ? [NAV_TURNOS] : []),
+    // Turnos: administrador (pantalla completa) o digitador (calendario en modo consulta +
+    // planillas completas, ver CalendarioTurnos.tsx) — Permisos exclusivo del administrador.
+    ...(usuario?.rol === 'administrador' || esDigitador ? [NAV_TURNOS] : []),
     ...(usuario?.rol === 'administrador' ? [NAV_PERMISOS] : []),
   ];
 

@@ -1,4 +1,5 @@
 import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
@@ -96,6 +97,9 @@ export function Stations() {
     if (busqueda && !`${e.nombre} ${e.codigo}`.toLowerCase().includes(busqueda.toLowerCase())) return false;
     return true;
   });
+
+  // Digitador no tiene esta pantalla (su trabajo es Turnos/Reportes, no monitoreo de estaciones).
+  if (usuario?.rol === 'digitador') return <Navigate to="/calendario-turnos" replace />;
 
   return (
     <div className="space-y-4">
