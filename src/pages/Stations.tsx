@@ -131,6 +131,7 @@ export function Stations() {
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'estaciones')!.bloques}
           modoEdicion={esAdmin && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
+          objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {

@@ -274,6 +274,7 @@ export function Asignaciones() {
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'asignaciones')!.bloques}
           modoEdicion={esAdmin && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
+          objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {

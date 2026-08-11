@@ -1,6 +1,6 @@
 // Tipos del dominio EBAR Monitor — deben coincidir con el esquema SQL (0001_init.sql)
 
-export type UserRole = 'operador' | 'administrador' | 'supervisor';
+export type UserRole = 'operador' | 'administrador' | 'supervisor' | 'digitador';
 export type ZonaTipo = 'urbana' | 'rural';
 export type EstadoEstacion = 'operativa' | 'mantenimiento_correctivo' | 'fuera_de_servicio';
 export type EstadoBomba = 'encendida' | 'apagada' | 'en_falla' | 'retirado_para_mantenimiento';

@@ -91,6 +91,10 @@ function motivoDia(fecha: string, feriadosAdicionales: Map<string, string>): str
 export function CalendarioTurnos() {
   const { usuario } = useAuth();
   const esAdmin = usuario?.rol === 'administrador';
+  // Digitador entra por esta misma pantalla y ve el mismo calendario/feriados/resumen del mes/
+  // exportar que el administrador, pero en modo consulta (no puede asignar operadores a un turno
+  // ni declarar/quitar feriados) — la Planilla de horas extras sí la puede crear/editar completa.
+  const esDigitador = usuario?.rol === 'digitador';
 
   const [mes, setMes] = useState(mesActualISO());
   const [cargandoBase, setCargandoBase] = useState(true);
@@ -115,8 +119,12 @@ export function CalendarioTurnos() {
   // real, mientras se sigue viendo (y se puede seguir usando) la pantalla tal cual queda.
   const editorDistribucion = useEditorDistribucion('turnos');
 
+  // Digitador entra a esta misma carga — ve el mismo calendario/feriados/resumen que el
+  // administrador (en modo consulta, ver el render de abajo), así que necesita los mismos datos.
+  // `estaciones`/`asignacionesDefault` le quedan vacíos por RLS (solo administrador/supervisor
+  // pueden leerlas) — no importa, esos 2 solo los usa PanelDia, que un digitador no puede abrir.
   useEffect(() => {
-    if (!esAdmin) return;
+    if (!esAdmin && !esDigitador) return;
     async function cargarBase() {
       const [{ data: ops }, { data: est }, { data: feriados }, { data: defaults }] = await Promise.all([
         supabase.from('usuarios').select('*').eq('rol', 'operador').eq('activo', true).order('nombre_completo'),
@@ -132,7 +140,7 @@ export function CalendarioTurnos() {
     }
     cargarBase();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [esAdmin]);
+  }, [esAdmin, esDigitador]);
 
   // Feriado decretado de último momento (no calculable de antemano ni ya cargado como fin de
   // semana/feriado fijo): lo agrega el propio administrador desde el panel del día. Reutiliza la
@@ -172,10 +180,10 @@ export function CalendarioTurnos() {
   }
 
   useEffect(() => {
-    if (!esAdmin) return;
+    if (!esAdmin && !esDigitador) return;
     cargarMes(mes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mes, esAdmin]);
+  }, [mes, esAdmin, esDigitador]);
 
   const feriadosAdicionalesMap = useMemo(
     () => new Map(feriadosAdicionales.map((f) => [f.fecha, f.descripcion])),
@@ -295,7 +303,7 @@ export function CalendarioTurnos() {
 
   if (!usuario) return null;
 
-  if (usuario.rol !== 'administrador') {
+  if (!esAdmin && !esDigitador) {
     return (
       <div className="tarjeta p-4">
         <p className="text-sm text-slate-600">Esta pantalla es exclusiva del administrador.</p>
@@ -310,8 +318,9 @@ export function CalendarioTurnos() {
       <div>
         <h1 className="text-lg font-bold">Calendario de turnos</h1>
         <p className="text-sm text-slate-600">
-          Marca qué operador está de turno cada sábado, domingo o feriado. Ese día le van a aparecer automáticamente
-          sus EBAR a atender.
+          {esDigitador
+            ? 'Consulta qué operador está de turno cada sábado, domingo o feriado, y elabora las planillas de horas extras.'
+            : 'Marca qué operador está de turno cada sábado, domingo o feriado. Ese día le van a aparecer automáticamente sus EBAR a atender.'}
         </p>
       </div>
 
@@ -326,6 +335,7 @@ export function CalendarioTurnos() {
           turnosPorFecha={turnosPorFecha}
           nombreOperadorPorId={nombreOperadorPorId}
           setDiaSeleccionado={setDiaSeleccionado}
+          soloLectura={esDigitador}
         />
         <BloqueResumenMes resumenMes={resumenMes} algunoSobrepasaLimite={algunoSobrepasaLimite} />
         <BloqueExportar
@@ -337,19 +347,26 @@ export function CalendarioTurnos() {
           compartiendo={compartiendo}
           mensajeCompartir={mensajeCompartir}
         />
-        <BloquePlanillaHorasExtras operadores={operadores} usuarioId={usuario.id} />
-        <BloqueFeriados anioVisible={anioVisible} feriadosAdicionales={feriadosAdicionales} quitarFeriado={quitarFeriado} />
+        <BloquePlanillaHorasExtras operadores={operadores} usuarioId={usuario.id} esAdmin={esAdmin} />
+        <BloqueFeriados
+          anioVisible={anioVisible}
+          feriadosAdicionales={feriadosAdicionales}
+          quitarFeriado={quitarFeriado}
+          soloLectura={esDigitador}
+        />
       </div>
 
       {/* Escritorio (lg+): mismos bloques, pero acomodados según lo que haya guardado el
-          administrador (o el acomodo por defecto) — botón "Editar distribución" abajo. */}
-      <BarraDistribucion editor={editorDistribucion} />
+          administrador (o el acomodo por defecto) — botón "Editar distribución" abajo, exclusivo
+          de administrador (el digitador ve esta pantalla, pero no la reacomoda). */}
+      {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
       <div className="hidden lg:block">
         <GridEditable
           pantallaId="turnos"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'turnos')!.bloques}
-          modoEdicion={editorDistribucion.modoEdicion}
+          modoEdicion={esAdmin && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
+          objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
@@ -364,6 +381,7 @@ export function CalendarioTurnos() {
                     turnosPorFecha={turnosPorFecha}
                     nombreOperadorPorId={nombreOperadorPorId}
                     setDiaSeleccionado={setDiaSeleccionado}
+                    soloLectura={esDigitador}
                   />
                 );
               case 'feriados':
@@ -372,6 +390,7 @@ export function CalendarioTurnos() {
                     anioVisible={anioVisible}
                     feriadosAdicionales={feriadosAdicionales}
                     quitarFeriado={quitarFeriado}
+                    soloLectura={esDigitador}
                   />
                 );
               case 'resumen_mes':
@@ -389,7 +408,7 @@ export function CalendarioTurnos() {
                   />
                 );
               case 'planilla_horas_extras':
-                return <BloquePlanillaHorasExtras operadores={operadores} usuarioId={usuario.id} />;
+                return <BloquePlanillaHorasExtras operadores={operadores} usuarioId={usuario.id} esAdmin={esAdmin} />;
               default:
                 return null;
             }
@@ -426,6 +445,8 @@ interface BloqueCalendarioProps {
   turnosPorFecha: Map<string, TurnoCalendario[]>;
   nombreOperadorPorId: (id: string) => string;
   setDiaSeleccionado: (fecha: string) => void;
+  /** Digitador ve el calendario en modo consulta — tocar un día no abre el panel de asignación. */
+  soloLectura?: boolean;
 }
 
 function BloqueCalendario({
@@ -437,6 +458,7 @@ function BloqueCalendario({
   turnosPorFecha,
   nombreOperadorPorId,
   setDiaSeleccionado,
+  soloLectura,
 }: BloqueCalendarioProps) {
   const numSemanas = Math.max(1, celdas.length / 7);
   return (
@@ -478,8 +500,9 @@ function BloqueCalendario({
                 <button
                   key={fecha}
                   type="button"
+                  disabled={soloLectura}
                   onClick={() => setDiaSeleccionado(fecha)}
-                  className={`min-h-[3.75rem] lg:min-h-0 rounded-lg border text-sm font-medium flex flex-col items-center pt-1 pb-1 gap-0.5 transition overflow-hidden ${
+                  className={`min-h-[3.75rem] lg:min-h-0 rounded-lg border text-sm font-medium flex flex-col items-center pt-1 pb-1 gap-0.5 transition overflow-hidden disabled:cursor-default disabled:hover:bg-transparent ${
                     esFeriado
                       ? 'border-gauge-warn bg-gauge-warn/20 text-gauge-warn hover:bg-gauge-warn/30'
                       : motivo === 'Fin de semana'
@@ -522,7 +545,7 @@ function BloqueCalendario({
             </span>
             <span>
               <span className="inline-block w-3 h-3 rounded bg-panel-700/40 border border-panel-600/60 align-middle mr-1" />
-              Regular (tocar para declarar feriado)
+              Regular{!soloLectura && ' (tocar para declarar feriado)'}
             </span>
           </div>
         </div>
@@ -535,17 +558,19 @@ interface BloqueFeriadosProps {
   anioVisible: number;
   feriadosAdicionales: { id: string; fecha: string; descripcion: string }[];
   quitarFeriado: (id: string) => void;
+  /** Digitador ve el calendario/feriados en modo consulta — no puede declarar ni quitar feriados. */
+  soloLectura?: boolean;
 }
 
-function BloqueFeriados({ anioVisible, feriadosAdicionales, quitarFeriado }: BloqueFeriadosProps) {
+function BloqueFeriados({ anioVisible, feriadosAdicionales, quitarFeriado, soloLectura }: BloqueFeriadosProps) {
   return (
     <div className="tarjeta p-4 space-y-3">
       <div>
         <h2 className="text-base font-semibold">Feriados</h2>
         <p className="text-xs text-slate-500">
           Referencia: el calendario nacional de Ecuador y los locales (cantonización de Francisco de Orellana 30
-          de abril, provincialización de Orellana 30 de julio) se calculan solos. Los feriados de última hora se
-          declaran tocando el día en el calendario de arriba.
+          de abril, provincialización de Orellana 30 de julio) se calculan solos.
+          {!soloLectura && ' Los feriados de última hora se declaran tocando el día en el calendario de arriba.'}
         </p>
       </div>
 
@@ -570,9 +595,11 @@ function BloqueFeriados({ anioVisible, feriadosAdicionales, quitarFeriado }: Blo
               <span className="text-slate-700">
                 {f.fecha} · {f.descripcion}
               </span>
-              <button onClick={() => quitarFeriado(f.id)} className="text-gauge-danger hover:underline text-xs">
-                Quitar
-              </button>
+              {!soloLectura && (
+                <button onClick={() => quitarFeriado(f.id)} className="text-gauge-danger hover:underline text-xs">
+                  Quitar
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -673,10 +700,19 @@ function BloqueExportar({
   );
 }
 
-function BloquePlanillaHorasExtras({ operadores, usuarioId }: { operadores: Usuario[]; usuarioId: string }) {
-  // esAdmin=true fijo: esta pantalla completa ya es exclusiva de administrador (ver el chequeo de
-  // rol arriba en CalendarioTurnos), nadie más llega a renderizar este bloque.
-  return <PanelPlanillaHorasExtras operadores={operadores} usuarioId={usuarioId} esAdmin />;
+function BloquePlanillaHorasExtras({
+  operadores,
+  usuarioId,
+  esAdmin,
+}: {
+  operadores: Usuario[];
+  usuarioId: string;
+  /** Solo el administrador puede borrar planillas (ver PanelPlanillaHorasExtras) — el digitador
+   * llega a esta misma pantalla pero con esAdmin=false: puede Ver/Editar/Nueva, no Borrar, y no
+   * ve los ajustes de "Firmantes por defecto"/"Jornadas por defecto por operador". */
+  esAdmin: boolean;
+}) {
+  return <PanelPlanillaHorasExtras operadores={operadores} usuarioId={usuarioId} esAdmin={esAdmin} />;
 }
 
 interface PanelDiaProps {

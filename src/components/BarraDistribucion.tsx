@@ -1,9 +1,12 @@
 import { ANCHO_CONTENIDO_MAX, ANCHO_CONTENIDO_MIN } from '../lib/anchoContenido';
+import { OBJETIVOS_DISTRIBUCION, OBJETIVO_LABEL, type ObjetivoDistribucion } from '../lib/layoutsAdmin';
 import type { EditorDistribucion } from '../hooks/useEditorDistribucion';
 
-/** Botón "Editar distribución" + (cuando está activo) el control de ancho de esta pantalla. Cada
- * pantalla que use GridEditable en escritorio pone esto arriba de su <GridEditable>, pasándole
- * modoEdicion/resetSignal/onGuardar del mismo editor (ver useEditorDistribucion.ts). */
+/** Botón "Editar distribución" + (cuando está activo) el selector de a quién se le está
+ * previsualizando, el control de ancho de esta pantalla, y el checklist de a quién aplica al
+ * guardar. Cada pantalla que use GridEditable en escritorio pone esto arriba de su
+ * <GridEditable>, pasándole modoEdicion/resetSignal/onGuardar/objetivoEdicion del mismo editor
+ * (ver useEditorDistribucion.ts). */
 export function BarraDistribucion({ editor }: { editor: EditorDistribucion }) {
   const {
     modoEdicion,
@@ -16,6 +19,10 @@ export function BarraDistribucion({ editor }: { editor: EditorDistribucion }) {
     mensajeAncho,
     guardarAncho,
     anchoSinGuardar,
+    objetivoActivo,
+    setObjetivoActivo,
+    objetivosGuardar,
+    alternarObjetivoGuardar,
   } = editor;
 
   return (
@@ -39,7 +46,22 @@ export function BarraDistribucion({ editor }: { editor: EditorDistribucion }) {
       </div>
 
       {modoEdicion && (
-        <div className="tarjeta p-3 space-y-2">
+        <div className="tarjeta p-3 space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="etiqueta mb-0 flex-shrink-0">Estás viendo/editando la distribución de</label>
+            <select
+              className="campo w-auto text-sm py-1.5"
+              value={objetivoActivo}
+              onChange={(e) => setObjetivoActivo(e.target.value as ObjetivoDistribucion)}
+            >
+              {OBJETIVOS_DISTRIBUCION.map((o) => (
+                <option key={o} value={o}>
+                  {OBJETIVO_LABEL[o]}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex items-center gap-3">
             <label className="etiqueta mb-0 flex-shrink-0">Ancho de esta pantalla</label>
             <input
@@ -66,6 +88,23 @@ export function BarraDistribucion({ editor }: { editor: EditorDistribucion }) {
               {mensajeAncho}
             </p>
           )}
+
+          <div className="border-t border-panel-600/40 pt-2 space-y-1.5">
+            <p className="etiqueta mb-0">Al guardar (distribución de bloques y ancho), aplicar a</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {OBJETIVOS_DISTRIBUCION.map((o) => (
+                <label key={o} className="flex items-center gap-1.5 text-sm text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-gauge-ok"
+                    checked={objetivosGuardar.has(o)}
+                    onChange={() => alternarObjetivoGuardar(o)}
+                  />
+                  {OBJETIVO_LABEL[o]}
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

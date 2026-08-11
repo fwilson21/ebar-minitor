@@ -14,6 +14,7 @@ import type { UserRole } from '../lib/types';
 const ROLES_EDITABLES: { rol: UserRole; nombre: string }[] = [
   { rol: 'supervisor', nombre: 'Supervisor' },
   { rol: 'operador', nombre: 'Operador' },
+  { rol: 'digitador', nombre: 'Digitador' },
 ];
 
 type Clave = `${string}|${string}`;
@@ -139,6 +140,7 @@ export function Permisos() {
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'permisos')!.bloques}
           modoEdicion={editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
+          objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {

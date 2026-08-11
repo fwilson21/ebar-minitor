@@ -423,36 +423,38 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId, esAdmin }: Pro
                       </div>
                     ))}
 
-                    <div className="border-t border-panel-600/40 pt-3 space-y-2">
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => setEditandoFirmantes((v) => !v)}
-                          className="text-xs text-gauge-ok hover:underline"
-                        >
-                          ⚙️ Firmantes por defecto (Revisado por / Aprobado por)
-                        </button>
-                        {editandoFirmantes && configuracion && (
-                          <EditorFirmantesDefault
-                            configuracion={configuracion}
-                            onGuardado={(c) => {
-                              setConfiguracion(c);
-                              setEditandoFirmantes(false);
-                            }}
-                          />
-                        )}
+                    {esAdmin && (
+                      <div className="border-t border-panel-600/40 pt-3 space-y-2">
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setEditandoFirmantes((v) => !v)}
+                            className="text-xs text-gauge-ok hover:underline"
+                          >
+                            ⚙️ Firmantes por defecto (Revisado por / Aprobado por)
+                          </button>
+                          {editandoFirmantes && configuracion && (
+                            <EditorFirmantesDefault
+                              configuracion={configuracion}
+                              onGuardado={(c) => {
+                                setConfiguracion(c);
+                                setEditandoFirmantes(false);
+                              }}
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setEditandoJornadas((v) => !v)}
+                            className="text-xs text-gauge-ok hover:underline"
+                          >
+                            ⚙️ Jornadas por defecto por operador
+                          </button>
+                          {editandoJornadas && <EditorJornadasOperadorDefault operadores={operadores} />}
+                        </div>
                       </div>
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => setEditandoJornadas((v) => !v)}
-                          className="text-xs text-gauge-ok hover:underline"
-                        >
-                          ⚙️ Jornadas por defecto por operador
-                        </button>
-                        {editandoJornadas && <EditorJornadasOperadorDefault operadores={operadores} />}
-                      </div>
-                    </div>
+                    )}
 
                     <button onClick={() => setModal({ planilla: 'nueva', soloLectura: false })} className="boton-primario w-full">
                       + Nueva planilla
@@ -1408,6 +1410,7 @@ function EditorPlanilla({
               bloques={bloquesModalPlanilla}
               modoEdicion={editorDistribucion.modoEdicion}
               resetSignal={editorDistribucion.resetSignal}
+              objetivoEdicion={editorDistribucion.objetivoActivo}
               onGuardar={editorDistribucion.guardar}
               renderBloque={(bloqueId) => {
                 switch (bloqueId) {

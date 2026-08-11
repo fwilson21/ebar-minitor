@@ -1,0 +1,11 @@
+-- Nuevo rol "Digitador": la persona encargada de elaborar las planillas de horas extras. Entra
+-- por "Turnos" en el menú, pero ahí solo ve el bloque "Planilla de horas extras" (ver
+-- CalendarioTurnos.tsx) — nada del calendario/feriados/resumen/exportar, que siguen exclusivos
+-- del administrador. Además de eso, tiene lo que el administrador le habilite desde /permisos
+-- (mismo mecanismo que ya existe para supervisor/operador).
+--
+-- IMPORTANTE: este archivo va SOLO — agregar un valor a un enum con ALTER TYPE ... ADD VALUE no
+-- se puede usar en la misma transacción en la que además se lo compara/usa (ej. en una política
+-- RLS con "= 'digitador'"), o Postgres tira "unsafe use of new value of enum type". Por eso las
+-- políticas que le dan acceso al digitador van aparte, en la migración 0035 (correr esta primero).
+alter type user_role add value 'digitador';

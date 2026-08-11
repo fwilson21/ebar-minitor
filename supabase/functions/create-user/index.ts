@@ -26,7 +26,7 @@ interface Payload {
   password: string;
   cedula: string;
   cargo: string;
-  rol?: 'operador' | 'supervisor' | 'administrador';
+  rol?: 'operador' | 'supervisor' | 'administrador' | 'digitador';
 }
 
 function json(body: unknown, status = 200) {

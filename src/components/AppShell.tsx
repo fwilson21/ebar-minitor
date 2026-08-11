@@ -163,7 +163,10 @@ export function AppShell() {
     ['crear_usuarios', 'editar_usuarios', 'activar_desactivar_usuarios', 'restablecer_password_usuarios', 'eliminar_usuarios'].some(tienePermiso)
       ? [NAV_ADMIN]
       : []),
-    ...(usuario?.rol === 'administrador' ? [NAV_TURNOS, NAV_PERMISOS] : []),
+    // Turnos: administrador (pantalla completa) o digitador (solo ve el bloque de Planilla de
+    // horas extras, ver CalendarioTurnos.tsx) — Permisos sigue siendo exclusivo del administrador.
+    ...(usuario?.rol === 'administrador' || usuario?.rol === 'digitador' ? [NAV_TURNOS] : []),
+    ...(usuario?.rol === 'administrador' ? [NAV_PERMISOS] : []),
   ];
 
   return (

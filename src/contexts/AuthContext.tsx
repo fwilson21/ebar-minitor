@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUsuario(data as Usuario);
       localStorage.setItem(CLAVE_PERFIL_CACHE, JSON.stringify(data));
       cargarPermisos((data as Usuario).rol);
-      obtenerAnchosPantalla().then(setAnchosPantalla);
+      obtenerAnchosPantalla((data as Usuario).rol).then(setAnchosPantalla);
       return;
     }
     // Sin conexión (u otro error de red): usar el último perfil guardado de este mismo usuario

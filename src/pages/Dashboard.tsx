@@ -275,6 +275,7 @@ export function Dashboard() {
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'dashboard')!.bloques}
           modoEdicion={esAdministrador && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
+          objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {

@@ -2,8 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import GridLayout, { WidthProvider, type Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+import { useAuth } from '../contexts/AuthContext';
 import type { BloqueDefinicion } from '../lib/pantallasEditables';
-import { obtenerLayout, type BloqueLayout } from '../lib/layoutsAdmin';
+import { obtenerLayout, type BloqueLayout, type ObjetivoDistribucion } from '../lib/layoutsAdmin';
 
 const Grid = WidthProvider(GridLayout);
 
@@ -26,17 +27,33 @@ type Props = {
   modoEdicion?: boolean;
   onGuardar?: (layout: BloqueLayout[]) => void;
   /** Incrementar este número (desde el padre, ej. botón "Restablecer por defecto" en
-   * DistribucionEntorno) fuerza el grid a volver a defaultLayout sin tocar lo guardado en
+   * BarraDistribucion) fuerza el grid a volver a defaultLayout sin tocar lo guardado en
    * Supabase — solo se persiste si después se llama a onGuardar. */
   resetSignal?: number;
+  /** Solo importa con modoEdicion=true: qué variante (rol destino) se está mostrando/editando —
+   * ver useEditorDistribucion.ts. En modo vista, GridEditable resuelve solo según el rol de quien
+   * mira (no hace falta pasar esto). */
+  objetivoEdicion?: ObjetivoDistribucion;
 };
 
-export function GridEditable({ pantallaId, bloques, renderBloque, modoEdicion = false, onGuardar, resetSignal }: Props) {
+export function GridEditable({
+  pantallaId,
+  bloques,
+  renderBloque,
+  modoEdicion = false,
+  onGuardar,
+  resetSignal,
+  objetivoEdicion,
+}: Props) {
+  const { usuario } = useAuth();
   const [layout, setLayout] = useState<BloqueLayout[] | null>(null);
 
   useEffect(() => {
     let cancelado = false;
-    obtenerLayout(pantallaId).then((guardado) => {
+    // En modo vista, cada quien ve la distribución de su propio rol; en modo edición, el
+    // administrador previsualiza/edita la variante que eligió en el selector de BarraDistribucion.
+    const objetivo = modoEdicion ? objetivoEdicion : usuario?.rol;
+    obtenerLayout(pantallaId, objetivo).then((guardado) => {
       if (cancelado) return;
       setLayout(guardado ?? layoutPorDefecto(bloques));
     });
@@ -44,7 +61,7 @@ export function GridEditable({ pantallaId, bloques, renderBloque, modoEdicion = 
       cancelado = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pantallaId]);
+  }, [pantallaId, modoEdicion, objetivoEdicion, usuario?.rol]);
 
   useEffect(() => {
     if (resetSignal === undefined) return;

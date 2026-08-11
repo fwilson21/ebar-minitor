@@ -14,6 +14,7 @@ const ROL_CLASE: Record<UserRole, string> = {
   administrador: 'bg-gauge-ok/15 text-gauge-ok border-gauge-ok/40',
   supervisor: 'bg-gauge-warn/15 text-gauge-warn border-gauge-warn/40',
   operador: 'bg-panel-600/60 text-slate-600 border-panel-600',
+  digitador: 'bg-gauge-idle/15 text-gauge-idle border-gauge-idle/40',
 };
 
 export function Users() {
@@ -401,6 +402,7 @@ export function Users() {
               <select className="campo" value={nuevoRol} onChange={(e) => setNuevoRol(e.target.value as UserRole)}>
                 <option value="operador">Operador</option>
                 <option value="supervisor">Supervisor</option>
+                <option value="digitador">Digitador</option>
                 <option value="administrador">Administrador</option>
               </select>
             </div>
@@ -472,6 +474,7 @@ export function Users() {
               >
                 <option value="operador">Operador</option>
                 <option value="supervisor">Supervisor</option>
+                <option value="digitador">Digitador</option>
                 <option value="administrador">Administrador</option>
               </select>
             )}
@@ -736,6 +739,7 @@ export function Users() {
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'usuarios')!.bloques}
           modoEdicion={esAdmin && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
+          objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {

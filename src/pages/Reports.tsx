@@ -206,6 +206,7 @@ export function Reports() {
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'reportes')!.bloques}
           modoEdicion={esAdministrador && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
+          objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
