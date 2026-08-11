@@ -685,7 +685,14 @@ function EditorPlanilla({
   const [descripcionDefault, setDescripcionDefault] = useState('');
   const [memorandoDefault, setMemorandoDefault] = useState('');
 
-  const [filas, setFilas] = useState<FilaEdit[]>([]);
+  // Una planilla nueva arranca con 5 líneas en blanco por defecto (para digitar a mano si hace
+  // falta); al traer los días de turno del calendario, esas líneas se van llenando con las fechas
+  // encontradas y la tabla se ajusta sola para tener exactamente una fila por día (ver
+  // traerDiasDeCalendario más abajo) — 4 días trabajados borran una línea, 6 agregan una. Al abrir
+  // una planilla ya guardada, arranca vacía: sus filas reales las trae el efecto de "cargarFilas".
+  const [filas, setFilas] = useState<FilaEdit[]>(() =>
+    planilla ? [] : Array.from({ length: 5 }, () => nuevaFila('')),
+  );
   const [cargandoFilas, setCargandoFilas] = useState(!!planilla);
   const [guardando, setGuardando] = useState(false);
   const [generandoPdf, setGenerandoPdf] = useState(false);
@@ -949,14 +956,22 @@ function EditorPlanilla({
         .lte('fecha', fechaHasta)
         .order('fecha');
       if (error) throw error;
-      const fechasExistentes = new Set(filas.map((f) => f.fecha));
-      const nuevas = ((data as { fecha: string }[]) ?? [])
-        .filter((t) => !fechasExistentes.has(t.fecha))
-        .map((t) => nuevaFila(t.fecha));
-      if (nuevas.length === 0) {
+      const fechasExistentes = new Set(filas.filter((f) => f.fecha).map((f) => f.fecha));
+      const nuevasFechas = ((data as { fecha: string }[]) ?? [])
+        .map((t) => t.fecha)
+        .filter((fecha) => !fechasExistentes.has(fecha));
+      if (nuevasFechas.length === 0) {
         setMensaje('No hay días de turno nuevos en ese período (o ya estaban agregados).');
       } else {
-        setFilas((prev) => [...prev, ...nuevas].sort((a, b) => a.fecha.localeCompare(b.fecha)));
+        // Las líneas en blanco (las 5 por defecto, o cualquier otra que haya quedado vacía) se
+        // rellenan primero con estos días; lo que sobra de días se agrega como filas nuevas, y lo
+        // que sobra de líneas en blanco (si trajo menos días que líneas vacías) se descarta — así
+        // la tabla queda con exactamente una fila por día de turno encontrado.
+        const conContenido = filas.filter((f) => f.fecha);
+        const blancas = filas.filter((f) => !f.fecha);
+        const reutilizadas = nuevasFechas.slice(0, blancas.length).map((fecha, i) => ({ ...blancas[i], fecha }));
+        const extras = nuevasFechas.slice(blancas.length).map((fecha) => nuevaFila(fecha));
+        setFilas([...conContenido, ...reutilizadas, ...extras].sort((a, b) => a.fecha.localeCompare(b.fecha)));
       }
     } catch (err: any) {
       setMensaje(`No se pudo traer los días: ${err.message ?? err}`);
