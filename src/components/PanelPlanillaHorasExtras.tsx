@@ -965,6 +965,18 @@ function EditorPlanilla({
     }
   }
 
+  // En una planilla nueva, apenas queda elegido el trabajador (registrado, no "Otro") y completo
+  // el período (Desde/Hasta), se traen solos los días de turno (sábados/domingos/feriados
+  // trabajados) sin tener que tocar el botón "Traer días del calendario de turnos" — ese botón
+  // queda igual, como respaldo, por si se cambia el período después o se agregan turnos nuevos al
+  // calendario y hay que volver a jalarlos. No corre al abrir una planilla ya guardada (edición):
+  // ahí el operador/período ya vienen llenos desde el inicio y no se debe reconsultar el calendario.
+  useEffect(() => {
+    if (planilla || !operadorId || operadorId === MANUAL || !fechaDesde || !fechaHasta) return;
+    traerDiasDeCalendario();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planilla, operadorId, fechaDesde, fechaHasta]);
+
   // Mañana/Tarde/Extras se calculan solas en cuanto el operador escribe Entrada/Sale (nunca antes:
   // una fila nueva empieza en blanco, sin horario ni horas de ejemplo — ver nuevaFila). Si edita
   // Mañana/Tarde/Extras directamente en vez de tocar el horario, ese valor a mano se respeta.
@@ -1336,7 +1348,6 @@ function EditorPlanilla({
     setMemorandoDefault,
     traerDiasDeCalendario,
     trayendoDias,
-    agregarFilaManual,
     mensaje,
     soloLectura,
   };
@@ -1349,6 +1360,7 @@ function EditorPlanilla({
     quitarFila,
     calcularIgual,
     recalcularTodas,
+    agregarFilaManual,
     erroresOrden,
     avisosAlmuerzo,
     setAvisosDescartados,
@@ -1747,7 +1759,6 @@ interface BloqueInformeMemorandoProps {
   setMemorandoDefault: Dispatch<SetStateAction<string>>;
   traerDiasDeCalendario: () => void;
   trayendoDias: boolean;
-  agregarFilaManual: () => void;
   mensaje: string | null;
   soloLectura: boolean;
 }
@@ -1760,7 +1771,6 @@ function BloqueInformeMemorando({
   setMemorandoDefault,
   traerDiasDeCalendario,
   trayendoDias,
-  agregarFilaManual,
   mensaje,
   soloLectura,
 }: BloqueInformeMemorandoProps) {
@@ -1788,14 +1798,9 @@ function BloqueInformeMemorando({
         </div>
       </div>
 
-      <div className="flex gap-2">
-        <button type="button" onClick={traerDiasDeCalendario} disabled={trayendoDias} className="boton-secundario flex-1 text-sm">
-          {trayendoDias ? 'Trayendo…' : '📅 Traer días del calendario de turnos'}
-        </button>
-        <button type="button" onClick={agregarFilaManual} className="boton-secundario text-sm px-3">
-          + Día
-        </button>
-      </div>
+      <button type="button" onClick={traerDiasDeCalendario} disabled={trayendoDias} className="boton-secundario w-full text-sm">
+        {trayendoDias ? 'Trayendo…' : '📅 Traer días del calendario de turnos'}
+      </button>
       {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
     </div>
     </fieldset>
@@ -1811,6 +1816,7 @@ interface BloqueTablaDiasProps {
   quitarFila: (id: string) => void;
   calcularIgual: (id: string) => void;
   recalcularTodas: () => void;
+  agregarFilaManual: () => void;
   erroresOrden: { fecha: string; error: string }[];
   avisosAlmuerzo: { id: string; fecha: string; aviso: NonNullable<ReturnType<typeof avisoAlmuerzoLargo>> }[];
   setAvisosDescartados: Dispatch<SetStateAction<Set<string>>>;
@@ -1826,6 +1832,7 @@ function BloqueTablaDias({
   quitarFila,
   calcularIgual,
   recalcularTodas,
+  agregarFilaManual,
   erroresOrden,
   avisosAlmuerzo,
   setAvisosDescartados,
@@ -1834,16 +1841,23 @@ function BloqueTablaDias({
   return (
     <fieldset disabled={soloLectura} className="contents">
     <div className="space-y-3">
-      {filas.length > 0 && (
-        <button
-          type="button"
-          onClick={recalcularTodas}
-          className="text-xs text-gauge-ok hover:underline"
-          title="Vuelve a calcular Mañana/Tarde/Extras de todas las filas con la jornada de arriba"
-        >
-          🔄 Recalcular horas de todas las filas
+      <div className="flex items-center justify-between gap-2">
+        {filas.length > 0 ? (
+          <button
+            type="button"
+            onClick={recalcularTodas}
+            className="text-xs text-gauge-ok hover:underline"
+            title="Vuelve a calcular Mañana/Tarde/Extras de todas las filas con la jornada de arriba"
+          >
+            🔄 Recalcular horas de todas las filas
+          </button>
+        ) : (
+          <span />
+        )}
+        <button type="button" onClick={agregarFilaManual} className="boton-secundario text-sm px-3 flex-shrink-0">
+          + Día
         </button>
-      )}
+      </div>
 
       {filas.length > 0 && (
         <div className="overflow-x-auto border border-panel-600/40 rounded-lg">
