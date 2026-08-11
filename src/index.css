@@ -48,6 +48,27 @@ body {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #C7D2D9; border-radius: 4px; }
 
+/* Bloques que "se adaptan solos" cuando quedan angostos (ej. al achicarlos en Distribución de
+ * entorno) — en vez de cortar palabras a la mitad, primero achican la letra y si no alcanza,
+ * apilan cada fila en vez de ponerla lado a lado. container-type mide el ancho del bloque en sí
+ * (no el de la pantalla), por eso funciona igual sin importar dónde esté ese bloque. Como es CSS
+ * plano (no @layer), le gana en cascada a las utilidades de Tailwind (items-center, text-sm, etc.)
+ * sin necesitar !important. */
+.bloque-adaptable {
+  container-type: inline-size;
+}
+
+@container (max-width: 320px) {
+  .bloque-adaptable-titulo { font-size: 0.9375rem; }
+  .bloque-adaptable-texto { font-size: 0.8125rem; }
+}
+
+@container (max-width: 230px) {
+  .bloque-adaptable-titulo { font-size: 0.875rem; }
+  .bloque-adaptable-fila { flex-direction: column; align-items: flex-start; row-gap: 0; }
+  .bloque-adaptable-texto { font-size: 0.75rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }

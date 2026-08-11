@@ -15,6 +15,7 @@ import { nombreCorto } from '../lib/nombres';
 import { PanelPlanillaHorasExtras } from '../components/PanelPlanillaHorasExtras';
 import { GridEditable } from '../components/GridEditable';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
+import { guardarLayout, type BloqueLayout } from '../lib/layoutsAdmin';
 
 const DIAS_SEMANA_CORTOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
@@ -107,6 +108,28 @@ export function CalendarioTurnos() {
   const [pdfNombre, setPdfNombre] = useState('');
   const [compartiendo, setCompartiendo] = useState(false);
   const [mensajeCompartir, setMensajeCompartir] = useState<string | null>(null);
+
+  // Editar distribución en vivo: a diferencia de "Distribución de entorno" (que muestra solo el
+  // nombre de cada bloque), acá se arrastra el bloque real con su contenido real, mientras se
+  // sigue viendo (y se puede seguir usando) la pantalla tal cual queda.
+  const [modoEdicionDistribucion, setModoEdicionDistribucion] = useState(false);
+  const [resetSignalDistribucion, setResetSignalDistribucion] = useState(0);
+  const [guardandoDistribucion, setGuardandoDistribucion] = useState(false);
+  const [mensajeDistribucion, setMensajeDistribucion] = useState<string | null>(null);
+
+  async function manejarGuardarDistribucion(layout: BloqueLayout[]) {
+    setGuardandoDistribucion(true);
+    setMensajeDistribucion(null);
+    try {
+      await guardarLayout('turnos', layout);
+      setMensajeDistribucion('Distribución guardada. Se aplica a todos los usuarios en escritorio.');
+      setModoEdicionDistribucion(false);
+    } catch (err: any) {
+      setMensajeDistribucion(`No se pudo guardar: ${err.message ?? err}`);
+    } finally {
+      setGuardandoDistribucion(false);
+    }
+  }
 
   useEffect(() => {
     if (!esAdmin) return;
@@ -336,10 +359,51 @@ export function CalendarioTurnos() {
 
       {/* Escritorio (lg+): mismos bloques, pero acomodados según lo que haya guardado el
           administrador en Distribución de entorno de trabajo (o el acomodo por defecto). */}
+      <div className="hidden lg:flex items-center justify-between gap-3">
+        <p className="text-xs text-slate-500">
+          {modoEdicionDistribucion
+            ? 'Arrastra la manija de arriba de cada bloque para moverlo, o su esquina para cambiar el tamaño. El resto de la pantalla sigue funcionando normal mientras acomodas.'
+            : ''}
+        </p>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {modoEdicionDistribucion && (
+            <button
+              type="button"
+              onClick={() => {
+                setResetSignalDistribucion((n) => n + 1);
+                setMensajeDistribucion(null);
+              }}
+              className="boton-secundario text-sm px-3 py-1.5"
+            >
+              Restablecer por defecto
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setModoEdicionDistribucion((v) => !v);
+              setMensajeDistribucion(null);
+            }}
+            className="boton-secundario text-sm px-3 py-1.5"
+          >
+            {modoEdicionDistribucion ? 'Salir de edición' : 'Editar distribución'}
+          </button>
+        </div>
+      </div>
+      {mensajeDistribucion && (
+        <p
+          className={`hidden lg:block text-sm ${mensajeDistribucion.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}
+        >
+          {mensajeDistribucion}
+        </p>
+      )}
       <div className="hidden lg:block">
         <GridEditable
           pantallaId="turnos"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'turnos')!.bloques}
+          modoEdicion={modoEdicionDistribucion}
+          resetSignal={resetSignalDistribucion}
+          onGuardar={manejarGuardarDistribucion}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
               case 'calendario':
@@ -384,6 +448,7 @@ export function CalendarioTurnos() {
             }
           }}
         />
+        {guardandoDistribucion && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
 
       {diaSeleccionado && (
@@ -584,8 +649,8 @@ interface BloqueResumenMesProps {
 
 function BloqueResumenMes({ resumenMes, algunoSobrepasaLimite }: BloqueResumenMesProps) {
   return (
-    <div className="tarjeta p-4 space-y-2">
-      <h2 className="text-base font-semibold">Resumen del mes</h2>
+    <div className="tarjeta p-4 space-y-2 bloque-adaptable">
+      <h2 className="text-base font-semibold bloque-adaptable-titulo">Resumen del mes</h2>
       {algunoSobrepasaLimite && (
         <p className="text-sm text-gauge-danger bg-gauge-danger/10 border border-gauge-danger/40 rounded-lg px-3 py-2">
           ⚠ {resumenMes.filter((r) => r.sobrepasaLimite).length === 1 ? 'Un operador supera' : 'Algunos operadores superan'} las{' '}
@@ -599,13 +664,15 @@ function BloqueResumenMes({ resumenMes, algunoSobrepasaLimite }: BloqueResumenMe
           {resumenMes.map((r) => (
             <div
               key={r.operadorId}
-              className={`flex items-center justify-between text-sm gap-2 ${r.sobrepasaLimite ? 'text-gauge-danger' : ''}`}
+              className={`bloque-adaptable-fila flex items-center justify-between text-sm gap-x-3 gap-y-0 ${r.sobrepasaLimite ? 'text-gauge-danger' : ''}`}
             >
-              <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-800'}>
+              <span className={`bloque-adaptable-texto ${r.sobrepasaLimite ? 'font-semibold' : 'text-slate-800'}`}>
                 {r.sobrepasaLimite ? '⚠ ' : ''}
                 {r.nombre}
               </span>
-              <span className={r.sobrepasaLimite ? 'font-semibold' : 'text-slate-700'}>
+              <span
+                className={`bloque-adaptable-texto whitespace-nowrap ${r.sobrepasaLimite ? 'font-semibold' : 'text-slate-700'}`}
+              >
                 {r.dias} x 8 = {r.horas} horas
               </span>
             </div>
