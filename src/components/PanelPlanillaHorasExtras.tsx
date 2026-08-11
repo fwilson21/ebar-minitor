@@ -936,7 +936,12 @@ function EditorPlanilla({
     setFilas((prev) => [...prev, nuevaFila(fechaDesde || new Date().toISOString().slice(0, 10))]);
   }
 
-  async function traerDiasDeCalendario() {
+  // filasBase: de dónde partir al mezclar los días traídos — por defecto las filas actuales
+  // (comportamiento del botón manual), pero el efecto de "cambio de operador" de más abajo pasa
+  // un arreglo de 5 en blanco explícito para no mezclar con los días del operador anterior (ver
+  // nota ahí sobre por qué no alcanza con hacer setFilas(blancas) y confiar en el estado `filas`,
+  // que todavía no se habría actualizado para cuando esta función lo lee).
+  async function traerDiasDeCalendario(filasBase?: FilaEdit[]) {
     if (!operadorId || operadorId === MANUAL) {
       setMensaje('Elige un operador registrado para poder traer sus días de turno.');
       return;
@@ -956,19 +961,21 @@ function EditorPlanilla({
         .lte('fecha', fechaHasta)
         .order('fecha');
       if (error) throw error;
-      const fechasExistentes = new Set(filas.filter((f) => f.fecha).map((f) => f.fecha));
+      const base = filasBase ?? filas;
+      const fechasExistentes = new Set(base.filter((f) => f.fecha).map((f) => f.fecha));
       const nuevasFechas = ((data as { fecha: string }[]) ?? [])
         .map((t) => t.fecha)
         .filter((fecha) => !fechasExistentes.has(fecha));
       if (nuevasFechas.length === 0) {
+        setFilas(base);
         setMensaje('No hay días de turno nuevos en ese período (o ya estaban agregados).');
       } else {
         // Las líneas en blanco (las 5 por defecto, o cualquier otra que haya quedado vacía) se
         // rellenan primero con estos días; lo que sobra de días se agrega como filas nuevas, y lo
         // que sobra de líneas en blanco (si trajo menos días que líneas vacías) se descarta — así
         // la tabla queda con exactamente una fila por día de turno encontrado.
-        const conContenido = filas.filter((f) => f.fecha);
-        const blancas = filas.filter((f) => !f.fecha);
+        const conContenido = base.filter((f) => f.fecha);
+        const blancas = base.filter((f) => !f.fecha);
         const reutilizadas = nuevasFechas.slice(0, blancas.length).map((fecha, i) => ({ ...blancas[i], fecha }));
         const extras = nuevasFechas.slice(blancas.length).map((fecha) => nuevaFila(fecha));
         setFilas([...conContenido, ...reutilizadas, ...extras].sort((a, b) => a.fecha.localeCompare(b.fecha)));
@@ -986,9 +993,18 @@ function EditorPlanilla({
   // queda igual, como respaldo, por si se cambia el período después o se agregan turnos nuevos al
   // calendario y hay que volver a jalarlos. No corre al abrir una planilla ya guardada (edición):
   // ahí el operador/período ya vienen llenos desde el inicio y no se debe reconsultar el calendario.
+  const operadorAnteriorRef = useRef(operadorId);
   useEffect(() => {
     if (planilla || !operadorId || operadorId === MANUAL || !fechaDesde || !fechaHasta) return;
-    traerDiasDeCalendario();
+    // Si el trabajador cambió (ej. se eligió a alguien por error y se corrige), las filas que ya
+    // se habían traído eran del trabajador anterior — no tiene sentido mezclarlas con las del
+    // nuevo, así que se parte de una tabla limpia de 5 en blanco antes de traer sus días. Se pasa
+    // ese arreglo directo a traerDiasDeCalendario (en vez de hacer setFilas y confiar en que el
+    // estado ya esté actualizado) porque React no aplica el setFilas a tiempo para que esta misma
+    // función lo vea en la misma pasada.
+    const cambioDeOperador = !!operadorAnteriorRef.current && operadorAnteriorRef.current !== operadorId;
+    operadorAnteriorRef.current = operadorId;
+    traerDiasDeCalendario(cambioDeOperador ? Array.from({ length: 5 }, () => nuevaFila('')) : undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planilla, operadorId, fechaDesde, fechaHasta]);
 
