@@ -139,13 +139,17 @@ function InputHoras({
 interface Props {
   operadores: Usuario[];
   usuarioId: string;
+  /** Borrar una planilla es exclusivo del administrador — ver BloqueAcciones/lista de abajo. */
+  esAdmin: boolean;
 }
 
-export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
+type ModalPlanilla = { planilla: PlanillaHorasExtras | 'nueva'; soloLectura: boolean };
+
+export function PanelPlanillaHorasExtras({ operadores, usuarioId, esAdmin }: Props) {
   const [abierto, setAbierto] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [planillas, setPlanillas] = useState<PlanillaHorasExtras[]>([]);
-  const [editando, setEditando] = useState<PlanillaHorasExtras | 'nueva' | null>(null);
+  const [modal, setModal] = useState<ModalPlanilla | null>(null);
   const [configuracion, setConfiguracion] = useState<ConfiguracionPlanillaHorasExtras | null>(null);
   const [editandoFirmantes, setEditandoFirmantes] = useState(false);
   const [editandoJornadas, setEditandoJornadas] = useState(false);
@@ -172,6 +176,10 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
   }, [abierto]);
 
   async function eliminar(id: string) {
+    // El botón que llama a esto ya está oculto para quien no sea administrador (ver lista de
+    // abajo) — este chequeo es solo una segunda defensa, la de fondo es la política de Supabase
+    // que ya exige rol administrador para borrar de planillas_horas_extras (migración 0022).
+    if (!esAdmin) return;
     if (!window.confirm('¿Eliminar esta planilla? No se puede deshacer.')) return;
     const { error } = await supabase.from('planillas_horas_extras').delete().eq('id', id);
     if (!error) setPlanillas((prev) => prev.filter((p) => p.id !== id));
@@ -239,19 +247,21 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
         <>
           <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setAbierto(false)} />
 
-          {editando ? (
+          {modal ? (
             configuracion ? (
               // EditorPlanilla se posiciona a sí mismo (distinto en celular vs escritorio, ver
               // GridEditable dentro) — no lo envuelve una caja fija del padre para no montarlo dos
               // veces (una por breakpoint) y duplicar sus llamadas a Supabase.
               <EditorPlanilla
-                planilla={editando === 'nueva' ? null : editando}
+                planilla={modal.planilla === 'nueva' ? null : modal.planilla}
                 operadores={operadores}
                 usuarioId={usuarioId}
                 configuracion={configuracion}
-                onCerrar={() => setEditando(null)}
+                soloLectura={modal.soloLectura}
+                onEditar={() => setModal((m) => (m ? { ...m, soloLectura: false } : m))}
+                onCerrar={() => setModal(null)}
                 onGuardado={async () => {
-                  setEditando(null);
+                  setModal(null);
                   await cargarPlanillas();
                 }}
               />
@@ -377,18 +387,32 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                               <div className="border-t border-panel-600/40 divide-y divide-panel-600/40">
                                 {g.planillas.map((p) => (
                                   <div key={p.id} className="p-3 flex items-center justify-between gap-2">
-                                    <div className="min-w-0 cursor-pointer" onClick={() => setEditando(p)}>
+                                    <div
+                                      className="min-w-0 cursor-pointer"
+                                      onClick={() => setModal({ planilla: p, soloLectura: true })}
+                                    >
                                       <p className="text-xs text-slate-600">
                                         {formatFechaCorta(p.fecha_desde)} al {formatFechaCorta(p.fecha_hasta)} · {p.area || 'Sin área'}
                                       </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                      <button onClick={() => setEditando(p)} className="text-xs text-gauge-ok hover:underline">
-                                        Abrir
+                                      <button
+                                        onClick={() => setModal({ planilla: p, soloLectura: true })}
+                                        className="text-xs text-gauge-ok hover:underline"
+                                      >
+                                        Ver
                                       </button>
-                                      <button onClick={() => eliminar(p.id)} className="text-xs text-gauge-danger hover:underline">
-                                        Eliminar
+                                      <button
+                                        onClick={() => setModal({ planilla: p, soloLectura: false })}
+                                        className="text-xs text-gauge-ok hover:underline"
+                                      >
+                                        Editar
                                       </button>
+                                      {esAdmin && (
+                                        <button onClick={() => eliminar(p.id)} className="text-xs text-gauge-danger hover:underline">
+                                          Borrar
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 ))}
@@ -430,7 +454,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId }: Props) {
                       </div>
                     </div>
 
-                    <button onClick={() => setEditando('nueva')} className="boton-primario w-full">
+                    <button onClick={() => setModal({ planilla: 'nueva', soloLectura: false })} className="boton-primario w-full">
                       + Nueva planilla
                     </button>
                   </div>
@@ -602,6 +626,8 @@ function EditorPlanilla({
   operadores,
   usuarioId,
   configuracion,
+  soloLectura,
+  onEditar,
   onCerrar,
   onGuardado,
 }: {
@@ -609,6 +635,10 @@ function EditorPlanilla({
   operadores: Usuario[];
   usuarioId: string;
   configuracion: ConfiguracionPlanillaHorasExtras;
+  /** true = "Ver" (todo deshabilitado, ni Guardar ni las acciones que agregan/quitan filas). */
+  soloLectura: boolean;
+  /** Pasa de "Ver" a "Editar" sin cerrar y reabrir el modal. */
+  onEditar: () => void;
   onCerrar: () => void;
   onGuardado: () => Promise<void>;
 }) {
@@ -707,7 +737,16 @@ function EditorPlanilla({
         .select('*')
         .eq('planilla_id', planilla!.id)
         .order('fecha');
-      setFilas(((data as FilaPlanillaHorasExtras[]) ?? []).map(filaDesdeDb));
+      const cargadas = ((data as FilaPlanillaHorasExtras[]) ?? []).map(filaDesdeDb);
+      setFilas(cargadas);
+      // Al reabrir una planilla ya guardada, "N.º de informe de actividades" y "N.º de memorando
+      // de autorización" partían siempre en blanco (solo se usaban como plantilla para las filas
+      // nuevas que se agregaran) aunque las filas ya tuvieran su propio valor guardado — se
+      // prellenan acá con el de la primera fila que tenga algo, para que se vean de una.
+      const conInforme = cargadas.find((f) => f.descripcion_actividades);
+      if (conInforme) setDescripcionDefault(conInforme.descripcion_actividades);
+      const conMemorando = cargadas.find((f) => f.numero_memorando);
+      if (conMemorando) setMemorandoDefault(conMemorando.numero_memorando);
       setCargandoFilas(false);
     }
     cargarFilas();
@@ -1203,13 +1242,28 @@ function EditorPlanilla({
   // Mismo encabezado (título + cerrar) para las dos cajas de abajo (celular y escritorio) — el
   // modal se posiciona distinto según el ancho de pantalla, pero es un solo EditorPlanilla montado
   // (ver PanelPlanillaHorasExtras), así que esto solo cambia de forma visualmente, no de estado.
-  const titulo = planilla ? 'Editar planilla' : 'Nueva planilla';
+  const titulo = soloLectura ? 'Ver planilla' : planilla ? 'Editar planilla' : 'Nueva planilla';
   const encabezado = (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-panel-600/40 shrink-0">
-      <h2 className="font-semibold text-sm">{titulo}</h2>
-      <button onClick={onCerrar} className="text-slate-600 hover:text-slate-900 text-lg leading-none">
-        ✕
-      </button>
+    <div className="flex items-center justify-between gap-3 px-4 py-3 border-b-2 border-gauge-ok/50 bg-panel-900/60 shrink-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="w-1.5 h-7 rounded-full bg-gauge-ok shrink-0" aria-hidden="true" />
+        <h2 className="text-lg font-bold text-slate-900 truncate">{titulo}</h2>
+        {soloLectura && (
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 bg-panel-700 border border-panel-600 rounded-full px-2 py-0.5 shrink-0">
+            Solo lectura
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        {soloLectura && (
+          <button onClick={onEditar} className="text-sm text-gauge-ok hover:underline">
+            ✏️ Editar
+          </button>
+        )}
+        <button onClick={onCerrar} className="text-slate-600 hover:text-slate-900 text-lg leading-none">
+          ✕
+        </button>
+      </div>
     </div>
   );
 
@@ -1255,9 +1309,11 @@ function EditorPlanilla({
     setFechaDesde,
     fechaHasta,
     setFechaHasta,
+    soloLectura,
   };
   const props_jornadaNormal: BloqueJornadaNormalProps = {
     campoClase,
+    soloLectura,
     jornadaInicioManana,
     setJornadaInicioManana,
     jornadaFinManana,
@@ -1277,6 +1333,7 @@ function EditorPlanilla({
     trayendoDias,
     agregarFilaManual,
     mensaje,
+    soloLectura,
   };
   const props_tablaDias: BloqueTablaDiasProps = {
     filas,
@@ -1290,11 +1347,13 @@ function EditorPlanilla({
     erroresOrden,
     avisosAlmuerzo,
     setAvisosDescartados,
+    soloLectura,
   };
   const props_acciones: BloqueAccionesProps = {
     totalHorasExtra,
     configuracion,
     campoClase,
+    soloLectura,
     editarRevisado,
     setEditarRevisado,
     revisadoNombre,
@@ -1467,6 +1526,7 @@ interface BloqueEncabezadoFechasProps {
   setFechaDesde: Dispatch<SetStateAction<string>>;
   fechaHasta: string;
   setFechaHasta: Dispatch<SetStateAction<string>>;
+  soloLectura: boolean;
 }
 
 function BloqueEncabezadoFechas({
@@ -1478,6 +1538,7 @@ function BloqueEncabezadoFechas({
   setNombreManual,
   cargoTrabajador,
   setCargoTrabajador,
+  soloLectura,
   area,
   setArea,
   direccion,
@@ -1490,6 +1551,10 @@ function BloqueEncabezadoFechas({
   setFechaHasta,
 }: BloqueEncabezadoFechasProps) {
   return (
+    // fieldset disabled deshabilita de una todos los campos/selects de adentro sin tener que
+    // agregarle disabled={soloLectura} a cada uno por separado — className="contents" para que
+    // no meta una caja nueva que rompa el space-y-4 de afuera.
+    <fieldset disabled={soloLectura} className="contents">
     <div className="space-y-4">
       <div>
         <label className="etiqueta">Trabajador</label>
@@ -1573,6 +1638,7 @@ function BloqueEncabezadoFechas({
         </div>
       </div>
     </div>
+    </fieldset>
   );
 }
 
@@ -1586,6 +1652,7 @@ interface BloqueJornadaNormalProps {
   setJornadaInicioTarde: Dispatch<SetStateAction<string>>;
   jornadaFinTarde: string;
   setJornadaFinTarde: Dispatch<SetStateAction<string>>;
+  soloLectura: boolean;
 }
 
 function BloqueJornadaNormal({
@@ -1598,8 +1665,10 @@ function BloqueJornadaNormal({
   setJornadaInicioTarde,
   jornadaFinTarde,
   setJornadaFinTarde,
+  soloLectura,
 }: BloqueJornadaNormalProps) {
   return (
+    <fieldset disabled={soloLectura} className="contents">
     <div className="border border-panel-600/40 rounded-lg p-3 space-y-2">
       <p className="text-xs font-semibold text-slate-700">Jornada normal (sin horas extra)</p>
       <p className="text-[11px] text-slate-500">
@@ -1660,6 +1729,7 @@ function BloqueJornadaNormal({
         </div>
       </div>
     </div>
+    </fieldset>
   );
 }
 
@@ -1673,6 +1743,7 @@ interface BloqueInformeMemorandoProps {
   trayendoDias: boolean;
   agregarFilaManual: () => void;
   mensaje: string | null;
+  soloLectura: boolean;
 }
 
 function BloqueInformeMemorando({
@@ -1685,8 +1756,10 @@ function BloqueInformeMemorando({
   trayendoDias,
   agregarFilaManual,
   mensaje,
+  soloLectura,
 }: BloqueInformeMemorandoProps) {
   return (
+    <fieldset disabled={soloLectura} className="contents">
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2">
         <div>
@@ -1719,6 +1792,7 @@ function BloqueInformeMemorando({
       </div>
       {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
     </div>
+    </fieldset>
   );
 }
 
@@ -1734,6 +1808,7 @@ interface BloqueTablaDiasProps {
   erroresOrden: { fecha: string; error: string }[];
   avisosAlmuerzo: { id: string; fecha: string; aviso: NonNullable<ReturnType<typeof avisoAlmuerzoLargo>> }[];
   setAvisosDescartados: Dispatch<SetStateAction<Set<string>>>;
+  soloLectura: boolean;
 }
 
 function BloqueTablaDias({
@@ -1748,8 +1823,10 @@ function BloqueTablaDias({
   erroresOrden,
   avisosAlmuerzo,
   setAvisosDescartados,
+  soloLectura,
 }: BloqueTablaDiasProps) {
   return (
+    <fieldset disabled={soloLectura} className="contents">
     <div className="space-y-3">
       {filas.length > 0 && (
         <button
@@ -1988,6 +2065,7 @@ function BloqueTablaDias({
         </div>
       )}
     </div>
+    </fieldset>
   );
 }
 
@@ -2015,12 +2093,14 @@ interface BloqueAccionesProps {
   alGenerarPdfClick: () => void;
   generandoPdf: boolean;
   onCerrar: () => void;
+  soloLectura: boolean;
 }
 
 function BloqueAcciones({
   totalHorasExtra,
   configuracion,
   campoClase,
+  soloLectura,
   editarRevisado,
   setEditarRevisado,
   revisadoNombre,
@@ -2051,14 +2131,16 @@ function BloqueAcciones({
           <div className="border border-panel-600/40 rounded-lg p-3 space-y-1.5">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-slate-700">Revisado por</p>
-              <button type="button" onClick={() => setEditarRevisado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
-                {editarRevisado ? 'Usar el de siempre' : 'Cambiar'}
-              </button>
+              {!soloLectura && (
+                <button type="button" onClick={() => setEditarRevisado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
+                  {editarRevisado ? 'Usar el de siempre' : 'Cambiar'}
+                </button>
+              )}
             </div>
             {editarRevisado ? (
               <>
-                <input type="text" className={campoClase('campo text-xs', 'revisadoNombre')} placeholder="Nombre" value={revisadoNombre} onChange={(e) => setRevisadoNombre(e.target.value)} />
-                <input type="text" className={campoClase('campo text-xs', 'revisadoCargo')} placeholder="Cargo" value={revisadoCargo} onChange={(e) => setRevisadoCargo(e.target.value)} />
+                <input type="text" disabled={soloLectura} className={campoClase('campo text-xs', 'revisadoNombre')} placeholder="Nombre" value={revisadoNombre} onChange={(e) => setRevisadoNombre(e.target.value)} />
+                <input type="text" disabled={soloLectura} className={campoClase('campo text-xs', 'revisadoCargo')} placeholder="Cargo" value={revisadoCargo} onChange={(e) => setRevisadoCargo(e.target.value)} />
               </>
             ) : (
               <p className="text-xs text-slate-600">
@@ -2071,14 +2153,16 @@ function BloqueAcciones({
           <div className="border border-panel-600/40 rounded-lg p-3 space-y-1.5">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-slate-700">Aprobado por</p>
-              <button type="button" onClick={() => setEditarAprobado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
-                {editarAprobado ? 'Usar el de siempre' : 'Cambiar'}
-              </button>
+              {!soloLectura && (
+                <button type="button" onClick={() => setEditarAprobado((v) => !v)} className="text-xs text-gauge-ok hover:underline">
+                  {editarAprobado ? 'Usar el de siempre' : 'Cambiar'}
+                </button>
+              )}
             </div>
             {editarAprobado ? (
               <>
-                <input type="text" className={campoClase('campo text-xs', 'aprobadoNombre')} placeholder="Nombre" value={aprobadoNombre} onChange={(e) => setAprobadoNombre(e.target.value)} />
-                <input type="text" className={campoClase('campo text-xs', 'aprobadoCargo')} placeholder="Cargo" value={aprobadoCargo} onChange={(e) => setAprobadoCargo(e.target.value)} />
+                <input type="text" disabled={soloLectura} className={campoClase('campo text-xs', 'aprobadoNombre')} placeholder="Nombre" value={aprobadoNombre} onChange={(e) => setAprobadoNombre(e.target.value)} />
+                <input type="text" disabled={soloLectura} className={campoClase('campo text-xs', 'aprobadoCargo')} placeholder="Cargo" value={aprobadoCargo} onChange={(e) => setAprobadoCargo(e.target.value)} />
               </>
             ) : (
               <p className="text-xs text-slate-600">
@@ -2099,9 +2183,11 @@ function BloqueAcciones({
 
       <div className="sticky bottom-0 bg-panel-800 pb-1">
         <div className="max-w-2xl mx-auto flex gap-2 pt-2">
-          <button onClick={alGuardarClick} disabled={guardando} className="boton-primario flex-1">
-            {guardando ? 'Guardando…' : 'Guardar'}
-          </button>
+          {!soloLectura && (
+            <button onClick={alGuardarClick} disabled={guardando} className="boton-primario flex-1">
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </button>
+          )}
           <button onClick={alGenerarPdfClick} disabled={generandoPdf} className="boton-secundario flex-1">
             {generandoPdf ? 'Generando…' : '📄 Generar PDF'}
           </button>

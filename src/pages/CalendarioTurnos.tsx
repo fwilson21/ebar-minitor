@@ -674,7 +674,9 @@ function BloqueExportar({
 }
 
 function BloquePlanillaHorasExtras({ operadores, usuarioId }: { operadores: Usuario[]; usuarioId: string }) {
-  return <PanelPlanillaHorasExtras operadores={operadores} usuarioId={usuarioId} />;
+  // esAdmin=true fijo: esta pantalla completa ya es exclusiva de administrador (ver el chequeo de
+  // rol arriba en CalendarioTurnos), nadie más llega a renderizar este bloque.
+  return <PanelPlanillaHorasExtras operadores={operadores} usuarioId={usuarioId} esAdmin />;
 }
 
 interface PanelDiaProps {
