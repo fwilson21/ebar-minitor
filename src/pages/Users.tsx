@@ -5,7 +5,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { entrarComo } from '../lib/impersonar';
 import { ROL_LABEL } from '../lib/roles';
 import { GridEditable } from '../components/GridEditable';
+import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import type { Usuario, UserRole } from '../lib/types';
 
 const ROL_CLASE: Record<UserRole, string> = {
@@ -27,6 +29,7 @@ export function Users() {
   const puedeActivarDesactivar = esAdmin || tienePermiso('activar_desactivar_usuarios');
   const puedeRestablecerPassword = esAdmin || tienePermiso('restablecer_password_usuarios');
   const puedeEliminar = esAdmin || tienePermiso('eliminar_usuarios');
+  const editorDistribucion = useEditorDistribucion('usuarios');
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [entrandoComoId, setEntrandoComoId] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -723,12 +726,17 @@ export function Users() {
         {renderListaUsuarios()}
       </div>
 
-      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
-          entorno de trabajo (o el acomodo por defecto). */}
-      <div className="hidden lg:block">
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
+          defecto). Solo el administrador ve "Editar distribución" (quien entra por permiso
+          granular sin ser admin, ni lo ve ni lo puede tocar). */}
+      <div className="hidden lg:block space-y-3">
+        {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
         <GridEditable
           pantallaId="usuarios"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'usuarios')!.bloques}
+          modoEdicion={esAdmin && editorDistribucion.modoEdicion}
+          resetSignal={editorDistribucion.resetSignal}
+          onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
               case 'encabezado_form':
@@ -740,6 +748,7 @@ export function Users() {
             }
           }}
         />
+        {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
     </div>
   );

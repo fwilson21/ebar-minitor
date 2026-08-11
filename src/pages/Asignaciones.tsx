@@ -4,7 +4,9 @@ import { useAuth } from '../contexts/AuthContext';
 import type { AsignacionEstacion, EstacionEbar, Usuario } from '../lib/types';
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
 import { GridEditable } from '../components/GridEditable';
+import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 
 function dentroDelRango(fecha: string, desde: string, hasta: string): boolean {
   return fecha >= desde && fecha <= hasta;
@@ -24,6 +26,10 @@ function soloLaUltimaPorEstacion(lista: AsignacionEstacion[]): AsignacionEstacio
 
 export function Asignaciones() {
   const { usuario } = useAuth();
+  // "Editar distribución" es exclusivo del administrador — esta pantalla también la usa
+  // supervisor, que puede usarla pero no reacomodarla.
+  const esAdmin = usuario?.rol === 'administrador';
+  const editorDistribucion = useEditorDistribucion('asignaciones');
   const [operadores, setOperadores] = useState<Usuario[]>([]);
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
   const [operadorId, setOperadorId] = useState('');
@@ -258,13 +264,17 @@ export function Asignaciones() {
         )}
       </div>
 
-      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
-          entorno de trabajo (o el acomodo por defecto). Los últimos 2 quedan vacíos hasta elegir
-          un operador arriba. */}
-      <div className="hidden lg:block">
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
+          defecto). Los últimos 2 quedan vacíos hasta elegir un operador arriba. Solo el
+          administrador ve "Editar distribución" (supervisor la usa pero no la reacomoda). */}
+      <div className="hidden lg:block space-y-3">
+        {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
         <GridEditable
           pantallaId="asignaciones"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'asignaciones')!.bloques}
+          modoEdicion={esAdmin && editorDistribucion.modoEdicion}
+          resetSignal={editorDistribucion.resetSignal}
+          onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
               case 'resumen':
@@ -282,6 +292,7 @@ export function Asignaciones() {
             }
           }}
         />
+        {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
     </div>
   );

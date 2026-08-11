@@ -14,8 +14,9 @@ import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/
 import { nombreCorto } from '../lib/nombres';
 import { PanelPlanillaHorasExtras } from '../components/PanelPlanillaHorasExtras';
 import { GridEditable } from '../components/GridEditable';
+import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
-import { guardarLayout, type BloqueLayout } from '../lib/layoutsAdmin';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 
 const DIAS_SEMANA_CORTOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
@@ -109,27 +110,10 @@ export function CalendarioTurnos() {
   const [compartiendo, setCompartiendo] = useState(false);
   const [mensajeCompartir, setMensajeCompartir] = useState<string | null>(null);
 
-  // Editar distribución en vivo: a diferencia de "Distribución de entorno" (que muestra solo el
-  // nombre de cada bloque), acá se arrastra el bloque real con su contenido real, mientras se
-  // sigue viendo (y se puede seguir usando) la pantalla tal cual queda.
-  const [modoEdicionDistribucion, setModoEdicionDistribucion] = useState(false);
-  const [resetSignalDistribucion, setResetSignalDistribucion] = useState(0);
-  const [guardandoDistribucion, setGuardandoDistribucion] = useState(false);
-  const [mensajeDistribucion, setMensajeDistribucion] = useState<string | null>(null);
-
-  async function manejarGuardarDistribucion(layout: BloqueLayout[]) {
-    setGuardandoDistribucion(true);
-    setMensajeDistribucion(null);
-    try {
-      await guardarLayout('turnos', layout);
-      setMensajeDistribucion('Distribución guardada. Se aplica a todos los usuarios en escritorio.');
-      setModoEdicionDistribucion(false);
-    } catch (err: any) {
-      setMensajeDistribucion(`No se pudo guardar: ${err.message ?? err}`);
-    } finally {
-      setGuardandoDistribucion(false);
-    }
-  }
+  // Editar distribución en vivo: a diferencia de la vieja "Distribución de entorno" (que
+  // mostraba solo el nombre de cada bloque), acá se arrastra el bloque real con su contenido
+  // real, mientras se sigue viendo (y se puede seguir usando) la pantalla tal cual queda.
+  const editorDistribucion = useEditorDistribucion('turnos');
 
   useEffect(() => {
     if (!esAdmin) return;
@@ -358,52 +342,15 @@ export function CalendarioTurnos() {
       </div>
 
       {/* Escritorio (lg+): mismos bloques, pero acomodados según lo que haya guardado el
-          administrador en Distribución de entorno de trabajo (o el acomodo por defecto). */}
-      <div className="hidden lg:flex items-center justify-between gap-3">
-        <p className="text-xs text-slate-500">
-          {modoEdicionDistribucion
-            ? 'Arrastra la manija de arriba de cada bloque para moverlo, o su esquina para cambiar el tamaño. El resto de la pantalla sigue funcionando normal mientras acomodas.'
-            : ''}
-        </p>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {modoEdicionDistribucion && (
-            <button
-              type="button"
-              onClick={() => {
-                setResetSignalDistribucion((n) => n + 1);
-                setMensajeDistribucion(null);
-              }}
-              className="boton-secundario text-sm px-3 py-1.5"
-            >
-              Restablecer por defecto
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setModoEdicionDistribucion((v) => !v);
-              setMensajeDistribucion(null);
-            }}
-            className="boton-secundario text-sm px-3 py-1.5"
-          >
-            {modoEdicionDistribucion ? 'Salir de edición' : 'Editar distribución'}
-          </button>
-        </div>
-      </div>
-      {mensajeDistribucion && (
-        <p
-          className={`hidden lg:block text-sm ${mensajeDistribucion.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}
-        >
-          {mensajeDistribucion}
-        </p>
-      )}
+          administrador (o el acomodo por defecto) — botón "Editar distribución" abajo. */}
+      <BarraDistribucion editor={editorDistribucion} />
       <div className="hidden lg:block">
         <GridEditable
           pantallaId="turnos"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'turnos')!.bloques}
-          modoEdicion={modoEdicionDistribucion}
-          resetSignal={resetSignalDistribucion}
-          onGuardar={manejarGuardarDistribucion}
+          modoEdicion={editorDistribucion.modoEdicion}
+          resetSignal={editorDistribucion.resetSignal}
+          onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
               case 'calendario':
@@ -448,7 +395,7 @@ export function CalendarioTurnos() {
             }
           }}
         />
-        {guardandoDistribucion && <p className="text-xs text-slate-500">Guardando…</p>}
+        {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
 
       {diaSeleccionado && (

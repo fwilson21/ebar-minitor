@@ -4,7 +4,9 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { FUNCIONES_PERMISOS } from '../lib/funcionesPermisos';
 import { GridEditable } from '../components/GridEditable';
+import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import type { UserRole } from '../lib/types';
 
 // Roles a los que se les puede activar/desactivar funciones. El administrador siempre tiene
@@ -24,6 +26,7 @@ export function Permisos() {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState<Clave | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
+  const editorDistribucion = useEditorDistribucion('permisos');
 
   useEffect(() => {
     cargar();
@@ -127,12 +130,16 @@ export function Permisos() {
         {renderListaFunciones()}
       </div>
 
-      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
-          entorno de trabajo (o el acomodo por defecto). */}
-      <div className="hidden lg:block">
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
+          defecto) — botón "Editar distribución" abajo. */}
+      <div className="hidden lg:block space-y-3">
+        <BarraDistribucion editor={editorDistribucion} />
         <GridEditable
           pantallaId="permisos"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'permisos')!.bloques}
+          modoEdicion={editorDistribucion.modoEdicion}
+          resetSignal={editorDistribucion.resetSignal}
+          onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
               case 'encabezado_selector':
@@ -144,6 +151,7 @@ export function Permisos() {
             }
           }}
         />
+        {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, JornadaOperadorDefault, PlanillaHorasExtras, Usuario } from '../lib/types';
 import {
   avisoAlmuerzoLargo,
@@ -23,7 +24,9 @@ import {
 } from '../lib/horasExtras';
 import { abrirBlob, descargarBlob, generarReportePlanillaHorasExtras, type FilaPlanillaReporte } from '../lib/pdf';
 import { GridEditable } from './GridEditable';
+import { BarraDistribucion } from './BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 
 const DIRECCION_DEFAULT = 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO GADMFO';
 const AREA_DEFAULT = 'Jefatura de servicios de alcantarillado';
@@ -609,6 +612,14 @@ function EditorPlanilla({
   onCerrar: () => void;
   onGuardado: () => Promise<void>;
 }) {
+  // Este modal solo se abre desde Calendario de turnos (pantalla exclusiva de administrador),
+  // así que "Editar distribución" acá no necesita gate de rol aparte.
+  const editorDistribucion = useEditorDistribucion('modal_nueva_planilla');
+  const { anchoPropioDePantalla } = useAuth();
+  // A diferencia de las demás pantallas, este modal por defecto ocupa casi toda la pantalla (no
+  // el ancho general de 1280px) — solo se achica si alguien lo pidió explícitamente arrastrando
+  // el control, por eso no usa el respaldo de anchoDePantalla().
+  const anchoModal = anchoPropioDePantalla('modal_nueva_planilla');
   const [operadorId, setOperadorId] = useState<string>(planilla?.operador_id ?? '');
   const [nombreManual, setNombreManual] = useState(planilla && !planilla.operador_id ? planilla.nombre_trabajador : '');
   const [cargoTrabajador, setCargoTrabajador] = useState(planilla?.cargo_trabajador ?? '');
@@ -1322,15 +1333,23 @@ function EditorPlanilla({
         </div>
       </div>
 
-      {/* Escritorio (lg+): ocupa casi toda la pantalla (no una caja chica centrada) para que los
-          5 bloques tengan espacio de sobra y no haga falta scroll para verlos todos. */}
-      <div className="hidden lg:flex fixed inset-6 z-30">
-        <div className="bg-panel-800 rounded-2xl w-full flex flex-col overflow-hidden">
+      {/* Escritorio (lg+): por defecto ocupa casi toda la pantalla (no una caja chica centrada)
+          para que los 5 bloques tengan espacio de sobra y no haga falta scroll para verlos todos
+          — "Editar distribución" puede achicarlo si se prefiere más angosto. */}
+      <div className="hidden lg:flex fixed inset-6 z-30 justify-center">
+        <div
+          className="bg-panel-800 rounded-2xl w-full flex flex-col overflow-hidden"
+          style={anchoModal ? { maxWidth: `${anchoModal}px` } : undefined}
+        >
           {encabezado}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+            <BarraDistribucion editor={editorDistribucion} />
             <GridEditable
               pantallaId="modal_nueva_planilla"
               bloques={bloquesModalPlanilla}
+              modoEdicion={editorDistribucion.modoEdicion}
+              resetSignal={editorDistribucion.resetSignal}
+              onGuardar={editorDistribucion.guardar}
               renderBloque={(bloqueId) => {
                 switch (bloqueId) {
                   case 'encabezado_fechas':
@@ -1348,6 +1367,7 @@ function EditorPlanilla({
                 }
               }}
             />
+            {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
           </div>
         </div>
       </div>

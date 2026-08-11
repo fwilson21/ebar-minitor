@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -22,12 +22,27 @@ const NAV_BASE = [
 const NAV_ADMIN = { to: '/usuarios', label: 'Usuarios', icon: '👥' };
 const NAV_ADMIN_SUPERVISOR = { to: '/asignaciones', label: 'Asignar', icon: '🗺️' };
 const NAV_TURNOS = { to: '/calendario-turnos', label: 'Turnos', icon: '📅' };
-const NAV_DISTRIBUCION = { to: '/distribucion-entorno', label: 'Distribución', icon: '🧩' };
 const NAV_PERMISOS = { to: '/permisos', label: 'Permisos', icon: '🔐' };
 
+// Qué pantalla (id usado en pantallasEditables.ts / layouts_admin / configuracion_ancho_contenido)
+// corresponde a cada ruta — así AppShell sabe qué ancho guardado aplicarle al contenido de la
+// pantalla que está activa. Las rutas que no están acá (ej. detalle de una estación, formulario
+// de visita) no tienen "Editar distribución" propio y usan el ancho de respaldo ('global').
+const PANTALLA_POR_RUTA: Record<string, string> = {
+  '/': 'dashboard',
+  '/estaciones': 'estaciones',
+  '/reportes': 'reportes',
+  '/usuarios': 'usuarios',
+  '/asignaciones': 'asignaciones',
+  '/calendario-turnos': 'turnos',
+  '/permisos': 'permisos',
+};
+
 export function AppShell() {
-  const { usuario, logout, tienePermiso, anchoContenido } = useAuth();
+  const { usuario, logout, tienePermiso, anchoDePantalla } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const anchoActivo = anchoDePantalla(PANTALLA_POR_RUTA[location.pathname] ?? 'global');
   const [pendientes, setPendientes] = useState(0);
   const [enLinea, setEnLinea] = useState(navigator.onLine);
   const [mostrarPanel, setMostrarPanel] = useState(false);
@@ -148,7 +163,7 @@ export function AppShell() {
     ['crear_usuarios', 'editar_usuarios', 'activar_desactivar_usuarios', 'restablecer_password_usuarios', 'eliminar_usuarios'].some(tienePermiso)
       ? [NAV_ADMIN]
       : []),
-    ...(usuario?.rol === 'administrador' ? [NAV_TURNOS, NAV_DISTRIBUCION, NAV_PERMISOS] : []),
+    ...(usuario?.rol === 'administrador' ? [NAV_TURNOS, NAV_PERMISOS] : []),
   ];
 
   return (
@@ -223,13 +238,14 @@ export function AppShell() {
           </div>
         </header>
 
-        {/* max-w-3xl/lg:max-w-none de antes se reemplaza por un ancho dinámico (ajustable por el
-            administrador desde /distribucion-entorno, ver anchoContenido.ts): en celular el
-            viewport ya es más angosto que cualquier valor configurado (900-2200px), así que no
-            hace falta un breakpoint aparte — el mismo style aplica sin efecto en celular. */}
+        {/* max-w-3xl/lg:max-w-none de antes se reemplaza por un ancho dinámico por pantalla
+            (ajustable por el administrador con "Editar distribución" en cada pantalla, ver
+            anchoContenido.ts): en celular el viewport ya es más angosto que cualquier valor
+            configurado (900-2200px), así que no hace falta un breakpoint aparte — el mismo style
+            aplica sin efecto en celular. */}
         <main
           className="flex-1 px-4 py-4 w-full mx-auto pb-24 lg:pb-4"
-          style={{ maxWidth: `${anchoContenido}px` }}
+          style={{ maxWidth: `${anchoActivo}px` }}
         >
           {/* key={usuario?.id}: si cambia la identidad (Entrar como / Volver a ser
               administrador) sin cambiar de ruta (ej. ya estabas en "/"), esto fuerza a React a

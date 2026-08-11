@@ -6,7 +6,9 @@ import type { EstacionEbar, TipoEstacion, ZonaTipo } from '../lib/types';
 import { StationCard } from '../components/StationCard';
 import { guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
 import { GridEditable } from '../components/GridEditable';
+import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 
 const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 
@@ -20,6 +22,7 @@ export function Stations() {
   const [cargando, setCargando] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [sinConexion, setSinConexion] = useState(false);
+  const editorDistribucion = useEditorDistribucion('estaciones');
 
   useEffect(() => {
     async function cargar() {
@@ -114,17 +117,21 @@ export function Stations() {
         />
       </div>
 
-      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
-          entorno de trabajo (o el acomodo por defecto). */}
-      <div className="hidden lg:block">
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
+          defecto) — solo el administrador puede tocar "Editar distribución". */}
+      <div className="hidden lg:block space-y-3">
+        {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
         {sinConexion && (
-          <p className="text-xs text-gauge-warn bg-gauge-warn/10 border border-gauge-warn/30 rounded-lg px-3 py-2 mb-4">
+          <p className="text-xs text-gauge-warn bg-gauge-warn/10 border border-gauge-warn/30 rounded-lg px-3 py-2">
             Sin conexión — mostrando la última lista guardada en este dispositivo.
           </p>
         )}
         <GridEditable
           pantallaId="estaciones"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'estaciones')!.bloques}
+          modoEdicion={esAdmin && editorDistribucion.modoEdicion}
+          resetSignal={editorDistribucion.resetSignal}
+          onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
               case 'encabezado_form':
@@ -148,6 +155,7 @@ export function Stations() {
             }
           }}
         />
+        {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
     </div>
   );

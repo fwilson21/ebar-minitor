@@ -6,13 +6,18 @@ import { incrustarFotosVisitas } from '../lib/fotos';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
 import type { EstacionEbar, Usuario } from '../lib/types';
 import { GridEditable } from '../components/GridEditable';
+import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
 
 export function Reports() {
   const { usuario } = useAuth();
   const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
+  // "Editar distribución" es exclusivo del administrador (ni siquiera supervisor).
+  const esAdministrador = usuario?.rol === 'administrador';
+  const editorDistribucion = useEditorDistribucion('reportes');
 
   const [tipo, setTipo] = useState<TipoReporte>('consolidado_fecha');
   const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().slice(0, 10));
@@ -192,12 +197,16 @@ export function Reports() {
         <BloqueCompartir enviando={enviando} ultimoPdf={ultimoPdf} manejarCompartir={manejarCompartir} mensaje={mensaje} />
       </div>
 
-      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
-          entorno de trabajo (o el acomodo por defecto). */}
-      <div className="hidden lg:block">
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
+          defecto). Solo el administrador ve "Editar distribución" (ni siquiera supervisor). */}
+      <div className="hidden lg:block space-y-3">
+        {esAdministrador && <BarraDistribucion editor={editorDistribucion} />}
         <GridEditable
           pantallaId="reportes"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'reportes')!.bloques}
+          modoEdicion={esAdministrador && editorDistribucion.modoEdicion}
+          resetSignal={editorDistribucion.resetSignal}
+          onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
               case 'filtros_generar':
@@ -228,6 +237,7 @@ export function Reports() {
             }
           }}
         />
+        {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
     </div>
   );

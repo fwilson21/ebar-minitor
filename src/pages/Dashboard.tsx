@@ -8,7 +8,9 @@ import { StationCard } from '../components/StationCard';
 import { detectarVisitasSospechosas, type ParSospechoso, type VisitaParaChequeo } from '../lib/visitasSospechosas';
 import { esDiaNoRegular } from '../lib/feriadosEcuador';
 import { GridEditable } from '../components/GridEditable';
+import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 
 const HOY = new Date().toISOString().slice(0, 10);
 const MINIMO_VISITAS_DIA_REGULAR = 2;
@@ -27,6 +29,10 @@ type AsignacionBajoMinimo = {
 export function Dashboard() {
   const { usuario } = useAuth();
   const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
+  // "Editar distribución" es exclusivo del administrador (ni siquiera supervisor) — igual que
+  // era la vieja pantalla separada de Distribución de entorno.
+  const esAdministrador = usuario?.rol === 'administrador';
+  const editorDistribucion = useEditorDistribucion('dashboard');
   const [fecha, setFecha] = useState(HOY);
   const [resumen, setResumen] = useState<DashboardResumen | null>(null);
   const [estacionesConProblemas, setEstacionesConProblemas] = useState<EstacionEbar[]>([]);
@@ -258,14 +264,18 @@ export function Dashboard() {
         {esAdmin && <BloqueBajoMinimo bajoMinimo={bajoMinimo} />}
       </div>
 
-      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado en Distribución de
-          entorno de trabajo (o el acomodo por defecto). "Tus EBAR de hoy" solo existe para
-          operador, y los de admin/supervisor no existen para operador — a quien no le toca ver
-          un bloque, esa celda del grid queda vacía. */}
-      <div className="hidden lg:block">
+      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
+          defecto). "Tus EBAR de hoy" solo existe para operador, y los de admin/supervisor no
+          existen para operador — a quien no le toca ver un bloque, esa celda del grid queda
+          vacía. Solo el administrador ve "Editar distribución" (ni siquiera supervisor). */}
+      <div className="hidden lg:block space-y-3">
+        {esAdministrador && <BarraDistribucion editor={editorDistribucion} />}
         <GridEditable
           pantallaId="dashboard"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'dashboard')!.bloques}
+          modoEdicion={esAdministrador && editorDistribucion.modoEdicion}
+          resetSignal={editorDistribucion.resetSignal}
+          onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
               case 'resumen_general':
@@ -300,6 +310,7 @@ export function Dashboard() {
             }
           }}
         />
+        {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
     </div>
   );
