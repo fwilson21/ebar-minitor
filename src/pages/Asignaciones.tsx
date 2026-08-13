@@ -25,10 +25,12 @@ function soloLaUltimaPorEstacion(lista: AsignacionEstacion[]): AsignacionEstacio
 }
 
 export function Asignaciones() {
-  const { usuario } = useAuth();
-  // "Editar distribución" es exclusivo del administrador — esta pantalla también la usa
-  // supervisor, que puede usarla pero no reacomodarla.
+  const { usuario, tienePermiso } = useAuth();
+  // "Editar distribución" es del administrador real o de quien tenga el permiso
+  // 'editar_distribucion' — esta pantalla también la usa supervisor, que puede usarla pero no
+  // reacomodarla (a menos que se le dé ese permiso).
   const esAdmin = usuario?.rol === 'administrador';
+  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
   const editorDistribucion = useEditorDistribucion('asignaciones');
   const [operadores, setOperadores] = useState<Usuario[]>([]);
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
@@ -244,7 +246,7 @@ export function Asignaciones() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-lg font-bold">Asignación de EBAR a operadores</h1>
+        <h1 className="titulo-pantalla">Asignación de EBAR a operadores</h1>
         <p className="text-sm text-slate-600">
           Elige qué estaciones visita cada operador por defecto, y agrega asignaciones extra para un día puntual
           (fines de semana, feriados, refuerzos).
@@ -268,11 +270,11 @@ export function Asignaciones() {
           defecto). Los últimos 2 quedan vacíos hasta elegir un operador arriba. Solo el
           administrador ve "Editar distribución" (supervisor la usa pero no la reacomoda). */}
       <div className="hidden lg:block space-y-3">
-        {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
+        {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
         <GridEditable
           pantallaId="asignaciones"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'asignaciones')!.bloques}
-          modoEdicion={esAdmin && editorDistribucion.modoEdicion}
+          modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
           objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}

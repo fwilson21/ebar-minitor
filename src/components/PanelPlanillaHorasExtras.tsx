@@ -146,6 +146,10 @@ interface Props {
 type ModalPlanilla = { planilla: PlanillaHorasExtras | 'nueva'; soloLectura: boolean };
 
 export function PanelPlanillaHorasExtras({ operadores, usuarioId, esAdmin }: Props) {
+  const { tienePermiso } = useAuth();
+  // Delegables por permiso (ver /permisos) además del administrador real — antes eran esAdmin a secas.
+  const puedeEliminarPlanillas = esAdmin || tienePermiso('eliminar_planillas_horas_extras');
+  const puedeEditarConfigPlanillas = esAdmin || tienePermiso('editar_configuracion_planillas');
   const [abierto, setAbierto] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [planillas, setPlanillas] = useState<PlanillaHorasExtras[]>([]);
@@ -176,10 +180,10 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId, esAdmin }: Pro
   }, [abierto]);
 
   async function eliminar(id: string) {
-    // El botón que llama a esto ya está oculto para quien no sea administrador (ver lista de
+    // El botón que llama a esto ya está oculto para quien no tenga el permiso (ver lista de
     // abajo) — este chequeo es solo una segunda defensa, la de fondo es la política de Supabase
-    // que ya exige rol administrador para borrar de planillas_horas_extras (migración 0022).
-    if (!esAdmin) return;
+    // (ver migración de permisos granulares para planillas).
+    if (!puedeEliminarPlanillas) return;
     if (!window.confirm('¿Eliminar esta planilla? No se puede deshacer.')) return;
     const { error } = await supabase.from('planillas_horas_extras').delete().eq('id', id);
     if (!error) setPlanillas((prev) => prev.filter((p) => p.id !== id));
@@ -409,7 +413,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId, esAdmin }: Pro
                                       >
                                         Editar
                                       </button>
-                                      {esAdmin && (
+                                      {puedeEliminarPlanillas && (
                                         <button onClick={() => eliminar(p.id)} className="text-xs text-gauge-danger hover:underline">
                                           Borrar
                                         </button>
@@ -424,7 +428,7 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId, esAdmin }: Pro
                       </div>
                     ))}
 
-                    {esAdmin && (
+                    {puedeEditarConfigPlanillas && (
                       <div className="border-t border-panel-600/40 pt-3 space-y-2">
                         <div>
                           <button
@@ -646,11 +650,13 @@ function EditorPlanilla({
   onCerrar: () => void;
   onGuardado: () => Promise<void>;
   /** Este modal también lo abre el digitador (crea/edita planillas) — "Editar distribución"
-   * sigue siendo exclusivo de administrador, igual que en el resto de las pantallas. */
+   * sigue siendo del administrador real o de quien tenga el permiso 'editar_distribucion',
+   * igual que en el resto de las pantallas. */
   esAdmin: boolean;
 }) {
   const editorDistribucion = useEditorDistribucion('modal_nueva_planilla');
-  const { anchoPropioDePantalla } = useAuth();
+  const { anchoPropioDePantalla, tienePermiso } = useAuth();
+  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
   // A diferencia de las demás pantallas, este modal por defecto ocupa casi toda la pantalla (no
   // el ancho general de 1280px) — solo se achica si alguien lo pidió explícitamente arrastrando
   // el control, por eso no usa el respaldo de anchoDePantalla().
@@ -1450,11 +1456,11 @@ function EditorPlanilla({
         >
           {encabezado}
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-            {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
+            {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
             <GridEditable
               pantallaId="modal_nueva_planilla"
               bloques={bloquesModalPlanilla}
-              modoEdicion={esAdmin && editorDistribucion.modoEdicion}
+              modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
               resetSignal={editorDistribucion.resetSignal}
               objetivoEdicion={editorDistribucion.objetivoActivo}
               onGuardar={editorDistribucion.guardar}

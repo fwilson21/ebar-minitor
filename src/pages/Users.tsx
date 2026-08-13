@@ -30,13 +30,13 @@ export function Users() {
   const puedeActivarDesactivar = esAdmin || tienePermiso('activar_desactivar_usuarios');
   const puedeRestablecerPassword = esAdmin || tienePermiso('restablecer_password_usuarios');
   const puedeEliminar = esAdmin || tienePermiso('eliminar_usuarios');
+  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
   const editorDistribucion = useEditorDistribucion('usuarios');
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [entrandoComoId, setEntrandoComoId] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
-  const [mostrarForm, setMostrarForm] = useState(false);
   const [nuevoUsuario, setNuevoUsuario] = useState('');
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevaPassword, setNuevaPassword] = useState('');
@@ -318,19 +318,9 @@ export function Users() {
   function renderEncabezadoForm(): ReactNode {
     return (
     <div className="space-y-4">
-      <div className="relative flex items-center justify-center">
-        <h1 className="text-2xl font-extrabold text-slate-900">Usuarios</h1>
-        {puedeCrear && (
-          <button
-            className="absolute right-0 text-sm text-gauge-ok"
-            onClick={() => { setMostrarForm((v) => !v); setMensajeInvitar(null); }}
-          >
-            {mostrarForm ? 'Cancelar' : '+ Crear usuario'}
-          </button>
-        )}
-      </div>
-
-      {puedeCrear && mostrarForm && (
+      {puedeCrear && (
+        <>
+        <h2 className="text-sm font-semibold text-slate-700">Nuevo usuario</h2>
         <form onSubmit={manejarInvitar} className="tarjeta p-4 space-y-3">
           <div>
             <label className="etiqueta">Usuario</label>
@@ -426,6 +416,7 @@ export function Users() {
             No hace falta correo real. Pásale el usuario y la contraseña a la persona para que inicie sesión — puede cambiarla luego desde la app.
           </p>
         </form>
+        </>
       )}
     </div>
     );
@@ -454,11 +445,6 @@ export function Users() {
                 {u.telefono && (
                   <p className="text-xs text-slate-500 mt-0.5">{u.telefono}</p>
                 )}
-                {u.rol === 'operador' && (
-                  <p className="text-xs mt-0.5 text-slate-500">
-                    {u.device_id ? '📱 Vinculado a un celular' : '📱 Sin celular vinculado'}
-                  </p>
-                )}
               </div>
               <span className={`text-xs px-2 py-0.5 rounded border flex-shrink-0 ${ROL_CLASE[u.rol]}`}>
                 {ROL_LABEL[u.rol]}
@@ -480,6 +466,19 @@ export function Users() {
             )}
 
             <div className="flex flex-wrap gap-2 mt-2">
+              {u.rol === 'operador' && (
+                <span
+                  className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border ${
+                    u.device_id
+                      ? 'border-gauge-ok/40 text-gauge-ok bg-gauge-ok/10'
+                      : 'border-panel-600 text-slate-500'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
+                  {u.device_id ? 'Celular vinculado' : 'Sin celular vinculado'}
+                </span>
+              )}
+
               {puedeActivarDesactivar && (
                 <button
                   className={`text-xs px-3 py-1.5 rounded-lg border transition ${
@@ -723,6 +722,11 @@ export function Users() {
 
   return (
     <div className="space-y-4">
+      {/* Título fijo arriba a la izquierda: no es parte de ningún bloque movible, para que no
+          importe cómo se acomoden los bloques con "Editar distribución" (ver GridEditable) —
+          siempre se sabe en qué pantalla se está. Mismo patrón que Reportes/Asignar/Turnos/Permisos. */}
+      <h1 className="titulo-pantalla">Usuarios</h1>
+
       {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
       <div className="lg:hidden space-y-4">
         {renderEncabezadoForm()}
@@ -733,11 +737,11 @@ export function Users() {
           defecto). Solo el administrador ve "Editar distribución" (quien entra por permiso
           granular sin ser admin, ni lo ve ni lo puede tocar). */}
       <div className="hidden lg:block space-y-3">
-        {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
+        {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
         <GridEditable
           pantallaId="usuarios"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'usuarios')!.bloques}
-          modoEdicion={esAdmin && editorDistribucion.modoEdicion}
+          modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
           objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}

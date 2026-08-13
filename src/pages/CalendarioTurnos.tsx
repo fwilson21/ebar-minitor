@@ -89,12 +89,19 @@ function motivoDia(fecha: string, feriadosAdicionales: Map<string, string>): str
 }
 
 export function CalendarioTurnos() {
-  const { usuario } = useAuth();
+  const { usuario, tienePermiso } = useAuth();
   const esAdmin = usuario?.rol === 'administrador';
   // Digitador entra por esta misma pantalla y ve el mismo calendario/feriados/resumen del mes/
-  // exportar que el administrador, pero en modo consulta (no puede asignar operadores a un turno
-  // ni declarar/quitar feriados) — la Planilla de horas extras sí la puede crear/editar completa.
+  // exportar que el administrador, pero en modo consulta por defecto (no puede asignar operadores
+  // a un turno ni declarar/quitar feriados a menos que se le dé el permiso correspondiente) — la
+  // Planilla de horas extras sí la puede crear/editar completa.
   const esDigitador = usuario?.rol === 'digitador';
+  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
+  // Delegables por permiso (ver /permisos) además del administrador real. "Marcar turnos" incluye
+  // declarar un feriado nuevo (se hace desde el mismo panel del día); "gestionar_feriados" es
+  // solo para quitar de la lista uno ya declarado.
+  const puedeMarcarTurnos = esAdmin || tienePermiso('marcar_turnos');
+  const puedeGestionarFeriados = esAdmin || tienePermiso('gestionar_feriados');
 
   const [mes, setMes] = useState(mesActualISO());
   const [cargandoBase, setCargandoBase] = useState(true);
@@ -120,11 +127,11 @@ export function CalendarioTurnos() {
   const editorDistribucion = useEditorDistribucion('turnos');
 
   // Digitador entra a esta misma carga — ve el mismo calendario/feriados/resumen que el
-  // administrador (en modo consulta, ver el render de abajo), así que necesita los mismos datos.
-  // `estaciones`/`asignacionesDefault` le quedan vacíos por RLS (solo administrador/supervisor
-  // pueden leerlas) — no importa, esos 2 solo los usa PanelDia, que un digitador no puede abrir.
+  // administrador (en modo consulta por defecto, ver el render de abajo), así que necesita los
+  // mismos datos. Sin el permiso 'marcar_turnos', `estaciones`/`asignacionesDefault` le quedan
+  // vacíos por RLS — no importa, esos 2 solo los usa PanelDia, que sin ese permiso no se abre.
   useEffect(() => {
-    if (!esAdmin && !esDigitador) return;
+    if (!esAdmin && !esDigitador && !puedeMarcarTurnos && !puedeGestionarFeriados) return;
     async function cargarBase() {
       const [{ data: ops }, { data: est }, { data: feriados }, { data: defaults }] = await Promise.all([
         supabase.from('usuarios').select('*').eq('rol', 'operador').eq('activo', true).order('nombre_completo'),
@@ -140,7 +147,7 @@ export function CalendarioTurnos() {
     }
     cargarBase();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [esAdmin, esDigitador]);
+  }, [esAdmin, esDigitador, puedeMarcarTurnos, puedeGestionarFeriados]);
 
   // Feriado decretado de último momento (no calculable de antemano ni ya cargado como fin de
   // semana/feriado fijo): lo agrega el propio administrador desde el panel del día. Reutiliza la
@@ -180,10 +187,10 @@ export function CalendarioTurnos() {
   }
 
   useEffect(() => {
-    if (!esAdmin && !esDigitador) return;
+    if (!esAdmin && !esDigitador && !puedeMarcarTurnos && !puedeGestionarFeriados) return;
     cargarMes(mes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mes, esAdmin, esDigitador]);
+  }, [mes, esAdmin, esDigitador, puedeMarcarTurnos, puedeGestionarFeriados]);
 
   const feriadosAdicionalesMap = useMemo(
     () => new Map(feriadosAdicionales.map((f) => [f.fecha, f.descripcion])),
@@ -303,7 +310,7 @@ export function CalendarioTurnos() {
 
   if (!usuario) return null;
 
-  if (!esAdmin && !esDigitador) {
+  if (!esAdmin && !esDigitador && !puedeMarcarTurnos && !puedeGestionarFeriados) {
     return (
       <div className="tarjeta p-4">
         <p className="text-sm text-slate-600">Esta pantalla es exclusiva del administrador.</p>
@@ -316,11 +323,11 @@ export function CalendarioTurnos() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-lg font-bold">Calendario de turnos</h1>
+        <h1 className="titulo-pantalla">Calendario de turnos</h1>
         <p className="text-sm text-slate-600">
-          {esDigitador
-            ? 'Consulta qué operador está de turno cada sábado, domingo o feriado, y elabora las planillas de horas extras.'
-            : 'Marca qué operador está de turno cada sábado, domingo o feriado. Ese día le van a aparecer automáticamente sus EBAR a atender.'}
+          {puedeMarcarTurnos
+            ? 'Marca qué operador está de turno cada sábado, domingo o feriado. Ese día le van a aparecer automáticamente sus EBAR a atender.'
+            : 'Consulta qué operador está de turno cada sábado, domingo o feriado, y elabora las planillas de horas extras.'}
         </p>
       </div>
 
@@ -335,7 +342,7 @@ export function CalendarioTurnos() {
           turnosPorFecha={turnosPorFecha}
           nombreOperadorPorId={nombreOperadorPorId}
           setDiaSeleccionado={setDiaSeleccionado}
-          soloLectura={esDigitador}
+          soloLectura={!puedeMarcarTurnos}
         />
         <BloqueResumenMes resumenMes={resumenMes} algunoSobrepasaLimite={algunoSobrepasaLimite} />
         <BloqueExportar
@@ -352,19 +359,19 @@ export function CalendarioTurnos() {
           anioVisible={anioVisible}
           feriadosAdicionales={feriadosAdicionales}
           quitarFeriado={quitarFeriado}
-          soloLectura={esDigitador}
+          soloLectura={!puedeGestionarFeriados}
         />
       </div>
 
       {/* Escritorio (lg+): mismos bloques, pero acomodados según lo que haya guardado el
           administrador (o el acomodo por defecto) — botón "Editar distribución" abajo, exclusivo
           de administrador (el digitador ve esta pantalla, pero no la reacomoda). */}
-      {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
+      {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
       <div className="hidden lg:block">
         <GridEditable
           pantallaId="turnos"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'turnos')!.bloques}
-          modoEdicion={esAdmin && editorDistribucion.modoEdicion}
+          modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
           objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
@@ -381,7 +388,7 @@ export function CalendarioTurnos() {
                     turnosPorFecha={turnosPorFecha}
                     nombreOperadorPorId={nombreOperadorPorId}
                     setDiaSeleccionado={setDiaSeleccionado}
-                    soloLectura={esDigitador}
+                    soloLectura={!puedeMarcarTurnos}
                   />
                 );
               case 'feriados':
@@ -390,7 +397,7 @@ export function CalendarioTurnos() {
                     anioVisible={anioVisible}
                     feriadosAdicionales={feriadosAdicionales}
                     quitarFeriado={quitarFeriado}
-                    soloLectura={esDigitador}
+                    soloLectura={!puedeGestionarFeriados}
                   />
                 );
               case 'resumen_mes':

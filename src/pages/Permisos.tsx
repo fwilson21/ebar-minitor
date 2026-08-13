@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { FUNCIONES_PERMISOS } from '../lib/funcionesPermisos';
+import { FUNCIONES_PERMISOS, CATEGORIAS_PERMISOS } from '../lib/funcionesPermisos';
 import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
@@ -71,7 +71,7 @@ export function Permisos() {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="text-lg font-bold">Permisos por rol</h1>
+          <h1 className="titulo-pantalla">Permisos por rol</h1>
           <p className="text-sm text-slate-600">
             Activa o desactiva funciones puntuales para Supervisor y Operador, sin cambiarles el rol. El Administrador
             siempre tiene acceso a todo — eso no se puede desactivar.
@@ -99,24 +99,40 @@ export function Permisos() {
   function renderListaFunciones(): ReactNode {
     if (cargando) return <p className="text-slate-600">Cargando…</p>;
     return (
-      <div className="tarjeta divide-y divide-panel-600/40 lg:h-full lg:overflow-auto">
-        {FUNCIONES_PERMISOS.map((f) => {
-          const k = clave(rolSeleccionado, f.clave);
-          const activo = habilitados.has(k);
+      <div className="space-y-4 lg:h-full lg:overflow-auto">
+        {CATEGORIAS_PERMISOS.map((categoria) => {
+          const funciones = FUNCIONES_PERMISOS.filter((f) => f.categoria === categoria);
+          const habilitadasEnCategoria = funciones.filter((f) => habilitados.has(clave(rolSeleccionado, f.clave))).length;
           return (
-            <label key={f.clave} className="flex items-start gap-3 p-4 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                className="w-4 h-4 mt-0.5 accent-gauge-ok flex-shrink-0"
-                checked={activo}
-                disabled={guardando === k}
-                onChange={() => alternar(rolSeleccionado, f.clave)}
-              />
-              <div>
-                <p className="font-semibold text-slate-900 text-sm">{f.nombre}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{f.descripcion}</p>
+            <div key={categoria} className="tarjeta overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-panel-700/50 border-b border-panel-600/40">
+                <h2 className="text-sm font-semibold text-slate-800">{categoria}</h2>
+                <span className="text-xs text-slate-500 lectura">
+                  {habilitadasEnCategoria}/{funciones.length}
+                </span>
               </div>
-            </label>
+              <div className="divide-y divide-panel-600/40">
+                {funciones.map((f) => {
+                  const k = clave(rolSeleccionado, f.clave);
+                  const activo = habilitados.has(k);
+                  return (
+                    <label key={f.clave} className="flex items-start gap-3 p-4 pl-8 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 mt-0.5 accent-gauge-ok flex-shrink-0"
+                        checked={activo}
+                        disabled={guardando === k}
+                        onChange={() => alternar(rolSeleccionado, f.clave)}
+                      />
+                      <div>
+                        <p className="font-semibold text-slate-900 text-sm">{f.nombre}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{f.descripcion}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </div>

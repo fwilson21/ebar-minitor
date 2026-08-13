@@ -34,7 +34,7 @@ export function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <form onSubmit={manejarSubmit} className="tarjeta w-full max-w-sm p-6">
-        <h1 className="text-xl font-bold mb-1">EBAR · Monitor</h1>
+        <h1 className="titulo-pantalla mb-1">EBAR · Monitor</h1>
         <p className="text-sm text-slate-600 mb-6">Gestión de estaciones de bombeo de aguas residuales</p>
 
         <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${estaConfiguradoSupabase() ? 'border-gauge-ok/40 bg-gauge-ok/10 text-gauge-ok' : 'border-gauge-warn/40 bg-gauge-warn/10 text-gauge-warn'}`}>

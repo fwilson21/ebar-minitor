@@ -166,9 +166,14 @@ export function AppShell() {
     ['crear_usuarios', 'editar_usuarios', 'activar_desactivar_usuarios', 'restablecer_password_usuarios', 'eliminar_usuarios'].some(tienePermiso)
       ? [NAV_ADMIN]
       : []),
-    // Turnos: administrador (pantalla completa) o digitador (calendario en modo consulta +
-    // planillas completas, ver CalendarioTurnos.tsx) — Permisos exclusivo del administrador.
-    ...(usuario?.rol === 'administrador' || esDigitador ? [NAV_TURNOS] : []),
+    // Turnos: administrador (pantalla completa), digitador (calendario en modo consulta +
+    // planillas completas, ver CalendarioTurnos.tsx), o quien tenga marcar_turnos/
+    // gestionar_feriados (ver /permisos) — Permisos exclusivo del administrador.
+    ...(usuario?.rol === 'administrador' ||
+    esDigitador ||
+    ['marcar_turnos', 'gestionar_feriados'].some(tienePermiso)
+      ? [NAV_TURNOS]
+      : []),
     ...(usuario?.rol === 'administrador' ? [NAV_PERMISOS] : []),
   ];
 

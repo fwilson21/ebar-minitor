@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
@@ -14,14 +14,17 @@ import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 
 export function Stations() {
-  const { usuario } = useAuth();
+  const { usuario, tienePermiso } = useAuth();
   const esAdmin = usuario?.rol === 'administrador';
+  // Ambas delegables por permiso (ver /permisos) además del administrador real — antes eran
+  // esAdmin a secas.
+  const puedeCrearEstaciones = esAdmin || tienePermiso('crear_estaciones');
+  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
   const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>({});
   const [filtroZona, setFiltroZona] = useState<ZonaTipo | 'todas'>('todas');
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
-  const [mostrarForm, setMostrarForm] = useState(false);
   const [sinConexion, setSinConexion] = useState(false);
   const editorDistribucion = useEditorDistribucion('estaciones');
 
@@ -103,9 +106,14 @@ export function Stations() {
 
   return (
     <div className="space-y-4">
+      {/* Título fijo arriba a la izquierda: no es parte de ningún bloque movible, para que no
+          importe cómo se acomoden los bloques con "Editar distribución" (ver GridEditable) —
+          siempre se sabe en qué pantalla se está. Mismo patrón que Reportes/Asignar/Turnos/Permisos/Usuarios. */}
+      <h1 className="titulo-pantalla">Estaciones EBAR</h1>
+
       {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
       <div className="lg:hidden space-y-4">
-        <BloqueEncabezadoForm esAdmin={esAdmin} mostrarForm={mostrarForm} setMostrarForm={setMostrarForm} />
+        <BloqueEncabezadoForm esAdmin={puedeCrearEstaciones} />
         {sinConexion && (
           <p className="text-xs text-gauge-warn bg-gauge-warn/10 border border-gauge-warn/30 rounded-lg px-3 py-2">
             Sin conexión — mostrando la última lista guardada en este dispositivo.
@@ -124,7 +132,7 @@ export function Stations() {
       {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
           defecto) — solo el administrador puede tocar "Editar distribución". */}
       <div className="hidden lg:block space-y-3">
-        {esAdmin && <BarraDistribucion editor={editorDistribucion} />}
+        {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
         {sinConexion && (
           <p className="text-xs text-gauge-warn bg-gauge-warn/10 border border-gauge-warn/30 rounded-lg px-3 py-2">
             Sin conexión — mostrando la última lista guardada en este dispositivo.
@@ -133,14 +141,14 @@ export function Stations() {
         <GridEditable
           pantallaId="estaciones"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'estaciones')!.bloques}
-          modoEdicion={esAdmin && editorDistribucion.modoEdicion}
+          modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
           objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
           renderBloque={(bloqueId) => {
             switch (bloqueId) {
               case 'encabezado_form':
-                return <BloqueEncabezadoForm esAdmin={esAdmin} mostrarForm={mostrarForm} setMostrarForm={setMostrarForm} />;
+                return <BloqueEncabezadoForm esAdmin={puedeCrearEstaciones} />;
               case 'filtros':
                 return (
                   <BloqueFiltros busqueda={busqueda} setBusqueda={setBusqueda} filtroZona={filtroZona} setFiltroZona={setFiltroZona} />
@@ -166,26 +174,12 @@ export function Stations() {
   );
 }
 
-function BloqueEncabezadoForm({
-  esAdmin,
-  mostrarForm,
-  setMostrarForm,
-}: {
-  esAdmin: boolean;
-  mostrarForm: boolean;
-  setMostrarForm: Dispatch<SetStateAction<boolean>>;
-}) {
+function BloqueEncabezadoForm({ esAdmin: puedeCrear }: { esAdmin: boolean }) {
+  if (!puedeCrear) return null;
   return (
     <div className="space-y-4 lg:h-full lg:overflow-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold">Estaciones EBAR</h1>
-        {esAdmin && (
-          <button className="text-sm text-gauge-ok" onClick={() => setMostrarForm((v) => !v)}>
-            {mostrarForm ? 'Cancelar' : '+ Nueva estación'}
-          </button>
-        )}
-      </div>
-      {esAdmin && mostrarForm && <FormularioNuevaEstacion onCreada={() => setMostrarForm(false)} />}
+      <h2 className="text-sm font-semibold text-slate-700">Nueva estación</h2>
+      <FormularioNuevaEstacion />
     </div>
   );
 }
@@ -262,7 +256,7 @@ function BloqueListaEstaciones({
   );
 }
 
-function FormularioNuevaEstacion({ onCreada }: { onCreada: () => void }) {
+function FormularioNuevaEstacion() {
   const [codigo, setCodigo] = useState('');
   const [nombre, setNombre] = useState('');
   const [zona, setZona] = useState<ZonaTipo>('urbana');
@@ -301,7 +295,6 @@ function FormularioNuevaEstacion({ onCreada }: { onCreada: () => void }) {
       setLatitud('');
       setLongitud('');
       setDescripcion('');
-      onCreada();
     } catch (err: any) {
       const duplicado = err.message?.includes('duplicate key') || err.code === '23505';
       setMensaje(duplicado ? `Ya existe una estación con el código "${codigo}".` : `No se pudo crear: ${err.message ?? err}`);

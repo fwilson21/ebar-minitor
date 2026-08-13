@@ -43,6 +43,13 @@ body {
   .etiqueta {
     @apply text-xs font-medium text-slate-600 uppercase tracking-wider mb-1.5 block;
   }
+
+  /* Título de pantalla: uno por ventana, bien grande y en negrita para que se note de un vistazo
+   * qué pantalla es esta — antes cada una tenía su propio tamaño suelto (la mayoría text-lg,
+   * apenas más grande que el resto del texto). */
+  .titulo-pantalla {
+    @apply text-2xl font-extrabold text-slate-900 tracking-tight;
+  }
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }

@@ -13,10 +13,12 @@ import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
 
 export function Reports() {
-  const { usuario } = useAuth();
+  const { usuario, tienePermiso } = useAuth();
   const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
-  // "Editar distribución" es exclusivo del administrador (ni siquiera supervisor).
+  // "Editar distribución" es del administrador real o de quien tenga el permiso
+  // 'editar_distribucion' (ni siquiera supervisor lo tiene por defecto).
   const esAdministrador = usuario?.rol === 'administrador';
+  const puedeEditarDistribucion = esAdministrador || tienePermiso('editar_distribucion');
   const editorDistribucion = useEditorDistribucion('reportes');
 
   const [tipo, setTipo] = useState<TipoReporte>('consolidado_fecha');
@@ -172,7 +174,7 @@ export function Reports() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-lg font-bold">Reportes</h1>
+      <h1 className="titulo-pantalla">Reportes</h1>
 
       {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
       <div className="lg:hidden space-y-5">
@@ -200,11 +202,11 @@ export function Reports() {
       {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
           defecto). Solo el administrador ve "Editar distribución" (ni siquiera supervisor). */}
       <div className="hidden lg:block space-y-3">
-        {esAdministrador && <BarraDistribucion editor={editorDistribucion} />}
+        {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
         <GridEditable
           pantallaId="reportes"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'reportes')!.bloques}
-          modoEdicion={esAdministrador && editorDistribucion.modoEdicion}
+          modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
           objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}

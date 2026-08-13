@@ -91,9 +91,11 @@ function duracionVisita(llegada: string, salida?: string | null): { texto: strin
 
 export function StationDetail() {
   const { id } = useParams<{ id: string }>();
-  const { usuario } = useAuth();
+  const { usuario, tienePermiso } = useAuth();
   const puedeEditarTodo = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
   const esAdmin = usuario?.rol === 'administrador';
+  // Delegable por permiso (ver /permisos) además del administrador real — antes era esAdmin a secas.
+  const puedeGestionarBombas = esAdmin || tienePermiso('gestionar_bombas');
   const [estacion, setEstacion] = useState<EstacionEbar | null>(null);
   const [historial, setHistorial] = useState<HistorialItem[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -139,10 +141,10 @@ export function StationDetail() {
   }
 
   useEffect(() => {
-    if (!esAdmin) return;
+    if (!puedeGestionarBombas) return;
     cargarBombasAdmin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, esAdmin]);
+  }, [id, puedeGestionarBombas]);
 
   /** Mantiene estaciones_ebar.numero_bombas (solo informativo, se muestra en la lista de estaciones) al día. */
   async function sincronizarConteoBombas(lista: Bomba[]) {
@@ -228,7 +230,8 @@ export function StationDetail() {
       <div className="tarjeta p-4">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-lg font-bold">{estacion.nombre}</h1>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Detalle de estación</p>
+            <h1 className="titulo-pantalla">{estacion.nombre}</h1>
             <p className="text-sm text-slate-600 lectura">{estacion.codigo}</p>
           </div>
           <EstadoBadge estado={estacion.estado_actual} />
@@ -259,7 +262,7 @@ export function StationDetail() {
         + Registrar visita
       </Link>
 
-      {esAdmin && estacion.tipo !== 'linea_conduccion' && (
+      {puedeGestionarBombas && estacion.tipo !== 'linea_conduccion' && (
         <div className="tarjeta p-4 space-y-2">
           <h2 className="text-sm font-semibold text-slate-700">Gestión de bombas</h2>
           <div className="flex gap-2 flex-wrap">

@@ -3,3 +3,5 @@ dist/
 .env
 .env.local
 .cert/
+tsconfig.tsbuildinfo
+supabase/.temp/

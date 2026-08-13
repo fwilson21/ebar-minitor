@@ -20,6 +20,16 @@ const keyPath = 'C:/ebar-app/.cert/key.pem';
 const tieneCertLocal = !process.env.EBAR_HTTP_LOCAL && fs.existsSync(certPath) && fs.existsSync(keyPath);
 
 export default defineConfig({
+  // "Editar distribución" (mover/agrandar bloques, ver GridEditable.tsx) usa la librería
+  // react-grid-layout, que trae un log interno escrito para Node (lee `process.env.NODE_ENV`).
+  // El navegador no tiene esa variable global, así que apenas se agarraba un bloque para
+  // arrastrarlo tronaba con "process is not defined" y cortaba todo el arrastre/cambio de
+  // tamaño antes de que pasara nada. Esto la rellena en el código que corre en el navegador.
+  // (Bug real, sin relación con ningún rediseño visual — si vuelve a desaparecer de acá, es que
+  // se revirtió por error junto con otra cosa.)
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'development'),
+  },
   plugins: [
     react(),
     // Permite que la app se ABRA sin ninguna señal (no solo que la visita se guarde offline a

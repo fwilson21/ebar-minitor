@@ -843,7 +843,7 @@ export function VisitForm() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold uppercase tracking-wide">{modoEdicion ? 'Editar visita' : 'Nueva visita'}</h1>
+          <h1 className="titulo-pantalla">{modoEdicion ? 'Editar visita' : 'Nueva visita'}</h1>
           <p className="text-sm text-slate-600">{estacion.nombre} · {estacion.codigo}</p>
         </div>
         <div className="text-right flex-shrink-0">

@@ -27,11 +27,13 @@ type AsignacionBajoMinimo = {
 };
 
 export function Dashboard() {
-  const { usuario } = useAuth();
+  const { usuario, tienePermiso } = useAuth();
   const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
-  // "Editar distribución" es exclusivo del administrador (ni siquiera supervisor) — igual que
-  // era la vieja pantalla separada de Distribución de entorno.
+  // "Editar distribución" es del administrador real o de quien tenga el permiso
+  // 'editar_distribucion' (ver /permisos) — ni siquiera supervisor lo tiene por defecto, igual
+  // que era la vieja pantalla separada de Distribución de entorno.
   const esAdministrador = usuario?.rol === 'administrador';
+  const puedeEditarDistribucion = esAdministrador || tienePermiso('editar_distribucion');
   const editorDistribucion = useEditorDistribucion('dashboard');
   const [fecha, setFecha] = useState(HOY);
   const [resumen, setResumen] = useState<DashboardResumen | null>(null);
@@ -274,11 +276,11 @@ export function Dashboard() {
           existen para operador — a quien no le toca ver un bloque, esa celda del grid queda
           vacía. Solo el administrador ve "Editar distribución" (ni siquiera supervisor). */}
       <div className="hidden lg:block space-y-3">
-        {esAdministrador && <BarraDistribucion editor={editorDistribucion} />}
+        {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
         <GridEditable
           pantallaId="dashboard"
           bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'dashboard')!.bloques}
-          modoEdicion={esAdministrador && editorDistribucion.modoEdicion}
+          modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
           objetivoEdicion={editorDistribucion.objetivoActivo}
           onGuardar={editorDistribucion.guardar}
@@ -340,7 +342,10 @@ function BloqueResumenGeneral({
   return (
     <div className="lg:h-full lg:flex lg:flex-col lg:min-h-0">
       <div className="flex items-center justify-between mb-3 lg:shrink-0">
-        <h1 className="text-lg font-bold">{tituloFecha}</h1>
+        <div>
+          <h1 className="titulo-pantalla">Inicio</h1>
+          <p className="text-sm text-slate-500">{tituloFecha}</p>
+        </div>
         {esAdmin && (
           <input
             type="date"
