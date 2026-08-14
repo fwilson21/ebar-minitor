@@ -7,7 +7,7 @@ import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
-import type { UserRole } from '../lib/types';
+import type { Usuario, UserRole } from '../lib/types';
 
 // Roles a los que se les puede activar/desactivar funciones. El administrador siempre tiene
 // todo (ver tiene_permiso() en la base) y no aparece acá — no se puede apagar a sí mismo.
@@ -17,13 +17,18 @@ const ROLES_EDITABLES: { rol: UserRole; nombre: string }[] = [
   { rol: 'digitador', nombre: 'Digitador' },
 ];
 
+// 'ninguno' no es un rol real — es solo para poder "vaciar" el selector y ocultar
+// la lista de usuarios / el checklist de permisos.
+type RolFiltro = UserRole | 'ninguno';
+
 type Clave = `${string}|${string}`;
 const clave = (rol: string, funcion: string): Clave => `${rol}|${funcion}`;
 
 export function Permisos() {
   const { usuario } = useAuth();
-  const [rolSeleccionado, setRolSeleccionado] = useState<UserRole>('supervisor');
+  const [rolSeleccionado, setRolSeleccionado] = useState<RolFiltro>('supervisor');
   const [habilitados, setHabilitados] = useState<Set<Clave>>(new Set());
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState<Clave | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
@@ -34,12 +39,16 @@ export function Permisos() {
   }, []);
 
   async function cargar() {
-    const { data } = await supabase.from('permisos_rol').select('rol, funcion, habilitado');
+    const [permisosRes, usuariosRes] = await Promise.all([
+      supabase.from('permisos_rol').select('rol, funcion, habilitado'),
+      supabase.from('usuarios').select('id, nombre_completo, rol, activo').order('nombre_completo'),
+    ]);
     const set = new Set<Clave>();
-    for (const fila of data ?? []) {
+    for (const fila of permisosRes.data ?? []) {
       if (fila.habilitado) set.add(clave(fila.rol, fila.funcion));
     }
     setHabilitados(set);
+    setUsuarios((usuariosRes.data as Usuario[]) ?? []);
     setCargando(false);
   }
 
@@ -68,6 +77,8 @@ export function Permisos() {
   if (usuario.rol !== 'administrador') return <Navigate to="/" replace />;
 
   function renderEncabezadoSelector(): ReactNode {
+    const usuariosDelRol = rolSeleccionado === 'ninguno' ? [] : usuarios.filter((u) => u.rol === rolSeleccionado);
+
     return (
       <div className="space-y-4">
         <div>
@@ -85,19 +96,43 @@ export function Permisos() {
           <select
             className="campo max-w-xs"
             value={rolSeleccionado}
-            onChange={(e) => setRolSeleccionado(e.target.value as UserRole)}
+            onChange={(e) => setRolSeleccionado(e.target.value as RolFiltro)}
           >
             {ROLES_EDITABLES.map(({ rol, nombre }) => (
               <option key={rol} value={rol}>{nombre}</option>
             ))}
+            <option value="ninguno">Ninguno</option>
           </select>
         </div>
+
+        {rolSeleccionado !== 'ninguno' && (
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+              Usuarios con este rol {usuariosDelRol.length > 0 && `(${usuariosDelRol.length})`}
+            </p>
+            {usuariosDelRol.length === 0 ? (
+              <p className="text-sm text-slate-500">Nadie tiene este rol todavía.</p>
+            ) : (
+              <ul className="text-sm text-slate-700 space-y-0.5">
+                {usuariosDelRol.map((u) => (
+                  <li key={u.id} className={!u.activo ? 'opacity-50' : ''}>
+                    {u.nombre_completo}
+                    {!u.activo && ' (inactivo)'}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     );
   }
 
   function renderListaFunciones(): ReactNode {
     if (cargando) return <p className="text-slate-600">Cargando…</p>;
+    if (rolSeleccionado === 'ninguno') {
+      return <p className="text-sm text-slate-500">Selecciona un rol para ver y editar sus permisos.</p>;
+    }
     return (
       <div className="space-y-4 lg:h-full lg:overflow-auto">
         {CATEGORIAS_PERMISOS.map((categoria) => {
