@@ -7,6 +7,7 @@ import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
+import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
 
 function dentroDelRango(fecha: string, desde: string, hasta: string): boolean {
   return fecha >= desde && fecha <= hasta;
@@ -257,8 +258,9 @@ export function Asignaciones() {
       <div className="lg:hidden space-y-5">
         <BloqueResumen {...props} />
         <BloqueSeleccionarOperador {...props} />
-        {operadorId && cargandoAsignaciones && <p className="text-slate-600">Cargando asignaciones…</p>}
-        {operadorId && !cargandoAsignaciones && (
+        {operadorId && cargandoAsignaciones ? (
+          <p className="text-slate-600">Cargando asignaciones…</p>
+        ) : (
           <>
             <BloqueAsignacionDefault {...props} />
             <BloqueAsignacionEspecial {...props} />
@@ -267,7 +269,8 @@ export function Asignaciones() {
       </div>
 
       {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
-          defecto). Los últimos 2 quedan vacíos hasta elegir un operador arriba. Solo el
+          defecto). Los últimos 2 siempre se muestran (con las estaciones sin marcar, deshabilitadas
+          hasta elegir un operador arriba) para no dejar la pantalla con huecos vacíos. Solo el
           administrador ve "Editar distribución" (supervisor la usa pero no la reacomoda). */}
       <div className="hidden lg:block space-y-3">
         {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
@@ -285,11 +288,9 @@ export function Asignaciones() {
               case 'seleccionar_operador':
                 return <BloqueSeleccionarOperador {...props} />;
               case 'asignacion_default':
-                if (!operadorId) return null;
-                return cargandoAsignaciones ? <p className="text-slate-600">Cargando…</p> : <BloqueAsignacionDefault {...props} />;
+                return operadorId && cargandoAsignaciones ? <p className="text-slate-600">Cargando…</p> : <BloqueAsignacionDefault {...props} />;
               case 'asignacion_especial':
-                if (!operadorId) return null;
-                return cargandoAsignaciones ? <p className="text-slate-600">Cargando…</p> : <BloqueAsignacionEspecial {...props} />;
+                return operadorId && cargandoAsignaciones ? <p className="text-slate-600">Cargando…</p> : <BloqueAsignacionEspecial {...props} />;
               default:
                 return null;
             }
@@ -431,31 +432,53 @@ function BloqueSeleccionarOperador({ operadores, operadorId, setOperadorId, mens
   );
 }
 
-function BloqueAsignacionDefault({ estaciones, seleccionDefault, setSeleccionDefault, guardando, guardarDefault, alternar }: BloquesProps) {
+function BloqueAsignacionDefault({
+  estaciones,
+  operadorId,
+  seleccionDefault,
+  setSeleccionDefault,
+  guardando,
+  guardarDefault,
+  alternar,
+}: BloquesProps) {
+  const sinOperador = !operadorId;
   return (
     <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
       <div>
         <h2 className="text-base font-semibold">Asignación por defecto</h2>
         <p className="text-xs text-slate-500">EBAR que este operador visita habitualmente, todos los días.</p>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {estaciones.map((e) => {
-          const activo = seleccionDefault.has(e.id);
-          return (
-            <button
-              key={e.id}
-              type="button"
-              onClick={() => alternar(seleccionDefault, setSeleccionDefault, e.id)}
-              className={`text-sm px-3 py-1.5 rounded-full border ${
-                activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-600'
-              }`}
-            >
-              {e.codigo}
-            </button>
-          );
-        })}
+      {sinOperador && (
+        <p className="text-xs text-slate-500 italic">Elegí un operador arriba para ver y editar su asignación.</p>
+      )}
+      <div className="space-y-3">
+        {agruparPorZonaYTipo(estaciones).map(({ zona, tipo, estaciones: delGrupo }) => (
+          <div key={`${zona}-${tipo}`}>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {delGrupo.map((e) => {
+                const activo = seleccionDefault.has(e.id);
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    disabled={sinOperador}
+                    onClick={() => alternar(seleccionDefault, setSeleccionDefault, e.id)}
+                    className={`text-sm px-3 py-1.5 rounded-full border transition ${
+                      activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-600'
+                    } ${sinOperador ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {e.codigo}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
-      <button onClick={guardarDefault} disabled={guardando} className="boton-primario w-full">
+      <button onClick={guardarDefault} disabled={guardando || sinOperador} className="boton-primario w-full">
         {guardando ? 'Guardando…' : 'Guardar asignación por defecto'}
       </button>
     </div>
@@ -464,6 +487,7 @@ function BloqueAsignacionDefault({ estaciones, seleccionDefault, setSeleccionDef
 
 function BloqueAsignacionEspecial({
   estaciones,
+  operadorId,
   fechaEspecial,
   setFechaEspecial,
   seleccionEspecial,
@@ -476,6 +500,7 @@ function BloqueAsignacionEspecial({
   alternar,
   nombreEstacion,
 }: BloquesProps) {
+  const sinOperador = !operadorId;
   return (
     <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
       <div>
@@ -485,32 +510,52 @@ function BloqueAsignacionEspecial({
         </p>
       </div>
 
+      {sinOperador && (
+        <p className="text-xs text-slate-500 italic">Elegí un operador arriba para poder agregar una asignación especial.</p>
+      )}
+
       <div>
         <label className="etiqueta">Fecha</label>
-        <input type="date" className="campo" value={fechaEspecial} onChange={(e) => setFechaEspecial(e.target.value)} />
+        <input
+          type="date"
+          className="campo"
+          value={fechaEspecial}
+          onChange={(e) => setFechaEspecial(e.target.value)}
+          disabled={sinOperador}
+        />
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {estaciones.map((e) => {
-          const activo = seleccionEspecial.has(e.id);
-          return (
-            <button
-              key={e.id}
-              type="button"
-              onClick={() => alternar(seleccionEspecial, setSeleccionEspecial, e.id)}
-              className={`text-sm px-3 py-1.5 rounded-full border ${
-                activo ? 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn' : 'border-panel-600 text-slate-600'
-              }`}
-            >
-              {e.codigo}
-            </button>
-          );
-        })}
+      <div className="space-y-3">
+        {agruparPorZonaYTipo(estaciones).map(({ zona, tipo, estaciones: delGrupo }) => (
+          <div key={`${zona}-${tipo}`}>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {delGrupo.map((e) => {
+                const activo = seleccionEspecial.has(e.id);
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    disabled={sinOperador}
+                    onClick={() => alternar(seleccionEspecial, setSeleccionEspecial, e.id)}
+                    className={`text-sm px-3 py-1.5 rounded-full border transition ${
+                      activo ? 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn' : 'border-panel-600 text-slate-600'
+                    } ${sinOperador ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {e.codigo}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       <button
         onClick={agregarEspecial}
-        disabled={guardando || !fechaEspecial || seleccionEspecial.size === 0}
+        disabled={guardando || sinOperador || !fechaEspecial || seleccionEspecial.size === 0}
         className="boton-primario w-full"
       >
         {guardando ? 'Guardando…' : 'Agregar asignación especial'}

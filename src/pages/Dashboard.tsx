@@ -11,6 +11,7 @@ import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
+import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
 
 const HOY = new Date().toISOString().slice(0, 10);
 const MINIMO_VISITAS_DIA_REGULAR = 2;
@@ -429,30 +430,6 @@ function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: E
   );
 }
 
-// Orden de despliegue de los grupos zona+tipo — urbana antes que rural, y dentro de cada zona
-// EBAR antes que PTAR antes que línea de conducción. Cualquier valor no listado aquí (si algún
-// día aparece un tipo nuevo) simplemente se acomoda al final, no se pierde.
-const ORDEN_ZONA: Record<string, number> = { urbana: 0, rural: 1 };
-const ORDEN_TIPO: Record<string, number> = { ebar: 0, ptar: 1, linea_conduccion: 2 };
-const ETIQUETA_ZONA: Record<string, string> = { urbana: 'Urbana', rural: 'Rural' };
-const ETIQUETA_TIPO: Record<string, string> = { ebar: 'EBAR', ptar: 'PTAR', linea_conduccion: 'Línea de conducción' };
-
-/** Agrupa por zona+tipo (ej. "Urbana · EBAR", "Rural · PTAR") — separa las tarjetas como pidió el
- * usuario, y se adapta solo a los grupos que realmente tengan estaciones pendientes. */
-function agruparPorZonaYTipo(lista: EstacionSimple[]) {
-  const mapa = new Map<string, EstacionSimple[]>();
-  for (const e of lista) {
-    const clave = `${e.zona}|${e.tipo}`;
-    if (!mapa.has(clave)) mapa.set(clave, []);
-    mapa.get(clave)!.push(e);
-  }
-  return [...mapa.entries()]
-    .map(([clave, estaciones]) => {
-      const [zona, tipo] = clave.split('|');
-      return { zona, tipo, estaciones };
-    })
-    .sort((a, b) => (ORDEN_ZONA[a.zona] ?? 9) - (ORDEN_ZONA[b.zona] ?? 9) || (ORDEN_TIPO[a.tipo] ?? 9) - (ORDEN_TIPO[b.tipo] ?? 9));
-}
 
 function BloquePendientesVisita({
   sinVisitar,
