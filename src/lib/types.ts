@@ -5,7 +5,7 @@ export type ZonaTipo = 'urbana' | 'rural';
 export type EstadoEstacion = 'operativa' | 'mantenimiento_correctivo' | 'fuera_de_servicio';
 export type EstadoBomba = 'encendida' | 'apagada' | 'en_falla' | 'retirado_para_mantenimiento';
 export type NivelTanque = 'alto' | 'medio' | 'bajo';
-export type TipoEstacion = 'ebar' | 'linea_conduccion';
+export type TipoEstacion = 'ebar' | 'linea_conduccion' | 'ptar';
 
 export interface Usuario {
   id: string;

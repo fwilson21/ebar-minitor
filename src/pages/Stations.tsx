@@ -314,6 +314,7 @@ function FormularioNuevaEstacion() {
           <label className="etiqueta">Tipo</label>
           <select className="campo" value={tipo} onChange={(e) => setTipo(e.target.value as TipoEstacion)}>
             <option value="ebar">EBAR (con bombas)</option>
+            <option value="ptar">PTAR (planta de tratamiento)</option>
             <option value="linea_conduccion">Línea de conducción (sin bombas)</option>
           </select>
         </div>

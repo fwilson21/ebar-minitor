@@ -15,7 +15,7 @@ import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 const HOY = new Date().toISOString().slice(0, 10);
 const MINIMO_VISITAS_DIA_REGULAR = 2;
 
-type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona'>;
+type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona' | 'tipo'>;
 type EstacionAsignadaHoy = EstacionSimple & { visitasHoy: number };
 type AsignacionBajoMinimo = {
   operador_id: string;
@@ -64,7 +64,7 @@ export function Dashboard() {
           p_operador_id: usuario?.rol === 'operador' ? usuario.id : null,
         }),
         supabase.from('estaciones_ebar').select('*').neq('estado_actual', 'operativa').eq('activa', true),
-        supabase.from('estaciones_ebar').select('id, nombre, codigo, zona').eq('activa', true).order('nombre'),
+        supabase.from('estaciones_ebar').select('id, nombre, codigo, zona, tipo').eq('activa', true).order('nombre'),
         supabase.from('visitas').select('estacion_id, operador_id')
           .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
           .lte('fecha_hora_llegada', `${fecha}T23:59:59`),
@@ -83,7 +83,7 @@ export function Dashboard() {
       if (usuario?.rol === 'operador') {
         const { data: asignaciones } = await supabase
           .from('asignaciones_estacion')
-          .select('estacion_id, estaciones_ebar ( id, nombre, codigo, zona )')
+          .select('estacion_id, estaciones_ebar ( id, nombre, codigo, zona, tipo )')
           .eq('operador_id', usuario.id)
           .or(`fecha.is.null,fecha.eq.${fecha}`);
         if (asignaciones !== null) {
@@ -350,7 +350,7 @@ function BloqueResumenGeneral({
   resumen: DashboardResumen | null;
 }) {
   return (
-    <div className="lg:h-full lg:flex lg:flex-col lg:min-h-0">
+    <div className="lg:h-full lg:flex lg:flex-col lg:min-h-0 bloque-adaptable">
       <div className="flex items-center justify-between mb-3 lg:shrink-0">
         <div>
           <h1 className="titulo-pantalla">Inicio</h1>
@@ -366,7 +366,10 @@ function BloqueResumenGeneral({
           />
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:flex-1 lg:min-h-0">
+      {/* grid-metricas (ver index.css) acomoda las 5 tarjetas en 2/3/5 columnas según el ANCHO
+          real del bloque (container query, no el de la pantalla) — con suficiente espacio entran
+          las 5 en una sola fila en vez de quedar apiladas en 2 columnas siempre. */}
+      <div className="grid-metricas lg:flex-1 lg:min-h-0">
         <Metrica label="Visitas registradas" valor={resumen?.total_visitas ?? 0} acento="ok" />
         <Metrica label="Estaciones sin visitar" valor={resumen?.estaciones_sin_visitar ?? 0} acento="idle" />
         <Metrica label="Equipos con falla o por mantener" valor={resumen?.equipos_con_alerta ?? 0} acento="danger" />
@@ -426,6 +429,31 @@ function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: E
   );
 }
 
+// Orden de despliegue de los grupos zona+tipo — urbana antes que rural, y dentro de cada zona
+// EBAR antes que PTAR antes que línea de conducción. Cualquier valor no listado aquí (si algún
+// día aparece un tipo nuevo) simplemente se acomoda al final, no se pierde.
+const ORDEN_ZONA: Record<string, number> = { urbana: 0, rural: 1 };
+const ORDEN_TIPO: Record<string, number> = { ebar: 0, ptar: 1, linea_conduccion: 2 };
+const ETIQUETA_ZONA: Record<string, string> = { urbana: 'Urbana', rural: 'Rural' };
+const ETIQUETA_TIPO: Record<string, string> = { ebar: 'EBAR', ptar: 'PTAR', linea_conduccion: 'Línea de conducción' };
+
+/** Agrupa por zona+tipo (ej. "Urbana · EBAR", "Rural · PTAR") — separa las tarjetas como pidió el
+ * usuario, y se adapta solo a los grupos que realmente tengan estaciones pendientes. */
+function agruparPorZonaYTipo(lista: EstacionSimple[]) {
+  const mapa = new Map<string, EstacionSimple[]>();
+  for (const e of lista) {
+    const clave = `${e.zona}|${e.tipo}`;
+    if (!mapa.has(clave)) mapa.set(clave, []);
+    mapa.get(clave)!.push(e);
+  }
+  return [...mapa.entries()]
+    .map(([clave, estaciones]) => {
+      const [zona, tipo] = clave.split('|');
+      return { zona, tipo, estaciones };
+    })
+    .sort((a, b) => (ORDEN_ZONA[a.zona] ?? 9) - (ORDEN_ZONA[b.zona] ?? 9) || (ORDEN_TIPO[a.tipo] ?? 9) - (ORDEN_TIPO[b.tipo] ?? 9));
+}
+
 function BloquePendientesVisita({
   sinVisitar,
   mostrarSinVisitar,
@@ -437,25 +465,34 @@ function BloquePendientesVisita({
 }) {
   if (sinVisitar.length === 0) return null;
   return (
-    <div className="lg:h-full lg:overflow-auto">
+    <div className="lg:h-full lg:overflow-auto bloque-adaptable">
       <button className="flex items-center justify-between w-full mb-2" onClick={() => setMostrarSinVisitar((v) => !v)}>
         <h2 className="text-sm font-semibold text-slate-700">Pendientes de visita ({sinVisitar.length})</h2>
         <span className="text-xs text-slate-500">{mostrarSinVisitar ? '▲ ocultar' : '▼ ver'}</span>
       </button>
       {mostrarSinVisitar && (
-        <div className="space-y-2">
-          {sinVisitar.map((e) => (
-            <Link
-              key={e.id}
-              to={`/estaciones/${e.id}/nueva-visita`}
-              className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
-            >
-              <div>
-                <p className="text-sm font-medium text-slate-900">{e.nombre}</p>
-                <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
+        <div className="space-y-4">
+          {agruparPorZonaYTipo(sinVisitar).map(({ zona, tipo, estaciones }) => (
+            <div key={`${zona}-${tipo}`}>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo} ({estaciones.length})
+              </p>
+              {/* grid-tarjetas-compactas (ver index.css): 2/3/4 columnas según el ancho real del
+                  bloque — con suficiente espacio entran 4 tarjetas por fila. */}
+              <div className="grid-tarjetas-compactas">
+                {estaciones.map((e) => (
+                  <Link
+                    key={e.id}
+                    to={`/estaciones/${e.id}/nueva-visita`}
+                    className="tarjeta p-3 flex flex-col gap-1 hover:border-gauge-ok/50 transition"
+                  >
+                    <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
+                    <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
+                    <span className="text-xs text-gauge-ok mt-1">+ Visita →</span>
+                  </Link>
+                ))}
               </div>
-              <span className="text-xs text-gauge-ok flex-shrink-0">+ Visita →</span>
-            </Link>
+            </div>
           ))}
         </div>
       )}
