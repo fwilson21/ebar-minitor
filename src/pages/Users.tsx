@@ -735,28 +735,39 @@ export function Users() {
 
       {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
           defecto). Solo el administrador ve "Editar distribución" (quien entra por permiso
-          granular sin ser admin, ni lo ve ni lo puede tocar). */}
+          granular sin ser admin, ni lo ve ni lo puede tocar). Sin permiso para crear usuarios
+          (ej. supervisor sin ese permiso otorgado), "Nuevo usuario" queda vacío por dentro pero
+          seguía reservando su columna en la cuadrícula — "Lista de usuarios" no podía expandirse
+          a ocupar ese espacio ni reacomodando la distribución por rol, porque el ancho de cada
+          bloque sigue siendo el guardado. En ese caso se muestra la lista sola, a todo el ancho,
+          sin pasar por GridEditable — no hay nada más que acomodar junto a ella. */}
       <div className="hidden lg:block space-y-3">
-        {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
-        <GridEditable
-          pantallaId="usuarios"
-          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'usuarios')!.bloques}
-          modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
-          resetSignal={editorDistribucion.resetSignal}
-          objetivoEdicion={editorDistribucion.objetivoActivo}
-          onGuardar={editorDistribucion.guardar}
-          renderBloque={(bloqueId) => {
-            switch (bloqueId) {
-              case 'encabezado_form':
-                return renderEncabezadoForm();
-              case 'lista_usuarios':
-                return renderListaUsuarios();
-              default:
-                return null;
-            }
-          }}
-        />
-        {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
+        {puedeCrear ? (
+          <>
+            {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
+            <GridEditable
+              pantallaId="usuarios"
+              bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'usuarios')!.bloques}
+              modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
+              resetSignal={editorDistribucion.resetSignal}
+              objetivoEdicion={editorDistribucion.objetivoActivo}
+              onGuardar={editorDistribucion.guardar}
+              renderBloque={(bloqueId) => {
+                switch (bloqueId) {
+                  case 'encabezado_form':
+                    return renderEncabezadoForm();
+                  case 'lista_usuarios':
+                    return renderListaUsuarios();
+                  default:
+                    return null;
+                }
+              }}
+            />
+            {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
+          </>
+        ) : (
+          renderListaUsuarios()
+        )}
       </div>
     </div>
   );

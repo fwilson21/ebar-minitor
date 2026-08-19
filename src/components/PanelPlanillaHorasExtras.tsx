@@ -162,16 +162,28 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId, esAdmin }: Pro
   const [mostrarListado, setMostrarListado] = useState(false);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [operadorExpandido, setOperadorExpandido] = useState<string | null>(null);
+  // Si config no llega a cargar (ej. permisos de un rol que todavía no lo tiene habilitado), se
+  // avisa acá en vez de quedar la pantalla en "Cargando…" sin ninguna pista de qué pasó — ver
+  // también el botón "Cerrar" en el placeholder de abajo para no dejar a nadie atrapado ahí.
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
   async function cargarPlanillas() {
     setCargando(true);
-    const [{ data }, { data: config }] = await Promise.all([
-      supabase.from('planillas_horas_extras').select('*').order('fecha_desde', { ascending: false }).limit(1000),
-      supabase.from('configuracion_planilla_horas_extras').select('*').eq('id', true).single(),
-    ]);
-    setPlanillas((data as PlanillaHorasExtras[]) ?? []);
-    if (config) setConfiguracion(config as ConfiguracionPlanillaHorasExtras);
-    setCargando(false);
+    setErrorCarga(null);
+    try {
+      const [{ data, error: errorPlanillas }, { data: config, error: errorConfig }] = await Promise.all([
+        supabase.from('planillas_horas_extras').select('*').order('fecha_desde', { ascending: false }).limit(1000),
+        supabase.from('configuracion_planilla_horas_extras').select('*').eq('id', true).single(),
+      ]);
+      if (errorPlanillas) throw errorPlanillas;
+      setPlanillas((data as PlanillaHorasExtras[]) ?? []);
+      if (config) setConfiguracion(config as ConfiguracionPlanillaHorasExtras);
+      else if (errorConfig) throw errorConfig;
+    } catch (err: any) {
+      setErrorCarga(`No se pudo cargar: ${err.message ?? err}`);
+    } finally {
+      setCargando(false);
+    }
   }
 
   useEffect(() => {
@@ -271,9 +283,34 @@ export function PanelPlanillaHorasExtras({ operadores, usuarioId, esAdmin }: Pro
                 }}
               />
             ) : (
+              // Placeholder mientras llega "configuracion" (ver cargarPlanillas). Antes no tenía
+              // ninguna salida: si esa consulta fallaba (ej. un rol sin permiso todavía en
+              // Supabase), quedaba atrapado en "Cargando…" para siempre, sin poder ni cerrar ni
+              // volver atrás. Ahora siempre tiene un botón para cerrar y, si hubo un error, lo
+              // muestra en vez de quedarse en silencio.
               <div className="fixed inset-2 sm:inset-6 lg:inset-0 z-30 lg:flex lg:items-center lg:justify-center lg:p-4">
-                <div className="h-full lg:h-auto lg:w-full lg:max-w-4xl bg-panel-800 border border-panel-600/60 rounded-xl lg:rounded-2xl shadow-xl flex items-center justify-center p-4">
-                  <p className="text-sm text-slate-600">Cargando…</p>
+                <div className="h-full lg:h-auto lg:w-full lg:max-w-4xl bg-panel-800 border border-panel-600/60 rounded-xl lg:rounded-2xl shadow-xl flex flex-col items-center justify-center gap-3 p-4 text-center">
+                  {errorCarga ? (
+                    <>
+                      <p className="text-sm text-gauge-danger">{errorCarga}</p>
+                      <button
+                        onClick={() => {
+                          setModal(null);
+                          setAbierto(false);
+                        }}
+                        className="boton-secundario text-sm px-4 py-1.5"
+                      >
+                        Cerrar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-slate-600">Cargando…</p>
+                      <button onClick={() => setModal(null)} className="text-xs text-slate-500 hover:underline">
+                        Cancelar
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )
