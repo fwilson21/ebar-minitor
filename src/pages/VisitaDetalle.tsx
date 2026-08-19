@@ -230,7 +230,7 @@ export function VisitaDetalle() {
 
       <div className="tarjeta p-4 space-y-1">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Detalle de visita</p>
-        <h1 className="titulo-pantalla">{estacion?.nombre} · {estacion?.codigo}</h1>
+        <h1 className="titulo-pantalla">{estacion?.nombre}</h1>
         <p className="text-sm text-slate-600">Operador: {visita.operador}</p>
         <p className="text-sm text-slate-600">
           Llegada: {llegada.toLocaleString('es-EC', { hour12: false })}

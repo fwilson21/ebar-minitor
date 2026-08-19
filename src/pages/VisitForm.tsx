@@ -801,7 +801,7 @@ export function VisitForm() {
           Esta estación no está asignada a ti hoy
         </h1>
         <p className="text-sm text-slate-700">
-          No puedes registrar una visita en {estacion.codigo} — {estacion.nombre} porque no está entre tus EBAR
+          No puedes registrar una visita en {estacion.nombre} porque no está entre tus EBAR
           asignadas para hoy. Si crees que es un error, contacta a tu administrador o supervisor.
         </p>
         <button
@@ -844,7 +844,7 @@ export function VisitForm() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="titulo-pantalla">{modoEdicion ? 'Editar visita' : 'Nueva visita'}</h1>
-          <p className="text-sm text-slate-600">{estacion.nombre} · {estacion.codigo}</p>
+          <p className="text-sm text-slate-600">{estacion.nombre}</p>
         </div>
         <div className="text-right flex-shrink-0">
           {modoEdicion ? (

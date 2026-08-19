@@ -203,7 +203,7 @@ export function StationDetail() {
         return;
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
-      const titulo = `Historial de estación\n${estacion.codigo} — ${estacion.nombre}`;
+      const titulo = `Historial de estación\n${estacion.nombre}`;
       const blob = await generarReporteVisitas(titulo, visitas);
       const nombre = `historial_${estacion.codigo}_${new Date().toISOString().slice(0, 10)}.pdf`;
       descargarBlob(blob, nombre);
@@ -232,7 +232,6 @@ export function StationDetail() {
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Detalle de estación</p>
             <h1 className="titulo-pantalla">{estacion.nombre}</h1>
-            <p className="text-sm text-slate-600 lectura">{estacion.codigo}</p>
           </div>
           <EstadoBadge estado={estacion.estado_actual} />
         </div>
