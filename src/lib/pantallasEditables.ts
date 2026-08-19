@@ -26,9 +26,11 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
     bloques: [
       { id: 'calendario', titulo: 'Calendario', defaultLayout: { x: 0, y: 0, w: 16, h: 12 } },
       { id: 'feriados', titulo: 'Feriados', defaultLayout: { x: 0, y: 12, w: 16, h: 6 } },
-      { id: 'resumen_mes', titulo: 'Resumen del mes', defaultLayout: { x: 16, y: 0, w: 8, h: 6 } },
-      { id: 'exportar', titulo: 'Exportar', defaultLayout: { x: 16, y: 6, w: 8, h: 4 } },
-      { id: 'planilla_horas_extras', titulo: 'Planilla de horas extras', defaultLayout: { x: 16, y: 10, w: 8, h: 4 } },
+      // resumen_mes más bajo (6 → 5): con el texto adaptable de BloqueResumenMes, 4-5 operadores
+      // ya no necesitan tanto alto — dejaba un espacio muerto grande antes de "Exportar".
+      { id: 'resumen_mes', titulo: 'Resumen del mes', defaultLayout: { x: 16, y: 0, w: 8, h: 5 } },
+      { id: 'exportar', titulo: 'Exportar', defaultLayout: { x: 16, y: 5, w: 8, h: 4 } },
+      { id: 'planilla_horas_extras', titulo: 'Planilla de horas extras', defaultLayout: { x: 16, y: 9, w: 8, h: 4 } },
     ],
   },
   {

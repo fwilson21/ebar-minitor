@@ -289,7 +289,10 @@ export function CalendarioTurnos() {
   // nativo del celular (el admin elige WhatsApp ahí). No usa la función send-whatsapp — la API
   // oficial de WhatsApp de Meta no manda a grupos normales y se descartó configurarla (2026-07-09).
   async function manejarCompartir() {
-    if (!pdfBlob) return;
+    if (!pdfBlob) {
+      setMensajeCompartir('Primero debes generar el PDF del mes — dale a "📄 Generar PDF del mes" y luego intenta compartir de nuevo.');
+      return;
+    }
     setCompartiendo(true);
     setMensajeCompartir(null);
     try {
@@ -645,14 +648,16 @@ function BloqueResumenMes({ resumenMes, algunoSobrepasaLimite }: BloqueResumenMe
           {resumenMes.map((r) => (
             <div
               key={r.operadorId}
-              className={`bloque-adaptable-fila flex items-center justify-between text-sm gap-x-3 gap-y-0 ${r.sobrepasaLimite ? 'text-gauge-danger' : ''}`}
+              className={`flex items-center justify-between text-sm gap-x-3 ${r.sobrepasaLimite ? 'text-gauge-danger' : ''}`}
             >
-              <span className={`bloque-adaptable-texto ${r.sobrepasaLimite ? 'font-semibold' : 'text-slate-800'}`}>
+              <span
+                className={`bloque-adaptable-texto bloque-adaptable-texto-flexible ${r.sobrepasaLimite ? 'font-semibold' : 'text-slate-800'}`}
+              >
                 {r.sobrepasaLimite ? '⚠ ' : ''}
                 {r.nombre}
               </span>
               <span
-                className={`bloque-adaptable-texto whitespace-nowrap ${r.sobrepasaLimite ? 'font-semibold' : 'text-slate-700'}`}
+                className={`bloque-adaptable-texto whitespace-nowrap flex-shrink-0 ${r.sobrepasaLimite ? 'font-semibold' : 'text-slate-700'}`}
               >
                 {r.dias} x 8 = {r.horas} horas
               </span>
@@ -691,18 +696,18 @@ function BloqueExportar({
         {generandoPdf ? 'Generando…' : '📄 Generar PDF del mes'}
       </button>
 
-      {pdfBlob && (
-        <div className="space-y-2 pt-2 border-t border-panel-600/40">
-          <button onClick={manejarCompartir} disabled={compartiendo} className="boton-primario w-full">
-            {compartiendo ? 'Abriendo…' : '📤 Compartir por WhatsApp'}
-          </button>
-          {mensajeCompartir && (
-            <p className={`text-xs ${mensajeCompartir.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
-              {mensajeCompartir}
-            </p>
-          )}
-        </div>
-      )}
+      {/* Siempre visible, no solo después de generar el PDF — si todavía no hay uno generado,
+          manejarCompartir() avisa con mensajeCompartir en vez de compartir nada. */}
+      <div className="space-y-2 pt-2 border-t border-panel-600/40">
+        <button onClick={manejarCompartir} disabled={compartiendo} className="boton-primario w-full">
+          {compartiendo ? 'Abriendo…' : '📤 Compartir por WhatsApp'}
+        </button>
+        {mensajeCompartir && (
+          <p className={`text-xs ${mensajeCompartir.startsWith('No se pudo') || !pdfBlob ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+            {mensajeCompartir}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

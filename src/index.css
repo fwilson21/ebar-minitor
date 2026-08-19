@@ -56,13 +56,23 @@ body {
 ::-webkit-scrollbar-thumb { background: #C7D2D9; border-radius: 4px; }
 
 /* Bloques que "se adaptan solos" cuando quedan angostos (ej. al achicarlos en Distribución de
- * entorno) — en vez de cortar palabras a la mitad, primero achican la letra y si no alcanza,
- * apilan cada fila en vez de ponerla lado a lado. container-type mide el ancho del bloque en sí
- * (no el de la pantalla), por eso funciona igual sin importar dónde esté ese bloque. Como es CSS
- * plano (no @layer), le gana en cascada a las utilidades de Tailwind (items-center, text-sm, etc.)
- * sin necesitar !important. */
+ * entorno) — en vez de cortar palabras a la mitad, achican la letra en pasos, manteniendo cada
+ * fila (nombre + horas) siempre en una sola línea (el nombre se trunca con "…" en vez de apilarse
+ * o partirse en dos líneas — ver .bloque-adaptable-texto-flexible). container-type mide el ancho
+ * del bloque en sí (no el de la pantalla), por eso funciona igual sin importar dónde esté ese
+ * bloque. Como es CSS plano (no @layer), le gana en cascada a las utilidades de Tailwind
+ * (items-center, text-sm, etc.) sin necesitar !important. */
 .bloque-adaptable {
   container-type: inline-size;
+}
+
+/* Va en el span que puede alargarse mucho (ej. el nombre del operador) dentro de una
+ * .bloque-adaptable-fila — trunca con "…" en vez de forzar el salto a una segunda línea. */
+.bloque-adaptable-texto-flexible {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 @container (max-width: 320px) {
@@ -72,8 +82,12 @@ body {
 
 @container (max-width: 230px) {
   .bloque-adaptable-titulo { font-size: 0.875rem; }
-  .bloque-adaptable-fila { flex-direction: column; align-items: flex-start; row-gap: 0; }
   .bloque-adaptable-texto { font-size: 0.75rem; }
+}
+
+@container (max-width: 170px) {
+  .bloque-adaptable-titulo { font-size: 0.8125rem; }
+  .bloque-adaptable-texto { font-size: 0.6875rem; }
 }
 
 /* Cuadrículas que eligen su propia cantidad de columnas según el ANCHO DEL BLOQUE que las
