@@ -414,7 +414,7 @@ function BloqueVistaPreviaNoDisponible({ texto }: { texto: string }) {
 
 function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: EstacionAsignadaHoy[]; esRegular: boolean }) {
   return (
-    <div className="lg:h-full lg:overflow-auto">
+    <div className="lg:h-full lg:overflow-auto bloque-adaptable">
       <h2 className="text-sm font-semibold text-slate-700 mb-2">
         Tus EBAR de hoy (
         {misEstacionesHoy.filter((e) => e.visitasHoy >= (esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1)).length}/
@@ -430,31 +430,40 @@ function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: E
           Aún no tienes estaciones asignadas para hoy. Habla con tu administrador o supervisor.
         </p>
       ) : (
-        <div className="space-y-2">
-          {misEstacionesHoy.map((e) => {
-            const meta = esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1;
-            const completa = e.visitasHoy >= meta;
-            const color = completa ? 'text-gauge-ok' : e.visitasHoy > 0 ? 'text-gauge-warn' : 'text-gauge-danger';
-            return (
-              <Link
-                key={e.id}
-                to={`/estaciones/${e.id}/nueva-visita`}
-                className="tarjeta p-3 flex items-center justify-between hover:border-gauge-ok/50 transition"
-              >
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{e.nombre}</p>
-                  <p className="text-xs text-slate-500 lectura uppercase tracking-wide">{e.codigo} · {e.zona}</p>
-                </div>
-                <span className={`text-xs flex-shrink-0 ${color}`}>
-                  {esRegular
-                    ? `${Math.min(e.visitasHoy, MINIMO_VISITAS_DIA_REGULAR)}/${MINIMO_VISITAS_DIA_REGULAR} hoy`
-                    : e.visitasHoy > 0
-                      ? `${e.visitasHoy} visita${e.visitasHoy > 1 ? 's' : ''} hoy`
-                      : 'Sin visitar'}
-                </span>
-              </Link>
-            );
-          })}
+        <div className="space-y-4">
+          {/* Mismo agrupado por zona+tipo y cuadrícula de "Pendientes de visita" — ver
+              agruparEstaciones.ts y .grid-tarjetas-compactas en index.css. */}
+          {agruparPorZonaYTipo(misEstacionesHoy).map(({ zona, tipo, estaciones }) => (
+            <div key={`${zona}-${tipo}`}>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo} ({estaciones.length})
+              </p>
+              <div className="grid-tarjetas-compactas">
+                {estaciones.map((e) => {
+                  const meta = esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1;
+                  const completa = e.visitasHoy >= meta;
+                  const color = completa ? 'text-gauge-ok' : e.visitasHoy > 0 ? 'text-gauge-warn' : 'text-gauge-danger';
+                  return (
+                    <Link
+                      key={e.id}
+                      to={`/estaciones/${e.id}/nueva-visita`}
+                      className="tarjeta p-3 flex flex-col gap-1 hover:border-gauge-ok/50 transition"
+                    >
+                      <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
+                      <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
+                      <span className={`text-xs mt-1 ${color}`}>
+                        {esRegular
+                          ? `${Math.min(e.visitasHoy, MINIMO_VISITAS_DIA_REGULAR)}/${MINIMO_VISITAS_DIA_REGULAR} hoy`
+                          : e.visitasHoy > 0
+                            ? `${e.visitasHoy} visita${e.visitasHoy > 1 ? 's' : ''} hoy`
+                            : 'Sin visitar'}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
