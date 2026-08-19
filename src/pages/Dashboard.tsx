@@ -260,13 +260,22 @@ export function Dashboard() {
     setFecha(nueva);
   }
 
-  // Los bloques que ni admin/supervisor ni operador llegan a ver nunca (según el mismo criterio
-  // de arriba: "tus_ebar_hoy" es solo de operador, "visitas_sospechosas"/"bajo_minimo" son solo
-  // de admin/supervisor) se sacan del todo del grid editable — antes quedaban como una celda
-  // vacía y arrastrable sin ningún contenido dentro.
+  // Los bloques que un rol nunca llega a ver ("tus_ebar_hoy" es solo de operador,
+  // "visitas_sospechosas"/"bajo_minimo" son solo de admin/supervisor) se sacan del grid editable
+  // — si no, quedan como una celda vacía y arrastrable sin contenido dentro (ver
+  // renderBloque más abajo, que además explica por qué se ven vacíos AL EDITAR aunque si
+  // apliquen). En modo edición, el rol que importa es el que se está previsualizando en el
+  // selector de "Editar distribución" (objetivoActivo) — NO el rol real de quien edita: un
+  // administrador arreglando la distribución de "Operador" necesita seguir viendo (y poder
+  // agrandar) "Tus EBAR de hoy" aunque él mismo no sea operador. "Todos" no filtra nada, para
+  // poder acomodar el set completo del acomodo compartido.
+  const modoEdicionActivo = puedeEditarDistribucion && editorDistribucion.modoEdicion;
+  const rolParaBloques = modoEdicionActivo ? editorDistribucion.objetivoActivo : usuario?.rol;
   const bloquesDashboard = PANTALLAS_EDITABLES.find((p) => p.id === 'dashboard')!.bloques.filter((b) => {
-    if (b.id === 'tus_ebar_hoy') return !esAdmin;
-    if (b.id === 'visitas_sospechosas' || b.id === 'bajo_minimo') return esAdmin;
+    if (!rolParaBloques || rolParaBloques === 'todos') return true;
+    const rolEsAdminComo = rolParaBloques === 'administrador' || rolParaBloques === 'supervisor';
+    if (b.id === 'tus_ebar_hoy') return !rolEsAdminComo;
+    if (b.id === 'visitas_sospechosas' || b.id === 'bajo_minimo') return rolEsAdminComo;
     return true;
   });
 
@@ -309,7 +318,11 @@ export function Dashboard() {
                   />
                 );
               case 'tus_ebar_hoy':
-                return !esAdmin ? <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} /> : null;
+                if (!esAdmin) return <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} />;
+                // Se ve vacío para el administrador (sus propias EBAR de hoy no aplican) aunque el
+                // bloque siga presente para poder acomodarlo — el operador real sí va a ver su
+                // contenido acá.
+                return modoEdicionActivo ? <BloqueVistaPreviaNoDisponible texto="Solo lo ve el operador." /> : null;
               case 'pendientes_visita':
                 return (
                   <BloquePendientesVisita
@@ -321,9 +334,11 @@ export function Dashboard() {
               case 'requieren_atencion':
                 return <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />;
               case 'visitas_sospechosas':
-                return esAdmin ? <BloqueVisitasSospechosas sospechosas={sospechosas} /> : null;
+                if (esAdmin) return <BloqueVisitasSospechosas sospechosas={sospechosas} />;
+                return modoEdicionActivo ? <BloqueVistaPreviaNoDisponible texto="Solo lo ve administrador/supervisor." /> : null;
               case 'bajo_minimo':
-                return esAdmin ? <BloqueBajoMinimo bajoMinimo={bajoMinimo} /> : null;
+                if (esAdmin) return <BloqueBajoMinimo bajoMinimo={bajoMinimo} />;
+                return modoEdicionActivo ? <BloqueVistaPreviaNoDisponible texto="Solo lo ve administrador/supervisor." /> : null;
               default:
                 return null;
             }
@@ -377,6 +392,22 @@ function BloqueResumenGeneral({
         <Metrica label="Estaciones con problemas" valor={resumen?.estaciones_con_problemas ?? 0} acento="warn" />
         <Metrica label="Alertas de voltaje" valor={resumen?.alertas_voltaje ?? 0} acento="danger" />
       </div>
+    </div>
+  );
+}
+
+/** Ocupa el bloque en "Editar distribución" cuando se está previsualizando/acomodando un rol
+ * distinto al de quien edita — así el bloque sigue ahí para poder moverlo/agrandarlo (que es lo
+ * que hace falta, ver comentario en bloquesDashboard) aunque no haya contenido real que mostrar
+ * (ej. un administrador no tiene EBAR propias de operador). El rol real sí ve su contenido normal. */
+function BloqueVistaPreviaNoDisponible({ texto }: { texto: string }) {
+  return (
+    <div className="h-full flex items-center justify-center text-center p-3 border-2 border-dashed border-panel-600 rounded-lg">
+      <p className="text-xs text-slate-500">
+        Sin vista previa acá — {texto}
+        <br />
+        Se puede mover/agrandar igual; el rol real sí va a ver su contenido.
+      </p>
     </div>
   );
 }
