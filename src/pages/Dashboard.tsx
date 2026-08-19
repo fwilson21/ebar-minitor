@@ -259,6 +259,16 @@ export function Dashboard() {
     setFecha(nueva);
   }
 
+  // Los bloques que ni admin/supervisor ni operador llegan a ver nunca (según el mismo criterio
+  // de arriba: "tus_ebar_hoy" es solo de operador, "visitas_sospechosas"/"bajo_minimo" son solo
+  // de admin/supervisor) se sacan del todo del grid editable — antes quedaban como una celda
+  // vacía y arrastrable sin ningún contenido dentro.
+  const bloquesDashboard = PANTALLAS_EDITABLES.find((p) => p.id === 'dashboard')!.bloques.filter((b) => {
+    if (b.id === 'tus_ebar_hoy') return !esAdmin;
+    if (b.id === 'visitas_sospechosas' || b.id === 'bajo_minimo') return esAdmin;
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
@@ -279,7 +289,7 @@ export function Dashboard() {
         {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
         <GridEditable
           pantallaId="dashboard"
-          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'dashboard')!.bloques}
+          bloques={bloquesDashboard}
           modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
           resetSignal={editorDistribucion.resetSignal}
           objetivoEdicion={editorDistribucion.objetivoActivo}

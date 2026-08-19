@@ -5,6 +5,7 @@ import 'react-resizable/css/styles.css';
 import { useAuth } from '../contexts/AuthContext';
 import type { BloqueDefinicion } from '../lib/pantallasEditables';
 import { obtenerLayout, type BloqueLayout, type ObjetivoDistribucion } from '../lib/layoutsAdmin';
+import { BloqueAutoEncogible } from './BloqueAutoEncogible';
 
 const Grid = WidthProvider(GridLayout);
 
@@ -94,7 +95,9 @@ export function GridEditable({
                 <span aria-hidden="true">⠿</span> {b.titulo}
               </div>
             )}
-            <div className="flex-1 min-h-0 overflow-auto">{renderBloque(b.id)}</div>
+            <div className="flex-1 min-h-0">
+              <BloqueAutoEncogible>{renderBloque(b.id)}</BloqueAutoEncogible>
+            </div>
           </div>
         ))}
       </Grid>

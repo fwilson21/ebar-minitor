@@ -45,10 +45,9 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
     nombre: 'Inicio (Dashboard)',
     bloques: [
       { id: 'resumen_general', titulo: 'Resumen general', defaultLayout: { x: 0, y: 0, w: 24, h: 8 } },
-      // "Tus EBAR de hoy" solo lo ve el operador; los otros 3 de abajo solo admin/supervisor —
-      // igual quedan todos en el layout compartido: a quien no le toca ver un bloque, esa celda
-      // le queda vacía (mismo criterio que ya se acepta hoy sin distribución, ej. "Pendientes de
-      // visita" ya desaparece solo si no hay ninguna).
+      // "Tus EBAR de hoy" solo lo ve el operador; "visitas_sospechosas"/"bajo_minimo" solo
+      // admin/supervisor — Dashboard.tsx saca del grid el bloque que no le toca a quien mira,
+      // así no queda como una celda vacía y arrastrable sin contenido dentro.
       { id: 'tus_ebar_hoy', titulo: 'Tus EBAR de hoy (operador)', defaultLayout: { x: 0, y: 8, w: 12, h: 10 } },
       { id: 'pendientes_visita', titulo: 'Pendientes de visita', defaultLayout: { x: 12, y: 8, w: 12, h: 8 } },
       { id: 'requieren_atencion', titulo: 'Requieren atención', defaultLayout: { x: 0, y: 18, w: 12, h: 10 } },
