@@ -327,6 +327,15 @@ export function VisitForm() {
   const tiempoEnSitio = formatearDuracion(ahora - new Date(horaLlegada).getTime());
 
   function manejarClickGuardar() {
+    // Si falta un campo obligatorio (no "blando" como voltaje/amperaje/observaciones), ni
+    // siquiera tiene sentido ofrecer "Guardar de todas formas": igual se va a bloquear después.
+    // Antes esto se descubría recién DESPUÉS de confirmar dos veces, y parecía que el botón "no
+    // guardaba nada".
+    const campoFaltante = primerCampoObligatorioFaltante();
+    if (campoFaltante) {
+      setMensaje(campoFaltante);
+      return;
+    }
     const lista = validar();
     if (lista.length === 0) {
       manejarGuardar();
@@ -504,17 +513,20 @@ export function VisitForm() {
     cargar();
   }, [estacionId, visitaId]);
 
-  async function manejarGuardar() {
-    if (!estacion || !usuario) return;
-
+  /** Primer campo obligatorio que falte completar (o null si están todos completos). No incluye
+   * el aviso de "vas a modificar el custodio/SIGAME" (es una confirmación aparte, no un campo
+   * faltante) ni las validaciones "blandas" de `validar()` (voltaje/amperaje/observaciones), que
+   * sí admiten "Guardar de todas formas". Se usa en `manejarGuardar` (para bloquear antes de
+   * guardar) y en `manejarClickGuardar` (para no ofrecer "Guardar de todas formas" cuando en
+   * realidad va a quedar bloqueado igual por esto — antes eso se descubría recién después de
+   * confirmar dos veces, y parecía que el botón no guardaba nada). */
+  function primerCampoObligatorioFaltante(): string | null {
     if (!esLineaConduccion && estadoEstacion === '') {
-      setMensaje('Selecciona el estado general de la estación antes de guardar.');
-      return;
+      return 'Selecciona el estado general de la estación antes de guardar.';
     }
 
     if (!esLineaConduccion && nivelTanque === '') {
-      setMensaje('Selecciona el nivel del tanque de almacenamiento antes de guardar.');
-      return;
+      return 'Selecciona el nivel del tanque de almacenamiento antes de guardar.';
     }
 
     if (!esLineaConduccion) {
@@ -522,24 +534,7 @@ export function VisitForm() {
         (b) => bombasSeleccionadas.has(b.bomba_id) && b.estado === '',
       );
       if (bombaSinEstado) {
-        setMensaje(`Selecciona el estado de la bomba ${bombaSinEstado.numero_bomba} antes de guardar.`);
-        return;
-      }
-
-      const bombasConCustodioModificado = bombas.filter((b) => {
-        const actual = registrosBombas[b.id];
-        if (!actual) return false;
-        const custodioCambio = (actual.custodio ?? '') !== (b.custodio ?? '') && (b.custodio ?? '').trim() !== '';
-        const sigameCambio =
-          (actual.codigo_sigame ?? '') !== (b.codigo_sigame ?? '') && (b.codigo_sigame ?? '').trim() !== '';
-        return custodioCambio || sigameCambio;
-      });
-      for (const b of bombasConCustodioModificado) {
-        const continuar = window.confirm(
-          `Vas a modificar el custodio/código SIGAME ya registrado para la Bomba ${b.numero_bomba} ` +
-            `(actual: ${b.custodio || '-'} / ${b.codigo_sigame || '-'}). ¿Confirmas el cambio?`,
-        );
-        if (!continuar) return;
+        return `Selecciona el estado de la bomba ${bombaSinEstado.numero_bomba} antes de guardar.`;
       }
     }
 
@@ -565,28 +560,53 @@ export function VisitForm() {
         ];
     const equipoSinEstado = equiposActivos.find((e) => e.valor.estado === '');
     if (equipoSinEstado) {
-      setMensaje(`Selecciona el estado de "${equipoSinEstado.titulo}" antes de guardar.`);
-      return;
+      return `Selecciona el estado de "${equipoSinEstado.titulo}" antes de guardar.`;
     }
 
     if (!esLineaConduccion && descargaEmergencia.tiene == null) {
-      setMensaje('Indica si la estación tiene descarga de emergencia antes de guardar.');
-      return;
+      return 'Indica si la estación tiene descarga de emergencia antes de guardar.';
     }
 
     if (!esLineaConduccion && valvulaAire.tiene == null) {
-      setMensaje('Indica si la estación tiene válvula de aire antes de guardar.');
-      return;
+      return 'Indica si la estación tiene válvula de aire antes de guardar.';
     }
 
     if (!esLineaConduccion && camaraValvulaCompuerta.tiene == null) {
-      setMensaje('Indica si la cámara de llegada tiene compuerta antes de guardar.');
-      return;
+      return 'Indica si la cámara de llegada tiene compuerta antes de guardar.';
     }
 
     if (!esLineaConduccion && variador.tiene == null) {
-      setMensaje('Indica si la estación tiene variadores de frecuencia antes de guardar.');
+      return 'Indica si la estación tiene variadores de frecuencia antes de guardar.';
+    }
+
+    return null;
+  }
+
+  async function manejarGuardar() {
+    if (!estacion || !usuario) return;
+
+    const campoFaltante = primerCampoObligatorioFaltante();
+    if (campoFaltante) {
+      setMensaje(campoFaltante);
       return;
+    }
+
+    if (!esLineaConduccion) {
+      const bombasConCustodioModificado = bombas.filter((b) => {
+        const actual = registrosBombas[b.id];
+        if (!actual) return false;
+        const custodioCambio = (actual.custodio ?? '') !== (b.custodio ?? '') && (b.custodio ?? '').trim() !== '';
+        const sigameCambio =
+          (actual.codigo_sigame ?? '') !== (b.codigo_sigame ?? '') && (b.codigo_sigame ?? '').trim() !== '';
+        return custodioCambio || sigameCambio;
+      });
+      for (const b of bombasConCustodioModificado) {
+        const continuar = window.confirm(
+          `Vas a modificar el custodio/código SIGAME ya registrado para la Bomba ${b.numero_bomba} ` +
+            `(actual: ${b.custodio || '-'} / ${b.codigo_sigame || '-'}). ¿Confirmas el cambio?`,
+        );
+        if (!continuar) return;
+      }
     }
 
     const fotosPendientes = esLineaConduccion
