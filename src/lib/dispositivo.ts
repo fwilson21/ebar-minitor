@@ -1,3 +1,5 @@
+import { generarUUID } from './uuid';
+
 const CLAVE_DEVICE_ID = 'ebar_device_id';
 
 // Identificador propio del celular/navegador, generado una sola vez y guardado
@@ -6,7 +8,7 @@ const CLAVE_DEVICE_ID = 'ebar_device_id';
 export function obtenerIdDispositivo(): string {
   let id = localStorage.getItem(CLAVE_DEVICE_ID);
   if (!id) {
-    id = crypto.randomUUID();
+    id = generarUUID();
     localStorage.setItem(CLAVE_DEVICE_ID, id);
   }
   return id;

@@ -8,6 +8,7 @@ import {
 } from '../lib/offline';
 import { esMismoDia, formatearFechaHoraFoto, urlMiniaturaDrive } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
+import { generarUUID } from '../lib/uuid';
 import { distanciaMetros, useUbicacionActual } from '../lib/useUbicacion';
 import { guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
@@ -625,7 +626,7 @@ export function VisitForm() {
 
     const payload: VisitaInput = {
       id: modoEdicion ? visitaId : undefined,
-      cliente_uuid: crypto.randomUUID(),
+      cliente_uuid: generarUUID(),
       estacion_id: estacion.id,
       operador_id: usuario.id,
       fecha_hora_llegada: horaLlegada,
@@ -748,12 +749,24 @@ export function VisitForm() {
       setTimeout(() => navigate(`/estaciones/${estacion.id}`), 800);
     } catch (err: any) {
       // Conexión inestable a mitad de carga: igual se guarda localmente.
-      if (modoEdicion && visitaId) await encolarEdicionVisita(visitaId, payload);
-      else await encolarVisita(payload);
-      guardadoRef.current = true;
-      await eliminarBorradorVisita(claveBorrador());
-      setMensaje('Sin conexión estable: los cambios se guardaron en el dispositivo y se sincronizarán automáticamente.');
-      setTimeout(() => navigate(`/estaciones/${estacion.id}`), 1500);
+      try {
+        if (modoEdicion && visitaId) await encolarEdicionVisita(visitaId, payload);
+        else await encolarVisita(payload);
+        guardadoRef.current = true;
+        await eliminarBorradorVisita(claveBorrador());
+        setMensaje('Sin conexión estable: los cambios se guardaron en el dispositivo y se sincronizarán automáticamente.');
+        setTimeout(() => navigate(`/estaciones/${estacion.id}`), 1500);
+      } catch (errGuardadoLocal: any) {
+        // Esto NO debe quedar en silencio: si ni siquiera el guardado local funcionó (por
+        // ejemplo, ese celular/navegador no puede guardar fotos en su almacenamiento local),
+        // la alternativa es que el operador crea que guardó y en realidad se perdió todo sin
+        // ningún aviso — el caso que motivó este cambio.
+        setMensaje(
+          `No se pudo guardar la visita en este celular. Avisa a soporte con este mensaje: "${
+            errGuardadoLocal?.message ?? String(errGuardadoLocal)
+          }".`,
+        );
+      }
     } finally {
       setGuardando(false);
     }
@@ -1124,7 +1137,17 @@ export function VisitForm() {
         </>
       )}
 
-      {mensaje && <p className="text-sm text-gauge-ok">{mensaje}</p>}
+      {mensaje && (
+        <p
+          className={`text-sm ${
+            mensaje.includes('correctamente') || mensaje.includes('se guardaron en el dispositivo')
+              ? 'text-gauge-ok'
+              : 'text-gauge-danger'
+          }`}
+        >
+          {mensaje}
+        </p>
+      )}
 
       {pasoConfirmacion === 0 && modoEdicion && !hayCambios && (
         <button type="button" onClick={() => navigate(`/estaciones/${estacionId}`)} className="boton-secundario w-full">

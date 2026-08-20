@@ -3,6 +3,7 @@ import type { Bomba, EstadoBomba, FotoLocal, RegistroBombaInput } from '../lib/t
 import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
 import { eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
+import { generarUUID } from '../lib/uuid';
 import { FotoLightbox } from './FotoLightbox';
 import { BotonDictado } from './BotonDictado';
 
@@ -43,7 +44,7 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
     const ahora = new Date().toISOString();
     const nuevas: FotoLocal[] = await Promise.all(
       archivos.map(async (file) => ({
-        id: crypto.randomUUID(),
+        id: generarUUID(),
         blob: await estamparFechaEnFoto(file, ahora),
         tomada_en: ahora,
         estado_subida: 'pendiente' as const,

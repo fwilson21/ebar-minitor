@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { EstadoEquipo, FotoLocal, RegistroEquipo } from '../lib/types';
 import { eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
+import { generarUUID } from '../lib/uuid';
 import { FotoLightbox } from './FotoLightbox';
 import { BotonDictado } from './BotonDictado';
 
@@ -67,7 +68,7 @@ export function EquipoSection({
     const ahora = new Date().toISOString();
     const nuevas: FotoLocal[] = await Promise.all(
       archivos.map(async (file) => ({
-        id: crypto.randomUUID(),
+        id: generarUUID(),
         blob: await estamparFechaEnFoto(file, ahora),
         tomada_en: ahora,
         estado_subida: 'pendiente' as const,

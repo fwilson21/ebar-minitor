@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { FotoLocal } from '../lib/types';
 import { eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
+import { generarUUID } from '../lib/uuid';
 import { FotoLightbox } from './FotoLightbox';
 
 interface Props {
@@ -24,7 +25,7 @@ export function PhotoCapture({ fotos, onChange }: Props) {
     const ahora = new Date().toISOString();
     const nuevas: FotoLocal[] = await Promise.all(
       archivos.map(async (file) => ({
-        id: crypto.randomUUID(),
+        id: generarUUID(),
         blob: await estamparFechaEnFoto(file, ahora),
         tomada_en: ahora,
         estado_subida: 'pendiente' as const,
