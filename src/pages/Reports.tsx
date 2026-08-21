@@ -55,28 +55,20 @@ export function Reports() {
       .then(({ data }) => setOperadores((data as Usuario[]) ?? []));
   }, [esAdmin]);
 
-  // El selector de Estación solo debe ofrecer las EBAR donde el operador relevante (uno mismo si
-  // no es admin; el elegido en "Operador" si es admin y hay uno seleccionado) tiene al menos una
-  // visita registrada — una lista con las 29 EBAR de la empresa, casi todas sin ningún reporte de
-  // ese operador, solo hacía más difícil encontrar la que sí importa (y elegir una sin reportes
-  // termina en "No hay visitas registradas para los filtros seleccionados"). Sin un operador
-  // puntual (admin con "Todos los operadores"), se muestran todas — no hay a quién acotar.
+  // El selector de Estación solo debe ofrecer las EBAR que tienen al menos una visita registrada
+  // — una lista con las 29 EBAR de la empresa, muchas sin ningún reporte, solo hacía más difícil
+  // encontrar la que sí importa (y elegir una sin reportes termina en "No hay visitas registradas
+  // para los filtros seleccionados"). Si hay un operador puntual elegido (uno mismo si no es
+  // admin; el elegido en "Operador" si es admin), se acota a sus reportes; con "Todos los
+  // operadores" se acota igual, pero contra los reportes de cualquiera (no se muestran todas sin
+  // filtrar).
   useEffect(() => {
     const operadorEfectivo = esAdmin ? operadorId : usuario?.id;
     async function cargarEstaciones() {
-      if (!operadorEfectivo) {
-        const { data } = await supabase
-          .from('estaciones_ebar')
-          .select('id, codigo, nombre, zona, tipo')
-          .order('codigo');
-        setEstaciones((data as EstacionEbar[]) ?? []);
-        return;
-      }
-      const { data: visitasOperador } = await supabase
-        .from('visitas')
-        .select('estacion_id')
-        .eq('operador_id', operadorEfectivo);
-      const idsConReportes = [...new Set((visitasOperador ?? []).map((v: any) => v.estacion_id as string))];
+      let query = supabase.from('visitas').select('estacion_id');
+      if (operadorEfectivo) query = query.eq('operador_id', operadorEfectivo);
+      const { data: visitasRelevantes } = await query;
+      const idsConReportes = [...new Set((visitasRelevantes ?? []).map((v: any) => v.estacion_id as string))];
       if (idsConReportes.length === 0) {
         setEstaciones([]);
         return;
