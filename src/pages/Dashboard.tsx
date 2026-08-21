@@ -626,6 +626,29 @@ const CLASE_TEXTO_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
   danger: 'text-gauge-danger',
 };
 
+/** Qué significa cada color de las tarjetas de EBAR — usada tanto en "Tus EBAR de hoy" (operador)
+ * como en "Pendientes de visita" (los 3 roles), mismo criterio de semáforo. */
+function LeyendaSemaforoVisitas({ esRegular }: { esRegular: boolean }) {
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 mb-3">
+      <span>
+        <span className="inline-block w-2.5 h-2.5 rounded-full bg-gauge-danger align-middle mr-1" />
+        Sin ninguna visita hoy
+      </span>
+      {esRegular && (
+        <span>
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-gauge-warn align-middle mr-1" />
+          Le falta al menos 1 visita
+        </span>
+      )}
+      <span>
+        <span className="inline-block w-2.5 h-2.5 rounded-full bg-gauge-ok align-middle mr-1" />
+        Ya cumplió el mínimo de hoy
+      </span>
+    </div>
+  );
+}
+
 function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: EstacionAsignadaHoy[]; esRegular: boolean }) {
   return (
     <div className="lg:h-full lg:overflow-auto bloque-adaptable">
@@ -644,6 +667,8 @@ function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: E
           Aún no tienes estaciones asignadas para hoy. Habla con tu administrador o supervisor.
         </p>
       ) : (
+        <>
+        <LeyendaSemaforoVisitas esRegular={esRegular} />
         <div className="space-y-4">
           {/* Mismo agrupado por zona+tipo y cuadrícula de "Pendientes de visita" — ver
               agruparEstaciones.ts y .grid-tarjetas-compactas en index.css. */}
@@ -678,6 +703,7 @@ function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: E
             </div>
           ))}
         </div>
+        </>
       )}
     </div>
   );
@@ -710,6 +736,8 @@ function BloquePendientesVisita({
         <p className="text-xs text-slate-500 mb-2">Hoy no aplica el mínimo de {MINIMO_VISITAS_DIA_REGULAR} visitas (fin de semana o feriado).</p>
       )}
       {mostrarSinVisitar && (
+        <>
+        <LeyendaSemaforoVisitas esRegular={esRegular} />
         <div className="space-y-4">
           {agruparPorZonaYTipo(estadoVisitasHoy).map(({ zona, tipo, estaciones }) => (
             <div key={`${zona}-${tipo}`}>
@@ -745,6 +773,7 @@ function BloquePendientesVisita({
             </div>
           ))}
         </div>
+        </>
       )}
     </div>
   );
@@ -834,6 +863,16 @@ const COLOR_ACENTO: Record<'ok' | 'warn' | 'danger' | 'idle', string> = {
   idle: 'text-gauge-idle',
 };
 
+// Fondo + borde de cada tarjeta de métrica — antes eran blancas de punta a punta, con solo el
+// número coloreado; ahora toda la tarjeta lleva el color de su acento, para que se distingan de
+// un vistazo sin tener que leer el número.
+const CLASE_TARJETA_ACENTO: Record<'ok' | 'warn' | 'danger' | 'idle', string> = {
+  ok: 'bg-gauge-ok/10 border-gauge-ok/50',
+  warn: 'bg-gauge-warn/10 border-gauge-warn/50',
+  danger: 'bg-gauge-danger/10 border-gauge-danger/50',
+  idle: 'bg-gauge-idle/10 border-gauge-idle/50',
+};
+
 function Metrica({
   label,
   valor,
@@ -846,8 +885,12 @@ function Metrica({
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className="tarjeta p-4 text-left w-full hover:border-gauge-ok/50 transition">
-      <p className="text-xs text-slate-600 mb-1">{label}</p>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`tarjeta p-4 text-left w-full border-2 hover:brightness-95 transition ${CLASE_TARJETA_ACENTO[acento]}`}
+    >
+      <p className="text-xs text-slate-700 mb-1">{label}</p>
       <p className={`text-3xl font-bold lectura ${COLOR_ACENTO[acento]}`}>{valor}</p>
     </button>
   );
