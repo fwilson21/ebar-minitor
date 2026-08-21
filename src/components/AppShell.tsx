@@ -25,8 +25,8 @@ const NAV_PERMISOS = { to: '/permisos', label: 'Permisos', icon: '🔐' };
 
 // Qué pantalla (id usado en pantallasEditables.ts / layouts_admin / configuracion_ancho_contenido)
 // corresponde a cada ruta — así AppShell sabe qué ancho guardado aplicarle al contenido de la
-// pantalla que está activa. Las rutas que no están acá (ej. detalle de una estación, formulario
-// de visita) no tienen "Editar distribución" propio y usan el ancho de respaldo ('global').
+// pantalla que está activa. Las rutas que no están acá (ej. detalle de una estación) no tienen
+// "Editar distribución" propio y usan el ancho de respaldo ('global').
 const PANTALLA_POR_RUTA: Record<string, string> = {
   '/': 'dashboard',
   '/estaciones': 'estaciones',
@@ -37,11 +37,22 @@ const PANTALLA_POR_RUTA: Record<string, string> = {
   '/permisos': 'permisos',
 };
 
+// Formulario de visita (nueva o editar): la ruta real trae :id/:visitaId de por medio
+// (estaciones/abc123/nueva-visita, estaciones/abc123/visitas/xyz/editar), así que no calza con
+// una clave fija de PANTALLA_POR_RUTA — se resuelve aparte por patrón.
+const RUTA_VISITA_FORMULARIO = /^\/estaciones\/[^/]+\/(nueva-visita|visitas\/[^/]+\/editar)$/;
+
+function pantallaPorRuta(pathname: string): string {
+  if (PANTALLA_POR_RUTA[pathname]) return PANTALLA_POR_RUTA[pathname];
+  if (RUTA_VISITA_FORMULARIO.test(pathname)) return 'visita_formulario';
+  return 'global';
+}
+
 export function AppShell() {
   const { usuario, logout, tienePermiso, anchoDePantalla } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const anchoActivo = anchoDePantalla(PANTALLA_POR_RUTA[location.pathname] ?? 'global');
+  const anchoActivo = anchoDePantalla(pantallaPorRuta(location.pathname));
   const [pendientes, setPendientes] = useState(0);
   const [enLinea, setEnLinea] = useState(navigator.onLine);
   const [mostrarPanel, setMostrarPanel] = useState(false);

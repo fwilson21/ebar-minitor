@@ -6,8 +6,12 @@ import type { EditorDistribucion } from '../hooks/useEditorDistribucion';
  * previsualizando, el control de ancho de esta pantalla, y el checklist de a quién aplica al
  * guardar. Cada pantalla que use GridEditable en escritorio pone esto arriba de su
  * <GridEditable>, pasándole modoEdicion/resetSignal/onGuardar/objetivoEdicion del mismo editor
- * (ver useEditorDistribucion.ts). */
-export function BarraDistribucion({ editor }: { editor: EditorDistribucion }) {
+ * (ver useEditorDistribucion.ts).
+ *
+ * `sinBloques`: para pantallas de un solo bloque de contenido (ej. formulario de visita) que
+ * solo necesitan el control de ancho, sin <GridEditable> debajo — oculta "Restablecer por
+ * defecto" (no tendría nada que restablecer, resetSignal no lo consume nadie). */
+export function BarraDistribucion({ editor, sinBloques }: { editor: EditorDistribucion; sinBloques?: boolean }) {
   const {
     modoEdicion,
     alternarModoEdicion,
@@ -30,11 +34,13 @@ export function BarraDistribucion({ editor }: { editor: EditorDistribucion }) {
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-slate-500">
           {modoEdicion
-            ? 'Arrastra la manija de arriba de cada bloque para moverlo, o su esquina para cambiar el tamaño. El resto de la pantalla sigue funcionando normal mientras acomodas.'
+            ? sinBloques
+              ? 'Ajusta con el control de abajo qué tan ancho se ve el contenido en la pantalla de la computadora.'
+              : 'Arrastra la manija de arriba de cada bloque para moverlo, o su esquina para cambiar el tamaño. El resto de la pantalla sigue funcionando normal mientras acomodas.'
             : ''}
         </p>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {modoEdicion && (
+          {modoEdicion && !sinBloques && (
             <button type="button" onClick={restablecer} className="boton-secundario text-sm px-3 py-1.5">
               Restablecer por defecto
             </button>
