@@ -1324,6 +1324,15 @@ function EditorPlanilla({
   }
 
   function alGenerarPdfClick() {
+    // El PDF sale de lo que hay guardado en la base (RPCs/PDF no leen el estado sin guardar del
+    // formulario) — generarlo antes de guardar una planilla nueva mostraría datos que todavía no
+    // existen ahí. `planilla` solo es no-nulo si ya estaba guardada al abrir este editor (Ver/
+    // Editar) — para una "Nueva planilla", sigue siendo null durante toda la vida de este editor
+    // (guardar() cierra el modal al terminar, ver onGuardado en el padre).
+    if (!planilla) {
+      setMensaje('Primero guarda la planilla — recién después de guardar se puede generar el PDF.');
+      return;
+    }
     if (camposFaltantes.size > 0) {
       setAccionPendiente('pdf');
       return;
@@ -1466,6 +1475,7 @@ function EditorPlanilla({
     alGenerarPdfClick,
     generandoPdf,
     onCerrar,
+    mensaje,
   };
 
   return (
@@ -2189,6 +2199,7 @@ interface BloqueAccionesProps {
   generandoPdf: boolean;
   onCerrar: () => void;
   soloLectura: boolean;
+  mensaje: string | null;
 }
 
 function BloqueAcciones({
@@ -2216,6 +2227,7 @@ function BloqueAcciones({
   alGenerarPdfClick,
   generandoPdf,
   onCerrar,
+  mensaje,
 }: BloqueAccionesProps) {
   return (
     <div className="space-y-4">
@@ -2277,6 +2289,11 @@ function BloqueAcciones({
       </div>
 
       <div className="sticky bottom-0 bg-panel-800 pb-1">
+        {mensaje && (
+          <div className="max-w-2xl mx-auto pt-2">
+            <p className={`text-xs ${mensaje.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-warn'}`}>{mensaje}</p>
+          </div>
+        )}
         <div className="max-w-2xl mx-auto flex gap-2 pt-2">
           {!soloLectura && (
             <button onClick={alGuardarClick} disabled={guardando} className="boton-primario flex-1">
