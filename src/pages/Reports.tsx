@@ -10,6 +10,7 @@ import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { hoyLocal } from '../lib/fecha';
+import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
 
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
 
@@ -45,13 +46,41 @@ export function Reports() {
       .then(({ data }) => setOperadores((data as Usuario[]) ?? []));
   }, [esAdmin]);
 
+  // El selector de Estación solo debe ofrecer las EBAR donde el operador relevante (uno mismo si
+  // no es admin; el elegido en "Operador" si es admin y hay uno seleccionado) tiene al menos una
+  // visita registrada — una lista con las 29 EBAR de la empresa, casi todas sin ningún reporte de
+  // ese operador, solo hacía más difícil encontrar la que sí importa (y elegir una sin reportes
+  // termina en "No hay visitas registradas para los filtros seleccionados"). Sin un operador
+  // puntual (admin con "Todos los operadores"), se muestran todas — no hay a quién acotar.
   useEffect(() => {
-    supabase
-      .from('estaciones_ebar')
-      .select('id, codigo, nombre, zona')
-      .order('codigo')
-      .then(({ data }) => setEstaciones((data as EstacionEbar[]) ?? []));
-  }, []);
+    const operadorEfectivo = esAdmin ? operadorId : usuario?.id;
+    async function cargarEstaciones() {
+      if (!operadorEfectivo) {
+        const { data } = await supabase
+          .from('estaciones_ebar')
+          .select('id, codigo, nombre, zona, tipo')
+          .order('codigo');
+        setEstaciones((data as EstacionEbar[]) ?? []);
+        return;
+      }
+      const { data: visitasOperador } = await supabase
+        .from('visitas')
+        .select('estacion_id')
+        .eq('operador_id', operadorEfectivo);
+      const idsConReportes = [...new Set((visitasOperador ?? []).map((v: any) => v.estacion_id as string))];
+      if (idsConReportes.length === 0) {
+        setEstaciones([]);
+        return;
+      }
+      const { data } = await supabase
+        .from('estaciones_ebar')
+        .select('id, codigo, nombre, zona, tipo')
+        .in('id', idsConReportes)
+        .order('codigo');
+      setEstaciones((data as EstacionEbar[]) ?? []);
+    }
+    cargarEstaciones();
+  }, [esAdmin, operadorId, usuario?.id]);
 
   const operadorNombre =
     operadores.find((o) => o.id === operadorId)?.nombre_completo ?? usuario?.nombre_completo ?? '';
@@ -316,10 +345,14 @@ function BloqueFiltrosGenerar({
             ) : (
               <option value="">Todas las estaciones</option>
             )}
-            {estaciones.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.codigo} — {e.nombre}
-              </option>
+            {agruparPorZonaYTipo(estaciones).map(({ zona, tipo: tipoGrupo, estaciones: delGrupo }) => (
+              <optgroup key={`${zona}-${tipoGrupo}`} label={`${ETIQUETA_ZONA[zona] ?? zona} · ${ETIQUETA_TIPO[tipoGrupo] ?? tipoGrupo}`}>
+                {delGrupo.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.codigo} — {e.nombre}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
