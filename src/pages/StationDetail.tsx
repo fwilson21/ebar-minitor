@@ -11,6 +11,8 @@ import { incrustarFotosVisitas } from '../lib/fotos';
 import { obtenerVisitasPorEstacion } from '../lib/visitasReporte';
 import { leerCacheLocal } from '../lib/cacheLocal';
 import { hoyLocal } from '../lib/fecha';
+import { BarraDistribucion } from '../components/BarraDistribucion';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 
 const VISITAS_EN_PDF = 30;
 const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
@@ -97,6 +99,10 @@ export function StationDetail() {
   const esAdmin = usuario?.rol === 'administrador';
   // Delegable por permiso (ver /permisos) además del administrador real — antes era esAdmin a secas.
   const puedeGestionarBombas = esAdmin || tienePermiso('gestionar_bombas');
+  // "Editar distribución" acá es solo el control de ancho de esta pantalla (sinBloques en
+  // BarraDistribucion, mismo patrón que VisitForm.tsx) — no una grilla de bloques movibles.
+  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
+  const editorDistribucion = useEditorDistribucion('estacion_detalle');
   const [estacion, setEstacion] = useState<EstacionEbar | null>(null);
   const [historial, setHistorial] = useState<HistorialItem[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -257,6 +263,8 @@ export function StationDetail() {
           )}
         </div>
       </div>
+
+      {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} sinBloques />}
 
       <Link to={`/estaciones/${estacion.id}/nueva-visita`} className="boton-primario w-full block text-center">
         + Registrar visita

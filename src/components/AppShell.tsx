@@ -37,14 +37,17 @@ const PANTALLA_POR_RUTA: Record<string, string> = {
   '/permisos': 'permisos',
 };
 
-// Formulario de visita (nueva o editar): la ruta real trae :id/:visitaId de por medio
-// (estaciones/abc123/nueva-visita, estaciones/abc123/visitas/xyz/editar), así que no calza con
-// una clave fija de PANTALLA_POR_RUTA — se resuelve aparte por patrón.
+// Formulario de visita (nueva o editar) y detalle de estación: la ruta real trae :id/:visitaId de
+// por medio (estaciones/abc123/nueva-visita, estaciones/abc123/visitas/xyz/editar,
+// estaciones/abc123 a secas), así que no calzan con una clave fija de PANTALLA_POR_RUTA — se
+// resuelven aparte por patrón.
 const RUTA_VISITA_FORMULARIO = /^\/estaciones\/[^/]+\/(nueva-visita|visitas\/[^/]+\/editar)$/;
+const RUTA_ESTACION_DETALLE = /^\/estaciones\/[^/]+$/;
 
 function pantallaPorRuta(pathname: string): string {
   if (PANTALLA_POR_RUTA[pathname]) return PANTALLA_POR_RUTA[pathname];
   if (RUTA_VISITA_FORMULARIO.test(pathname)) return 'visita_formulario';
+  if (RUTA_ESTACION_DETALLE.test(pathname)) return 'estacion_detalle';
   return 'global';
 }
 
