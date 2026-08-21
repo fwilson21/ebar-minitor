@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { AsignacionEstacion, EstacionEbar, TurnoCalendario, Usuario } from '../lib/types';
 import { calcularFeriados, esFeriadoCalculado, esFinDeSemana, nombreFeriadoCalculado } from '../lib/feriadosEcuador';
+import { ManijaRedimension } from '../components/ManijaRedimension';
+import { obtenerTamanoModal, guardarTamanoModal } from '../lib/tamanoModal';
 import {
   descargarBlob,
   generarReporteTurnos,
@@ -141,18 +143,18 @@ export function CalendarioTurnos() {
   useEffect(() => {
     if (!esAdmin && !esDigitador && !puedeMarcarTurnos && !puedeGestionarFeriados) return;
     async function cargarBase() {
-      const [{ data: ops }, { data: est }, { data: feriados }, { data: defaults }, { data: tamano }] = await Promise.all([
+      const [{ data: ops }, { data: est }, { data: feriados }, { data: defaults }, tamano] = await Promise.all([
         supabase.from('usuarios').select('*').eq('rol', 'operador').eq('activo', true).order('nombre_completo'),
         supabase.from('estaciones_ebar').select('*').eq('activa', true).order('nombre'),
         supabase.from('feriados_adicionales').select('id, fecha, descripcion').order('fecha'),
         supabase.from('asignaciones_estacion').select('*').is('fecha', null),
-        supabase.from('configuracion_panel_dia_turnos').select('ancho_px, alto_px').eq('clave', 'panel_dia_turnos').maybeSingle(),
+        obtenerTamanoModal('panel_dia_turnos', TAMANO_PANEL_DIA_DEFAULT),
       ]);
       setOperadores((ops as Usuario[]) ?? []);
       setEstaciones((est as EstacionEbar[]) ?? []);
       setFeriadosAdicionales((feriados as { id: string; fecha: string; descripcion: string }[]) ?? []);
       setAsignacionesDefault((defaults as AsignacionEstacion[]) ?? []);
-      if (tamano) setTamanoPanelDia({ ancho: tamano.ancho_px, alto: tamano.alto_px });
+      setTamanoPanelDia(tamano);
       setCargandoBase(false);
     }
     cargarBase();
@@ -186,16 +188,7 @@ export function CalendarioTurnos() {
   // mostrarle la manija a quien no puede usarla.
   async function guardarTamanoPanelDia(t: { ancho: number; alto: number }) {
     setTamanoPanelDia(t);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    await supabase.from('configuracion_panel_dia_turnos').upsert({
-      clave: 'panel_dia_turnos',
-      ancho_px: t.ancho,
-      alto_px: t.alto,
-      actualizado_en: new Date().toISOString(),
-      actualizado_por: user?.id ?? null,
-    });
+    await guardarTamanoModal('panel_dia_turnos', t);
   }
 
   async function cargarMes(m: string) {
@@ -1143,74 +1136,13 @@ function PanelDia({
       {esAdmin && (
         <ManijaRedimension
           tamano={tamano}
+          min={TAMANO_PANEL_DIA_MIN}
+          max={TAMANO_PANEL_DIA_MAX}
           onCambiar={setTamano}
           onGuardar={onGuardarTamano}
         />
       )}
       </div>
     </>
-  );
-}
-
-/** Manija en la esquina inferior derecha del panel del día — solo el administrador la ve (ver
- * PanelDia). Arrastrar cambia el tamaño en vivo (onCambiar, en cada movimiento); soltar persiste
- * el tamaño final (onGuardar, una sola vez) para que se vea igual la próxima vez que cualquier
- * rol abra el panel. Usa Pointer Events (no mouse/touch por separado) para que funcione igual con
- * mouse y con el dedo en tablet/celular. */
-function ManijaRedimension({
-  tamano,
-  onCambiar,
-  onGuardar,
-}: {
-  tamano: { ancho: number; alto: number };
-  onCambiar: (t: { ancho: number; alto: number }) => void;
-  onGuardar: (t: { ancho: number; alto: number }) => void;
-}) {
-  const tamanoRef = useRef(tamano);
-  useEffect(() => {
-    tamanoRef.current = tamano;
-  }, [tamano]);
-
-  function manejarPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    const inicioX = e.clientX;
-    const inicioY = e.clientY;
-    const anchoInicial = tamano.ancho;
-    const altoInicial = tamano.alto;
-
-    function mover(ev: PointerEvent) {
-      const ancho = Math.min(
-        TAMANO_PANEL_DIA_MAX.ancho,
-        Math.max(TAMANO_PANEL_DIA_MIN.ancho, Math.round(anchoInicial + (ev.clientX - inicioX))),
-      );
-      const alto = Math.min(
-        TAMANO_PANEL_DIA_MAX.alto,
-        Math.max(TAMANO_PANEL_DIA_MIN.alto, Math.round(altoInicial + (ev.clientY - inicioY))),
-      );
-      onCambiar({ ancho, alto });
-    }
-    function soltar() {
-      window.removeEventListener('pointermove', mover);
-      window.removeEventListener('pointerup', soltar);
-      onGuardar(tamanoRef.current);
-    }
-    window.addEventListener('pointermove', mover);
-    window.addEventListener('pointerup', soltar);
-  }
-
-  return (
-    <div
-      onPointerDown={manejarPointerDown}
-      title="Arrastrar para cambiar el tamaño"
-      className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize touch-none flex items-end justify-end p-1 text-slate-400 hover:text-slate-700"
-    >
-      <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
-        <circle cx="13" cy="3" r="1.4" />
-        <circle cx="13" cy="8" r="1.4" />
-        <circle cx="8" cy="13" r="1.4" />
-        <circle cx="13" cy="13" r="1.4" />
-      </svg>
-    </div>
   );
 }

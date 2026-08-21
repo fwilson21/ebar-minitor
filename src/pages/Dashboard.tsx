@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
@@ -13,9 +13,25 @@ import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
 import { hoyLocal } from '../lib/fecha';
+import { ManijaRedimension } from '../components/ManijaRedimension';
+import { obtenerTamanoModal, guardarTamanoModal } from '../lib/tamanoModal';
 
 const HOY = hoyLocal();
 const MINIMO_VISITAS_DIA_REGULAR = 2;
+
+const TAMANO_MODAL_METRICA_DEFAULT = { ancho: 420, alto: 560 };
+const TAMANO_MODAL_METRICA_MIN = { ancho: 320, alto: 320 };
+const TAMANO_MODAL_METRICA_MAX = { ancho: 900, alto: 900 };
+
+// Mismas 13 columnas jsonb que revisa rpc_dashboard_resumen para "equipos_con_alerta" — se
+// repiten acá (en vez de traer el conteo ya hecho) porque para armar la lista de EBAR hace falta
+// el estado de cada equipo, no solo el número total.
+const COLUMNAS_EQUIPOS_ALERTA = [
+  'lineas_impulsion', 'guias_izado', 'valvulas_compuerta', 'valvulas_check', 'valvula_aire',
+  'camara_rejilla', 'camara_valvula_compuerta', 'tablero_distribucion', 'variador',
+  'tuberia_400_valvulas_aire', 'tuberia_400_uniones_elastomericas',
+  'tuberia_600_valvulas_aire', 'tuberia_600_uniones_elastomericas',
+] as const;
 
 type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona' | 'tipo'>;
 type EstacionAsignadaHoy = EstacionSimple & { visitasHoy: number };
@@ -26,6 +42,21 @@ type AsignacionBajoMinimo = {
   estacion_nombre: string;
   estacion_codigo: string;
   visitas: number;
+};
+
+/** Una de las 5 tarjetas de "Inicio" — al tocarla se abre ModalListaEstaciones con el detalle. */
+type TipoMetrica = 'visitas' | 'sin_visitar' | 'equipos_alerta' | 'problemas' | 'voltaje';
+/** Fila del detalle de una métrica: la estación + cuántas veces contribuyó al número de la
+ * tarjeta (ej. 2 visitas en la misma EBAR) — 1 cuando la métrica ya es "una fila por estación"
+ * de por sí (sin_visitar, problemas). */
+type FilaDetalleMetrica = EstacionSimple & { count: number };
+
+const TITULOS_METRICA: Record<TipoMetrica, string> = {
+  visitas: 'Visitas registradas',
+  sin_visitar: 'Estaciones sin visitar',
+  equipos_alerta: 'Equipos con falla o por mantener',
+  problemas: 'Estaciones con problemas',
+  voltaje: 'Alertas de voltaje',
 };
 
 export function Dashboard() {
@@ -48,6 +79,17 @@ export function Dashboard() {
   const [esRegular, setEsRegular] = useState(true);
   const [bajoMinimo, setBajoMinimo] = useState<AsignacionBajoMinimo[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [todasEstacionesInfo, setTodasEstacionesInfo] = useState<EstacionSimple[]>([]);
+  const [modalMetrica, setModalMetrica] = useState<TipoMetrica | null>(null);
+  const [detalleMetrica, setDetalleMetrica] = useState<FilaDetalleMetrica[] | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [tamanoModalMetrica, setTamanoModalMetrica] = useState(TAMANO_MODAL_METRICA_DEFAULT);
+
+  // Tamaño guardado del modal de detalle — se carga una sola vez (no depende de la fecha
+  // seleccionada, a diferencia de `cargar()` de abajo).
+  useEffect(() => {
+    obtenerTamanoModal('modal_metrica_dashboard', TAMANO_MODAL_METRICA_DEFAULT).then(setTamanoModalMetrica);
+  }, []);
 
   useEffect(() => {
     async function cargar() {
@@ -74,6 +116,7 @@ export function Dashboard() {
       ]);
 
       setResumen(resumenData as DashboardResumen);
+      setTodasEstacionesInfo((todasEstaciones as EstacionSimple[]) ?? []);
 
       // Para operadores: sus EBAR asignadas hoy (por defecto o especial) filtran "Requieren
       // atención" y "Pendientes de visita", además de armar "Tus EBAR de hoy" más abajo. Si
@@ -261,6 +304,107 @@ export function Dashboard() {
     setFecha(nueva);
   }
 
+  // --- Detalle de las 5 métricas de "Inicio" (ver ModalListaEstaciones más abajo) ---
+
+  const estacionesPorId = useMemo(() => new Map(todasEstacionesInfo.map((e) => [e.id, e])), [todasEstacionesInfo]);
+
+  function contarPorEstacion(idsEstacion: string[]): FilaDetalleMetrica[] {
+    const conteo = new Map<string, number>();
+    for (const id of idsEstacion) conteo.set(id, (conteo.get(id) ?? 0) + 1);
+    const filas: FilaDetalleMetrica[] = [];
+    for (const [estacionId, count] of conteo) {
+      const estacion = estacionesPorId.get(estacionId);
+      if (estacion) filas.push({ ...estacion, count });
+    }
+    return filas;
+  }
+
+  // "Visitas registradas": reutiliza el mismo rango de fecha que el resto del Dashboard — una
+  // fila por estación, con cuántas visitas tuvo hoy (puede ser más de 1).
+  async function construirDetalleVisitas(): Promise<FilaDetalleMetrica[]> {
+    let query = supabase
+      .from('visitas')
+      .select('estacion_id')
+      .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
+      .lte('fecha_hora_llegada', `${fecha}T23:59:59`);
+    if (usuario?.rol === 'operador') query = query.eq('operador_id', usuario.id);
+    const { data } = await query;
+    return contarPorEstacion(((data ?? []) as { estacion_id: string }[]).map((v) => v.estacion_id));
+  }
+
+  // "Equipos con falla o por mantener": mismo criterio que rpc_dashboard_resumen
+  // (equipos_con_alerta) pero trayendo el estado de cada equipo en vez del conteo ya hecho, para
+  // poder armar la lista de EBAR.
+  async function construirDetalleEquiposAlerta(): Promise<FilaDetalleMetrica[]> {
+    let query = supabase
+      .from('visitas')
+      .select(`estacion_id, ${COLUMNAS_EQUIPOS_ALERTA.join(', ')}`)
+      .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
+      .lte('fecha_hora_llegada', `${fecha}T23:59:59`);
+    if (usuario?.rol === 'operador') query = query.eq('operador_id', usuario.id);
+    const { data } = await query;
+    const ids = ((data ?? []) as any[])
+      .filter((v) => COLUMNAS_EQUIPOS_ALERTA.some((col) => ['en_falla', 'requiere_mantenimiento'].includes(v[col]?.estado)))
+      .map((v) => v.estacion_id as string);
+    return contarPorEstacion(ids);
+  }
+
+  // "Alertas de voltaje": mismo criterio que rpc_dashboard_resumen (alertas_voltaje) — cuenta
+  // registros_bombas con voltaje_fuera_rango, unidos a las visitas del día.
+  async function construirDetalleVoltaje(): Promise<FilaDetalleMetrica[]> {
+    let queryVisitas = supabase
+      .from('visitas')
+      .select('id, estacion_id')
+      .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
+      .lte('fecha_hora_llegada', `${fecha}T23:59:59`);
+    if (usuario?.rol === 'operador') queryVisitas = queryVisitas.eq('operador_id', usuario.id);
+    const { data: visitasDia } = await queryVisitas;
+    const idsVisita = ((visitasDia ?? []) as { id: string; estacion_id: string }[]).map((v) => v.id);
+    if (idsVisita.length === 0) return [];
+    const { data: bombas } = await supabase
+      .from('registros_bombas')
+      .select('visita_id')
+      .in('visita_id', idsVisita)
+      .eq('voltaje_fuera_rango', true);
+    const mapaVisitaEstacion = new Map(((visitasDia ?? []) as { id: string; estacion_id: string }[]).map((v) => [v.id, v.estacion_id]));
+    const ids = ((bombas ?? []) as { visita_id: string }[])
+      .map((b) => mapaVisitaEstacion.get(b.visita_id))
+      .filter((id): id is string => !!id);
+    return contarPorEstacion(ids);
+  }
+
+  async function abrirDetalleMetrica(tipo: TipoMetrica) {
+    setModalMetrica(tipo);
+    setDetalleMetrica(null);
+    // Estas 2 ya están cargadas para "Pendientes de visita"/"Requieren atención" — se reutilizan
+    // tal cual, sin pedirlas de nuevo (además queda 100% consistente con esas 2 secciones).
+    if (tipo === 'sin_visitar') {
+      setDetalleMetrica(sinVisitar.map((e) => ({ ...e, count: 1 })));
+      return;
+    }
+    if (tipo === 'problemas') {
+      setDetalleMetrica(estacionesConProblemas.map((e) => ({ ...e, count: 1 })));
+      return;
+    }
+    setCargandoDetalle(true);
+    try {
+      const filas =
+        tipo === 'visitas'
+          ? await construirDetalleVisitas()
+          : tipo === 'equipos_alerta'
+            ? await construirDetalleEquiposAlerta()
+            : await construirDetalleVoltaje();
+      setDetalleMetrica(filas);
+    } finally {
+      setCargandoDetalle(false);
+    }
+  }
+
+  async function guardarTamanoModalMetrica(t: { ancho: number; alto: number }) {
+    setTamanoModalMetrica(t);
+    await guardarTamanoModal('modal_metrica_dashboard', t);
+  }
+
   // Los bloques que un rol nunca llega a ver ("tus_ebar_hoy" es solo de operador,
   // "visitas_sospechosas"/"bajo_minimo" son solo de admin/supervisor) se sacan del grid editable
   // — si no, quedan como una celda vacía y arrastrable sin contenido dentro (ver
@@ -284,7 +428,15 @@ export function Dashboard() {
     <div className="space-y-6">
       {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
       <div className="lg:hidden space-y-6">
-        <BloqueResumenGeneral tituloFecha={tituloFecha} esAdmin={esAdmin} fecha={fecha} hoy={HOY} onCambiarFecha={cambiarFecha} resumen={resumen} />
+        <BloqueResumenGeneral
+          tituloFecha={tituloFecha}
+          esAdmin={esAdmin}
+          fecha={fecha}
+          hoy={HOY}
+          onCambiarFecha={cambiarFecha}
+          resumen={resumen}
+          onAbrirDetalle={abrirDetalleMetrica}
+        />
         {!esAdmin && <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} />}
         <BloquePendientesVisita sinVisitar={sinVisitar} mostrarSinVisitar={mostrarSinVisitar} setMostrarSinVisitar={setMostrarSinVisitar} />
         <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />
@@ -316,6 +468,7 @@ export function Dashboard() {
                     hoy={HOY}
                     onCambiarFecha={cambiarFecha}
                     resumen={resumen}
+                    onAbrirDetalle={abrirDetalleMetrica}
                   />
                 );
               case 'tus_ebar_hoy':
@@ -347,6 +500,19 @@ export function Dashboard() {
         />
         {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
+
+      {modalMetrica && (
+        <ModalListaEstaciones
+          titulo={TITULOS_METRICA[modalMetrica]}
+          subtitulo={tituloFecha}
+          filas={detalleMetrica}
+          cargando={cargandoDetalle}
+          esAdmin={esAdministrador}
+          tamano={tamanoModalMetrica}
+          onGuardarTamano={guardarTamanoModalMetrica}
+          onCerrar={() => setModalMetrica(null)}
+        />
+      )}
     </div>
   );
 }
@@ -358,6 +524,7 @@ function BloqueResumenGeneral({
   hoy,
   onCambiarFecha,
   resumen,
+  onAbrirDetalle,
 }: {
   tituloFecha: string;
   esAdmin: boolean;
@@ -365,6 +532,7 @@ function BloqueResumenGeneral({
   hoy: string;
   onCambiarFecha: (fecha: string) => void;
   resumen: DashboardResumen | null;
+  onAbrirDetalle: (tipo: TipoMetrica) => void;
 }) {
   return (
     <div className="lg:h-full lg:flex lg:flex-col lg:min-h-0 bloque-adaptable">
@@ -387,11 +555,11 @@ function BloqueResumenGeneral({
           real del bloque (container query, no el de la pantalla) — con suficiente espacio entran
           las 5 en una sola fila en vez de quedar apiladas en 2 columnas siempre. */}
       <div className="grid-metricas lg:flex-1 lg:min-h-0">
-        <Metrica label="Visitas registradas" valor={resumen?.total_visitas ?? 0} acento="ok" />
-        <Metrica label="Estaciones sin visitar" valor={resumen?.estaciones_sin_visitar ?? 0} acento="idle" />
-        <Metrica label="Equipos con falla o por mantener" valor={resumen?.equipos_con_alerta ?? 0} acento="danger" />
-        <Metrica label="Estaciones con problemas" valor={resumen?.estaciones_con_problemas ?? 0} acento="warn" />
-        <Metrica label="Alertas de voltaje" valor={resumen?.alertas_voltaje ?? 0} acento="danger" />
+        <Metrica label="Visitas registradas" valor={resumen?.total_visitas ?? 0} acento="ok" onClick={() => onAbrirDetalle('visitas')} />
+        <Metrica label="Estaciones sin visitar" valor={resumen?.estaciones_sin_visitar ?? 0} acento="idle" onClick={() => onAbrirDetalle('sin_visitar')} />
+        <Metrica label="Equipos con falla o por mantener" valor={resumen?.equipos_con_alerta ?? 0} acento="danger" onClick={() => onAbrirDetalle('equipos_alerta')} />
+        <Metrica label="Estaciones con problemas" valor={resumen?.estaciones_con_problemas ?? 0} acento="warn" onClick={() => onAbrirDetalle('problemas')} />
+        <Metrica label="Alertas de voltaje" valor={resumen?.alertas_voltaje ?? 0} acento="danger" onClick={() => onAbrirDetalle('voltaje')} />
       </div>
     </div>
   );
@@ -606,15 +774,109 @@ function Metrica({
   label,
   valor,
   acento,
+  onClick,
 }: {
   label: string;
   valor: number;
   acento: 'ok' | 'warn' | 'danger' | 'idle';
+  onClick: () => void;
 }) {
   return (
-    <div className="tarjeta p-4">
+    <button type="button" onClick={onClick} className="tarjeta p-4 text-left w-full hover:border-gauge-ok/50 transition">
       <p className="text-xs text-slate-600 mb-1">{label}</p>
       <p className={`text-3xl font-bold lectura ${COLOR_ACENTO[acento]}`}>{valor}</p>
-    </div>
+    </button>
+  );
+}
+
+/** Se abre al tocar cualquiera de las 5 tarjetas de "Inicio" — lista las EBAR que componen ese
+ * número, agrupadas por zona+tipo (mismo criterio y estilo que el resto de la app), cada una
+ * como enlace directo a su ficha. Redimensionable por el administrador (ver ManijaRedimension). */
+function ModalListaEstaciones({
+  titulo,
+  subtitulo,
+  filas,
+  cargando,
+  esAdmin,
+  tamano,
+  onGuardarTamano,
+  onCerrar,
+}: {
+  titulo: string;
+  subtitulo: string;
+  filas: FilaDetalleMetrica[] | null;
+  cargando: boolean;
+  esAdmin: boolean;
+  tamano: { ancho: number; alto: number };
+  onGuardarTamano: (t: { ancho: number; alto: number }) => void;
+  onCerrar: () => void;
+}) {
+  const [tam, setTam] = useState(tamano);
+  const grupos = useMemo(() => agruparPorZonaYTipo(filas ?? []), [filas]);
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-20" onClick={onCerrar} />
+      <div
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl flex flex-col overflow-hidden"
+        style={{ width: `min(${tam.ancho}px, 94vw)`, height: `min(${tam.alto}px, 92vh)` }}
+      >
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="titulo-pantalla text-xl">{titulo}</h2>
+              <p className="text-sm text-slate-600">{subtitulo}</p>
+            </div>
+            <button onClick={onCerrar} className="text-slate-600 hover:text-slate-900 text-xl leading-none">
+              ✕
+            </button>
+          </div>
+
+          {cargando ? (
+            <p className="text-sm text-slate-600">Cargando…</p>
+          ) : !filas || filas.length === 0 ? (
+            <p className="text-sm text-slate-500">No hay ninguna EBAR con esta condición en esta fecha.</p>
+          ) : (
+            <div className="space-y-4">
+              {grupos.map(({ zona, tipo, estaciones }) => (
+                <div key={`${zona}-${tipo}`}>
+                  <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
+                    {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo} ({estaciones.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {estaciones.map((e) => (
+                      <Link
+                        key={e.id}
+                        to={`/estaciones/${e.id}`}
+                        className="tarjeta p-3 flex items-center justify-between gap-2 hover:border-gauge-ok/50 transition"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
+                          <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {e.count > 1 && <span className="text-xs text-slate-500">×{e.count}</span>}
+                          <span className="text-xs text-gauge-ok">Ver →</span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {esAdmin && (
+          <ManijaRedimension
+            tamano={tam}
+            min={TAMANO_MODAL_METRICA_MIN}
+            max={TAMANO_MODAL_METRICA_MAX}
+            onCambiar={setTam}
+            onGuardar={onGuardarTamano}
+          />
+        )}
+      </div>
+    </>
   );
 }
