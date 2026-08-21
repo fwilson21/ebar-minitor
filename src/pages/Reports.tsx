@@ -35,7 +35,7 @@ export function Reports() {
   // de lo que se veía en pantalla — eso rompía el filtro de Estación de más abajo.
   const [operadorId, setOperadorId] = useState<string>(usuario?.rol === 'operador' ? usuario.id : '');
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
-  const [estacionId, setEstacionId] = useState<string>('');
+  const [estacionIds, setEstacionIds] = useState<Set<string>>(new Set());
   const [generando, setGenerando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
@@ -85,7 +85,7 @@ export function Reports() {
 
   const operadorNombre =
     operadores.find((o) => o.id === operadorId)?.nombre_completo ?? usuario?.nombre_completo ?? '';
-  const estacionNombre = estaciones.find((e) => e.id === estacionId);
+  const estacionesElegidas = estaciones.filter((e) => estacionIds.has(e.id));
 
   const esRango = tipo === 'consolidado_fecha' || tipo === 'individual_estacion';
   const fechaInicioEfectiva = fechaInicio;
@@ -108,10 +108,8 @@ export function Reports() {
       query = query.eq('operador_id', operadorId);
     }
 
-    if (tipo === 'individual_estacion') {
-      query = query.eq('estacion_id', estacionId);
-    } else if (estacionId) {
-      query = query.eq('estacion_id', estacionId);
+    if (estacionIds.size > 0) {
+      query = query.in('estacion_id', [...estacionIds]);
     }
 
     const { data, error } = await query;
@@ -132,7 +130,12 @@ export function Reports() {
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
 
       const sufijoOperador = esAdmin && operadorId ? ` — ${operadorNombre}` : '';
-      const sufijoEstacion = estacionNombre ? ` — ${estacionNombre.codigo} ${estacionNombre.nombre}` : '';
+      const sufijoEstacion =
+        estacionesElegidas.length === 1
+          ? ` — ${estacionesElegidas[0].codigo} ${estacionesElegidas[0].nombre}`
+          : estacionesElegidas.length > 1
+            ? ` — ${estacionesElegidas.length} estaciones`
+            : '';
       const titulo =
         tipo === 'diario_operador'
           ? `Reporte diario — ${operadorNombre}${sufijoEstacion}`
@@ -199,7 +202,7 @@ export function Reports() {
 
   function cambiarTipo(nuevoTipo: TipoReporte) {
     setTipo(nuevoTipo);
-    setEstacionId('');
+    setEstacionIds(new Set());
     if (nuevoTipo !== 'diario_operador') {
       setOperadorId('');
       return;
@@ -226,8 +229,8 @@ export function Reports() {
           operadorId={operadorId}
           setOperadorId={setOperadorId}
           estaciones={estaciones}
-          estacionId={estacionId}
-          setEstacionId={setEstacionId}
+          estacionIds={estacionIds}
+          setEstacionIds={setEstacionIds}
           esRango={esRango}
           fechaInicio={fechaInicio}
           setFechaInicio={setFechaInicio}
@@ -262,8 +265,8 @@ export function Reports() {
                     operadorId={operadorId}
                     setOperadorId={setOperadorId}
                     estaciones={estaciones}
-                    estacionId={estacionId}
-                    setEstacionId={setEstacionId}
+                    estacionIds={estacionIds}
+                    setEstacionIds={setEstacionIds}
                     esRango={esRango}
                     fechaInicio={fechaInicio}
                     setFechaInicio={setFechaInicio}
@@ -294,8 +297,8 @@ function BloqueFiltrosGenerar({
   operadorId,
   setOperadorId,
   estaciones,
-  estacionId,
-  setEstacionId,
+  estacionIds,
+  setEstacionIds,
   esRango,
   fechaInicio,
   setFechaInicio,
@@ -311,8 +314,8 @@ function BloqueFiltrosGenerar({
   operadorId: string;
   setOperadorId: (v: string) => void;
   estaciones: EstacionEbar[];
-  estacionId: string;
-  setEstacionId: (v: string) => void;
+  estacionIds: Set<string>;
+  setEstacionIds: (v: Set<string>) => void;
   esRango: boolean;
   fechaInicio: string;
   setFechaInicio: (v: string) => void;
@@ -347,32 +350,12 @@ function BloqueFiltrosGenerar({
       )}
 
       {estaciones.length > 0 && (
-        <div>
-          <label className="etiqueta">Estación</label>
-          <select className="campo" value={estacionId} onChange={(e) => setEstacionId(e.target.value)}>
-            {tipo === 'individual_estacion' ? (
-              <option value="" disabled>Selecciona una estación…</option>
-            ) : (
-              <option value="">Todas las estaciones</option>
-            )}
-            {/* <optgroup> lo dibuja el sistema operativo en el picker nativo del celular (no
-                respeta negrita/color/mayúsculas que le pongamos) — el encabezado terminaba
-                viéndose igual que las estaciones de adentro, sin forma de distinguirlos. En vez
-                de eso, cada grupo mete su propio encabezado como una <option disabled> más
-                dentro de la MISMA lista plana: los navegadores sí pintan las opciones
-                deshabilitadas más tenues y no se pueden tocar, así que igual se distinguen -- */}
-            {agruparPorZonaYTipo(estaciones).flatMap(({ zona, tipo: tipoGrupo, estaciones: delGrupo }) => [
-              <option key={`${zona}-${tipoGrupo}`} value="" disabled>
-                ── {(ETIQUETA_ZONA[zona] ?? zona).toUpperCase()} · {(ETIQUETA_TIPO[tipoGrupo] ?? tipoGrupo).toUpperCase()} ──
-              </option>,
-              ...delGrupo.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {'   '}{e.codigo} — {e.nombre}
-                </option>
-              )),
-            ])}
-          </select>
-        </div>
+        <SelectorEstaciones
+          estaciones={estaciones}
+          seleccionadas={estacionIds}
+          onCambiar={setEstacionIds}
+          obligatorio={tipo === 'individual_estacion'}
+        />
       )}
 
       {esRango ? (
@@ -395,11 +378,135 @@ function BloqueFiltrosGenerar({
 
       <button
         onClick={manejarGenerar}
-        disabled={generando || (tipo === 'individual_estacion' && !estacionId)}
+        disabled={generando || (tipo === 'individual_estacion' && estacionIds.size === 0)}
         className="boton-primario w-full"
       >
         {generando ? 'Generando…' : '📄 Generar PDF'}
       </button>
+    </div>
+  );
+}
+
+/** Selector de una o varias EBAR, agrupado por zona+tipo — reemplaza al <select> nativo de
+ * antes: en el picker nativo del celular no se podía elegir más de una sin que se cerrara el
+ * cuadro, y no había forma de marcar un grupo entero de una (pedido explícito del usuario). El
+ * cuadro de diálogo se queda abierto entre selección y selección — se cierra recién con "Listo"
+ * o tocando afuera. */
+function SelectorEstaciones({
+  estaciones,
+  seleccionadas,
+  onCambiar,
+  obligatorio,
+}: {
+  estaciones: EstacionEbar[];
+  seleccionadas: Set<string>;
+  onCambiar: (nuevo: Set<string>) => void;
+  /** "Individual por estación": no existe la opción "Todas", hace falta elegir al menos una. */
+  obligatorio: boolean;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const grupos = agruparPorZonaYTipo(estaciones);
+
+  const resumen =
+    seleccionadas.size === 0
+      ? obligatorio
+        ? 'Selecciona una o más estaciones…'
+        : 'Todas las estaciones'
+      : seleccionadas.size === 1
+        ? estaciones.find((e) => seleccionadas.has(e.id))?.codigo ?? '1 estación'
+        : `${seleccionadas.size} estaciones seleccionadas`;
+
+  function alternarEstacion(id: string) {
+    const nuevo = new Set(seleccionadas);
+    if (nuevo.has(id)) nuevo.delete(id);
+    else nuevo.add(id);
+    onCambiar(nuevo);
+  }
+
+  function alternarGrupo(idsGrupo: string[]) {
+    const todasMarcadas = idsGrupo.every((id) => seleccionadas.has(id));
+    const nuevo = new Set(seleccionadas);
+    for (const id of idsGrupo) {
+      if (todasMarcadas) nuevo.delete(id);
+      else nuevo.add(id);
+    }
+    onCambiar(nuevo);
+  }
+
+  return (
+    <div>
+      <label className="etiqueta">Estación</label>
+      <button type="button" onClick={() => setAbierto(true)} className="campo text-left truncate">
+        {resumen}
+      </button>
+
+      {abierto && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setAbierto(false)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[92vw] max-w-md max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-panel-600/40 shrink-0">
+              <h2 className="font-semibold text-sm text-slate-900">Elegir estaciones</h2>
+              <button onClick={() => setAbierto(false)} className="text-slate-600 hover:text-slate-900 text-lg leading-none">
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {!obligatorio && (
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-900 pb-2 border-b border-panel-600/40">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-gauge-ok"
+                    checked={seleccionadas.size === 0}
+                    onChange={() => onCambiar(new Set())}
+                  />
+                  Todas las estaciones
+                </label>
+              )}
+              {grupos.map(({ zona, tipo, estaciones: delGrupo }) => {
+                const idsGrupo = delGrupo.map((e) => e.id);
+                const todasMarcadas = idsGrupo.every((id) => seleccionadas.has(id));
+                const algunaMarcada = idsGrupo.some((id) => seleccionadas.has(id));
+                return (
+                  <div key={`${zona}-${tipo}`}>
+                    <label className="flex items-center gap-2 text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-gauge-ok shrink-0"
+                        checked={todasMarcadas}
+                        ref={(el) => {
+                          if (el) el.indeterminate = algunaMarcada && !todasMarcadas;
+                        }}
+                        onChange={() => alternarGrupo(idsGrupo)}
+                      />
+                      {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo}
+                    </label>
+                    <div className="pl-6 space-y-1.5">
+                      {delGrupo.map((e) => (
+                        <label key={e.id} className="flex items-center gap-2 text-sm text-slate-800">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 accent-gauge-ok shrink-0"
+                            checked={seleccionadas.has(e.id)}
+                            onChange={() => alternarEstacion(e.id)}
+                          />
+                          {e.codigo} — {e.nombre}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 border-t border-panel-600/40 shrink-0">
+              <button type="button" onClick={() => setAbierto(false)} className="boton-primario w-full">
+                Listo
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
