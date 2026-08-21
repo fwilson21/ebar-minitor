@@ -10,6 +10,7 @@ import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
+import { hoyLocal } from '../lib/fecha';
 
 const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 
@@ -53,7 +54,7 @@ export function Stations() {
       // para verificarlo (la consulta falla y devuelve null), no se filtra nada — la lista ya
       // viene de la copia guardada en el dispositivo tal cual.
       if (usuario?.rol === 'operador') {
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = hoyLocal();
         const { data: asignadasHoy } = await supabase
           .from('asignaciones_estacion')
           .select('estacion_id')

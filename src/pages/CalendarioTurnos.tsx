@@ -329,7 +329,7 @@ export function CalendarioTurnos() {
         <h1 className="titulo-pantalla">Calendario de turnos</h1>
         <p className="text-sm text-slate-600">
           {puedeMarcarTurnos
-            ? 'Marca qué operador está de turno cada sábado, domingo o feriado. Ese día le van a aparecer automáticamente sus EBAR a atender.'
+            ? 'Marca qué operador está de turno cada sábado, domingo o feriado. Ese día le van a aparecer automáticamente sus EBAR, más las de los operadores que no trabajan — puedes ajustar cuáles con los botones de abajo.'
             : 'Consulta qué operador está de turno cada sábado, domingo o feriado, y elabora las planillas de horas extras.'}
         </p>
       </div>
@@ -802,7 +802,20 @@ function PanelDia({
     if (!id) return;
     setSeleccion((prev) => {
       const copia = new Map(prev);
-      copia.set(id, { turnoId: null, estaciones: new Set(asignacionesDefaultPorOperador.get(id) ?? []) });
+      const estacionesIniciales = new Set(asignacionesDefaultPorOperador.get(id) ?? []);
+      // Fin de semana/feriado: los operadores que ese día no quedan de turno no van a trabajar,
+      // así que sus EBAR por defecto se le agregan automáticamente a quien sí queda (el admin
+      // puede destildar o agregar más con los botones de abajo, como siempre). En día regular no
+      // aplica — cada uno ve solo las suyas, igual que antes.
+      if (motivoActual !== null) {
+        for (const otro of operadores) {
+          if (otro.id === id || prev.has(otro.id)) continue;
+          for (const estacionId of asignacionesDefaultPorOperador.get(otro.id) ?? []) {
+            estacionesIniciales.add(estacionId);
+          }
+        }
+      }
+      copia.set(id, { turnoId: null, estaciones: estacionesIniciales });
       return copia;
     });
     setOperadorParaAgregar('');

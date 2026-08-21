@@ -12,8 +12,9 @@ import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
+import { hoyLocal } from '../lib/fecha';
 
-const HOY = new Date().toISOString().slice(0, 10);
+const HOY = hoyLocal();
 const MINIMO_VISITAS_DIA_REGULAR = 2;
 
 type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona' | 'tipo'>;

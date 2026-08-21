@@ -10,6 +10,7 @@ import { abrirBlob, descargarBlob, generarReporteVisitas } from '../lib/pdf';
 import { incrustarFotosVisitas } from '../lib/fotos';
 import { obtenerVisitasPorEstacion } from '../lib/visitasReporte';
 import { leerCacheLocal } from '../lib/cacheLocal';
+import { hoyLocal } from '../lib/fecha';
 
 const VISITAS_EN_PDF = 30;
 const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
@@ -205,7 +206,7 @@ export function StationDetail() {
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
       const titulo = `Historial de estación\n${estacion.nombre}`;
       const blob = await generarReporteVisitas(titulo, visitas);
-      const nombre = `historial_${estacion.codigo}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      const nombre = `historial_${estacion.codigo}_${hoyLocal()}.pdf`;
       descargarBlob(blob, nombre);
       abrirBlob(blob);
     } catch (err: any) {

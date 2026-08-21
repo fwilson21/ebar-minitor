@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { ConfiguracionPlanillaHorasExtras, FilaPlanillaHorasExtras, JornadaOperadorDefault, PlanillaHorasExtras, Usuario } from '../lib/types';
+import { hoyLocal } from '../lib/fecha';
 import {
   avisoAlmuerzoLargo,
   calcularHorasFila,
@@ -976,7 +977,7 @@ function EditorPlanilla({
   }
 
   function agregarFilaManual() {
-    setFilas((prev) => [...prev, nuevaFila(fechaDesde || new Date().toISOString().slice(0, 10))]);
+    setFilas((prev) => [...prev, nuevaFila(fechaDesde || hoyLocal())]);
   }
 
   // filasBase: de dónde partir al mezclar los días traídos — por defecto las filas actuales

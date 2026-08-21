@@ -7,6 +7,7 @@ import {
   guardarBorradorVisita, obtenerBorradorVisita, eliminarBorradorVisita,
 } from '../lib/offline';
 import { esMismoDia, formatearFechaHoraFoto, urlMiniaturaDrive } from '../lib/fotos';
+import { hoyLocal } from '../lib/fecha';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { generarUUID } from '../lib/uuid';
 import { distanciaMetros, useUbicacionActual } from '../lib/useUbicacion';
@@ -367,7 +368,7 @@ export function VisitForm() {
       // Solo aplica a operadores registrando una visita NUEVA (no al editar una ya guardada, ni
       // a admin/supervisor).
       if (usuario?.rol === 'operador' && !modoEdicion) {
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = hoyLocal();
         const { data: asignadaHoyData } = await supabase
           .from('asignaciones_estacion')
           .select('id')

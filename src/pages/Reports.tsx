@@ -9,6 +9,7 @@ import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
+import { hoyLocal } from '../lib/fecha';
 
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
 
@@ -22,8 +23,8 @@ export function Reports() {
   const editorDistribucion = useEditorDistribucion('reportes');
 
   const [tipo, setTipo] = useState<TipoReporte>('consolidado_fecha');
-  const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().slice(0, 10));
-  const [fechaFin, setFechaFin] = useState(new Date().toISOString().slice(0, 10));
+  const [fechaInicio, setFechaInicio] = useState(hoyLocal());
+  const [fechaFin, setFechaFin] = useState(hoyLocal());
   const [operadores, setOperadores] = useState<Usuario[]>([]);
   const [operadorId, setOperadorId] = useState<string>(usuario?.id ?? '');
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
