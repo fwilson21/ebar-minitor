@@ -627,22 +627,26 @@ const CLASE_TEXTO_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
 };
 
 /** Qué significa cada color de las tarjetas de EBAR — usada tanto en "Tus EBAR de hoy" (operador)
- * como en "Pendientes de visita" (los 3 roles), mismo criterio de semáforo. */
+ * como en "Pendientes de visita" (los 3 roles), mismo criterio de semáforo. Cada muestra es un
+ * mini-recuadro con el MISMO relleno + borde que usa la tarjeta real (CLASE_TARJETA_SEMAFORO) —
+ * antes era un punto sólido de un solo tono, que no se veía igual al relleno clarito + borde más
+ * fuerte de la tarjeta (el usuario lo notó: la tarjeta se ve "tomate" por dentro pero el borde se
+ * ve más rojizo aparte). */
 function LeyendaSemaforoVisitas({ esRegular }: { esRegular: boolean }) {
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 mb-3">
-      <span>
-        <span className="inline-block w-2.5 h-2.5 rounded-full bg-gauge-danger align-middle mr-1" />
+    <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-600 mb-3">
+      <span className="flex items-center gap-1.5">
+        <span className={`inline-block w-4 h-4 rounded border-2 ${CLASE_TARJETA_SEMAFORO.danger}`} />
         Sin ninguna visita hoy
       </span>
       {esRegular && (
-        <span>
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-gauge-warn align-middle mr-1" />
+        <span className="flex items-center gap-1.5">
+          <span className={`inline-block w-4 h-4 rounded border-2 ${CLASE_TARJETA_SEMAFORO.warn}`} />
           Le falta al menos 1 visita
         </span>
       )}
-      <span>
-        <span className="inline-block w-2.5 h-2.5 rounded-full bg-gauge-ok align-middle mr-1" />
+      <span className="flex items-center gap-1.5">
+        <span className={`inline-block w-4 h-4 rounded border-2 ${CLASE_TARJETA_SEMAFORO.ok}`} />
         Ya cumplió el mínimo de hoy
       </span>
     </div>
