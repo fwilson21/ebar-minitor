@@ -615,9 +615,13 @@ function colorSemaforoVisita(visitasHoy: number, meta: number): 'ok' | 'warn' | 
   return 'danger';
 }
 
+// "warn" usa el color "tomate" (naranja real) en vez de gauge-warn (ámbar oscuro que a color
+// completo se lee más rojizo que naranja, como notó el usuario comparando el borde con el
+// relleno) — border y bg comparten el mismo tono en los 3 estados, sin mezclar dos colores
+// distintos para una misma tarjeta.
 const CLASE_TARJETA_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
   ok: 'bg-gauge-ok/15 border-gauge-ok',
-  warn: 'bg-gauge-warn/15 border-gauge-warn',
+  warn: 'bg-tomate/15 border-tomate',
   danger: 'bg-gauge-danger/15 border-gauge-danger',
 };
 const CLASE_TEXTO_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
@@ -634,19 +638,19 @@ const CLASE_TEXTO_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
  * ve más rojizo aparte). */
 function LeyendaSemaforoVisitas({ esRegular }: { esRegular: boolean }) {
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-600 mb-3">
-      <span className="flex items-center gap-1.5">
-        <span className={`inline-block w-4 h-4 rounded border-2 ${CLASE_TARJETA_SEMAFORO.danger}`} />
+    <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-700 mb-3">
+      <span className="flex items-center gap-2">
+        <span className={`inline-block w-6 h-6 rounded border-2 ${CLASE_TARJETA_SEMAFORO.danger}`} />
         Sin ninguna visita hoy
       </span>
       {esRegular && (
-        <span className="flex items-center gap-1.5">
-          <span className={`inline-block w-4 h-4 rounded border-2 ${CLASE_TARJETA_SEMAFORO.warn}`} />
+        <span className="flex items-center gap-2">
+          <span className={`inline-block w-6 h-6 rounded border-2 ${CLASE_TARJETA_SEMAFORO.warn}`} />
           Le falta al menos 1 visita
         </span>
       )}
-      <span className="flex items-center gap-1.5">
-        <span className={`inline-block w-4 h-4 rounded border-2 ${CLASE_TARJETA_SEMAFORO.ok}`} />
+      <span className="flex items-center gap-2">
+        <span className={`inline-block w-6 h-6 rounded border-2 ${CLASE_TARJETA_SEMAFORO.ok}`} />
         Ya cumplió el mínimo de hoy
       </span>
     </div>

@@ -16,7 +16,11 @@ export default {
           warn: '#B45309',
           danger: '#BE123C',
           idle: '#64748B'
-        }
+        },
+        // Tomate real (no el ámbar oscuro de gauge-warn, que a full color se lee más rojizo que
+        // naranja) — solo para el semáforo de visitas del día (Dashboard.tsx), donde el usuario
+        // pidió explícitamente que el borde/relleno de "le falta al menos 1 visita" se vea tomate.
+        tomate: '#FF6347'
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
