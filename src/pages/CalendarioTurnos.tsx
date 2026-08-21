@@ -329,7 +329,7 @@ export function CalendarioTurnos() {
         <h1 className="titulo-pantalla">Calendario de turnos</h1>
         <p className="text-sm text-slate-600">
           {puedeMarcarTurnos
-            ? 'Marca qué operador está de turno cada sábado, domingo o feriado. Ese día le van a aparecer automáticamente sus EBAR, más las de los operadores que no trabajan — puedes ajustar cuáles con los botones de abajo.'
+            ? 'Marca qué operador está de turno cada sábado, domingo o feriado. Ese día le van a aparecer automáticamente sus EBAR, más las de todos los demás operadores (trabajen ese día o no) — puedes ajustar cuáles con los botones de abajo.'
             : 'Consulta qué operador está de turno cada sábado, domingo o feriado, y elabora las planillas de horas extras.'}
         </p>
       </div>
@@ -803,13 +803,16 @@ function PanelDia({
     setSeleccion((prev) => {
       const copia = new Map(prev);
       const estacionesIniciales = new Set(asignacionesDefaultPorOperador.get(id) ?? []);
-      // Fin de semana/feriado: los operadores que ese día no quedan de turno no van a trabajar,
-      // así que sus EBAR por defecto se le agregan automáticamente a quien sí queda (el admin
-      // puede destildar o agregar más con los botones de abajo, como siempre). En día regular no
-      // aplica — cada uno ve solo las suyas, igual que antes.
+      // Fin de semana/feriado: ese día solo trabaja el grupo que queda de turno (a veces más de
+      // un operador) — entre todos tienen que cubrir tanto las EBAR de los que NO vienen ese día
+      // como las de sus propios compañeros de turno (para que cualquiera de los dos pueda
+      // recorrerlas, no solo el dueño original). Por eso se suman las de TODOS los demás
+      // operadores, ya estén de turno ese día o no — el admin puede destildar o agregar más con
+      // los botones de abajo, como siempre. En día regular no aplica — cada uno ve solo las
+      // suyas, igual que antes.
       if (motivoActual !== null) {
         for (const otro of operadores) {
-          if (otro.id === id || prev.has(otro.id)) continue;
+          if (otro.id === id) continue;
           for (const estacionId of asignacionesDefaultPorOperador.get(otro.id) ?? []) {
             estacionesIniciales.add(estacionId);
           }
@@ -822,16 +825,18 @@ function PanelDia({
   }
 
   // Completa turnos ya guardados (de antes de que existiera el autocompletado en
-  // "Agregar operador"): a cada operador ya puesto en este día le agrega las EBAR de los
-  // operadores que ese día NO quedaron de turno — sin tocar lo que ya tenía tildado. No hace
-  // nada si ya está completo (unión de sets, no duplica ni pisa nada).
+  // "Agregar operador", o guardados cuando todavía no estaba el compañero agregado): a cada
+  // operador ya puesto en este día le agrega las EBAR de TODOS los demás operadores — tanto de
+  // los que no quedan de turno ese día como de sus propios compañeros de turno — sin tocar lo
+  // que ya tenía tildado. No hace nada si ya está completo (unión de sets, no duplica ni pisa
+  // nada).
   function completarCobertura() {
     setSeleccion((prev) => {
       const copia = new Map(prev);
       for (const [operadorId, datos] of prev) {
         const estaciones = new Set(datos.estaciones);
         for (const otro of operadores) {
-          if (otro.id === operadorId || prev.has(otro.id)) continue;
+          if (otro.id === operadorId) continue;
           for (const estacionId of asignacionesDefaultPorOperador.get(otro.id) ?? []) {
             estaciones.add(estacionId);
           }
