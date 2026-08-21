@@ -821,6 +821,27 @@ function PanelDia({
     setOperadorParaAgregar('');
   }
 
+  // Completa turnos ya guardados (de antes de que existiera el autocompletado en
+  // "Agregar operador"): a cada operador ya puesto en este día le agrega las EBAR de los
+  // operadores que ese día NO quedaron de turno — sin tocar lo que ya tenía tildado. No hace
+  // nada si ya está completo (unión de sets, no duplica ni pisa nada).
+  function completarCobertura() {
+    setSeleccion((prev) => {
+      const copia = new Map(prev);
+      for (const [operadorId, datos] of prev) {
+        const estaciones = new Set(datos.estaciones);
+        for (const otro of operadores) {
+          if (otro.id === operadorId || prev.has(otro.id)) continue;
+          for (const estacionId of asignacionesDefaultPorOperador.get(otro.id) ?? []) {
+            estaciones.add(estacionId);
+          }
+        }
+        copia.set(operadorId, { ...datos, estaciones });
+      }
+      return copia;
+    });
+  }
+
   function quitarOperador(id: string) {
     setSeleccion((prev) => {
       const copia = new Map(prev);
@@ -972,6 +993,16 @@ function PanelDia({
         )}
 
         {seleccion.size === 0 && <p className="text-sm text-slate-600">Nadie está de turno este día todavía.</p>}
+
+        {motivoActual !== null && seleccion.size > 0 && (
+          <button
+            type="button"
+            onClick={completarCobertura}
+            className="boton-secundario w-full text-sm border-gauge-ok/50 text-gauge-ok"
+          >
+            🔄 Completar EBAR de los que no trabajan
+          </button>
+        )}
 
         <div className="space-y-3">
           {[...seleccion.entries()].map(([operadorId, datos]) => (
