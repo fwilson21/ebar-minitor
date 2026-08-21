@@ -1083,7 +1083,7 @@ function PanelDia({
               <div className="space-y-2">
                 {gruposEstaciones.map(({ zona, tipo, estaciones: delGrupo }) => (
                   <div key={`${zona}-${tipo}`}>
-                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
                       {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
