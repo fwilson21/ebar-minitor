@@ -51,6 +51,14 @@ function pantallaPorRuta(pathname: string): string {
   return 'global';
 }
 
+// true solo en las pantallas de entrada directa del menú lateral (las claves de
+// PANTALLA_POR_RUTA) — en cualquier otra ruta (detalle de estación, formulario de visita, ver
+// visita del historial, etc.) se muestra el botón "← Volver" de más abajo, para no depender del
+// botón de atrás del navegador/celular.
+function esPantallaPrincipal(pathname: string): boolean {
+  return pathname in PANTALLA_POR_RUTA;
+}
+
 export function AppShell() {
   const { usuario, logout, tienePermiso, anchoDePantalla } = useAuth();
   const navigate = useNavigate();
@@ -272,6 +280,16 @@ export function AppShell() {
           className="flex-1 px-4 py-4 w-full mx-auto pb-24 lg:pb-4"
           style={{ maxWidth: `${anchoActivo}px` }}
         >
+          {!esPantallaPrincipal(location.pathname) && (
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="boton-secundario text-sm px-3 py-1.5 mb-4"
+            >
+              ← Volver
+            </button>
+          )}
+
           {/* key={usuario?.id}: si cambia la identidad (Entrar como / Volver a ser
               administrador) sin cambiar de ruta (ej. ya estabas en "/"), esto fuerza a React a
               desmontar y volver a montar la pantalla activa para que recargue sus propios datos

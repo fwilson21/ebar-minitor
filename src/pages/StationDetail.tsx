@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
@@ -94,7 +94,6 @@ function duracionVisita(llegada: string, salida?: string | null): { texto: strin
 
 export function StationDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { usuario, tienePermiso } = useAuth();
   const puedeEditarTodo = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
   const esAdmin = usuario?.rol === 'administrador';
@@ -235,10 +234,6 @@ export function StationDetail() {
 
   return (
     <div className="space-y-5">
-      <button type="button" onClick={() => navigate(-1)} className="boton-secundario text-sm px-3 py-1.5">
-        ← Volver
-      </button>
-
       <div className="tarjeta p-4">
         <div className="flex items-start justify-between">
           <div>
