@@ -73,6 +73,11 @@ export function Dashboard() {
   const [estacionesConProblemas, setEstacionesConProblemas] = useState<EstacionEbar[]>([]);
   const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>({});
   const [sinVisitar, setSinVisitar] = useState<EstacionSimple[]>([]);
+  // Todas las EBAR relevantes para este rol (para operador, solo las asignadas — mismo filtro que
+  // sinVisitar) con cuántas visitas lleva CADA UNA hoy (de cualquier operador) — a diferencia de
+  // sinVisitar, no se filtran las ya visitadas: alimenta "Pendientes de visita" con semáforo
+  // rojo/tomate/verde en vez de solo listar las que faltan.
+  const [estadoVisitasHoy, setEstadoVisitasHoy] = useState<EstacionAsignadaHoy[]>([]);
   const [mostrarSinVisitar, setMostrarSinVisitar] = useState(true);
   const [sospechosas, setSospechosas] = useState<ParSospechoso[]>([]);
   const [misEstacionesHoy, setMisEstacionesHoy] = useState<EstacionAsignadaHoy[]>([]);
@@ -150,6 +155,16 @@ export function Dashboard() {
         ((todasEstaciones ?? []) as EstacionSimple[]).filter(
           (e) => !idsConVisita.has(e.id) && (!idsAsignadosHoy || idsAsignadosHoy.has(e.id)),
         ),
+      );
+
+      const conteoVisitasPorEstacion: Record<string, number> = {};
+      for (const v of (visitasDelDia ?? []) as any[]) {
+        conteoVisitasPorEstacion[v.estacion_id] = (conteoVisitasPorEstacion[v.estacion_id] ?? 0) + 1;
+      }
+      setEstadoVisitasHoy(
+        ((todasEstaciones ?? []) as EstacionSimple[])
+          .filter((e) => !idsAsignadosHoy || idsAsignadosHoy.has(e.id))
+          .map((e) => ({ ...e, visitasHoy: conteoVisitasPorEstacion[e.id] ?? 0 })),
       );
 
       // "Mínimo de 2 visitas" (ver más abajo) solo aplica en días regulares: ni sábado/domingo,
@@ -442,7 +457,12 @@ export function Dashboard() {
           onAbrirDetalle={abrirDetalleMetrica}
         />
         {!esAdmin && <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} />}
-        <BloquePendientesVisita sinVisitar={sinVisitar} mostrarSinVisitar={mostrarSinVisitar} setMostrarSinVisitar={setMostrarSinVisitar} />
+        <BloquePendientesVisita
+          estadoVisitasHoy={estadoVisitasHoy}
+          esRegular={esRegular}
+          mostrarSinVisitar={mostrarSinVisitar}
+          setMostrarSinVisitar={setMostrarSinVisitar}
+        />
         <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />
         {esAdmin && <BloqueVisitasSospechosas sospechosas={sospechosas} />}
         {esAdmin && <BloqueBajoMinimo bajoMinimo={bajoMinimo} />}
@@ -484,7 +504,8 @@ export function Dashboard() {
               case 'pendientes_visita':
                 return (
                   <BloquePendientesVisita
-                    sinVisitar={sinVisitar}
+                    estadoVisitasHoy={estadoVisitasHoy}
+                    esRegular={esRegular}
                     mostrarSinVisitar={mostrarSinVisitar}
                     setMostrarSinVisitar={setMostrarSinVisitar}
                   />
@@ -585,6 +606,26 @@ function BloqueVistaPreviaNoDisponible({ texto }: { texto: string }) {
   );
 }
 
+/** Semáforo de una EBAR según cuántas visitas lleva hoy contra la meta del día (2 en día regular,
+ * 1 en fin de semana/feriado) — mismo criterio en "Tus EBAR de hoy" (operador) y "Pendientes de
+ * visita" (todos los roles): rojo = 0 visitas, tomate = falta al menos 1, verde = ya cumplida. */
+function colorSemaforoVisita(visitasHoy: number, meta: number): 'ok' | 'warn' | 'danger' {
+  if (visitasHoy >= meta) return 'ok';
+  if (visitasHoy > 0) return 'warn';
+  return 'danger';
+}
+
+const CLASE_TARJETA_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
+  ok: 'bg-gauge-ok/15 border-gauge-ok',
+  warn: 'bg-gauge-warn/15 border-gauge-warn',
+  danger: 'bg-gauge-danger/15 border-gauge-danger',
+};
+const CLASE_TEXTO_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
+  ok: 'text-gauge-ok',
+  warn: 'text-gauge-warn',
+  danger: 'text-gauge-danger',
+};
+
 function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: EstacionAsignadaHoy[]; esRegular: boolean }) {
   return (
     <div className="lg:h-full lg:overflow-auto bloque-adaptable">
@@ -614,17 +655,16 @@ function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: E
               <div className="grid-tarjetas-compactas">
                 {estaciones.map((e) => {
                   const meta = esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1;
-                  const completa = e.visitasHoy >= meta;
-                  const color = completa ? 'text-gauge-ok' : e.visitasHoy > 0 ? 'text-gauge-warn' : 'text-gauge-danger';
+                  const semaforo = colorSemaforoVisita(e.visitasHoy, meta);
                   return (
                     <Link
                       key={e.id}
                       to={`/estaciones/${e.id}/nueva-visita`}
-                      className="tarjeta p-3 flex flex-col gap-1 hover:border-gauge-ok/50 transition"
+                      className={`tarjeta p-3 flex flex-col gap-1 border-2 transition ${CLASE_TARJETA_SEMAFORO[semaforo]}`}
                     >
                       <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
                       <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
-                      <span className={`text-xs mt-1 ${color}`}>
+                      <span className={`text-xs mt-1 font-semibold ${CLASE_TEXTO_SEMAFORO[semaforo]}`}>
                         {esRegular
                           ? `${Math.min(e.visitasHoy, MINIMO_VISITAS_DIA_REGULAR)}/${MINIMO_VISITAS_DIA_REGULAR} hoy`
                           : e.visitasHoy > 0
@@ -645,42 +685,62 @@ function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: E
 
 
 function BloquePendientesVisita({
-  sinVisitar,
+  estadoVisitasHoy,
+  esRegular,
   mostrarSinVisitar,
   setMostrarSinVisitar,
 }: {
-  sinVisitar: EstacionSimple[];
+  estadoVisitasHoy: EstacionAsignadaHoy[];
+  esRegular: boolean;
   mostrarSinVisitar: boolean;
   setMostrarSinVisitar: (updater: (v: boolean) => boolean) => void;
 }) {
-  if (sinVisitar.length === 0) return null;
+  if (estadoVisitasHoy.length === 0) return null;
+  const meta = esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1;
+  const completas = estadoVisitasHoy.filter((e) => e.visitasHoy >= meta).length;
   return (
     <div className="lg:h-full lg:overflow-auto bloque-adaptable">
       <button className="flex items-center justify-between w-full mb-2" onClick={() => setMostrarSinVisitar((v) => !v)}>
-        <h2 className="text-sm font-semibold text-slate-700">Pendientes de visita ({sinVisitar.length})</h2>
+        <h2 className="text-sm font-semibold text-slate-700">
+          Pendientes de visita ({completas}/{estadoVisitasHoy.length} {esRegular ? `con ${MINIMO_VISITAS_DIA_REGULAR} visitas` : 'visitadas'})
+        </h2>
         <span className="text-xs text-slate-500">{mostrarSinVisitar ? '▲ ocultar' : '▼ ver'}</span>
       </button>
+      {!esRegular && (
+        <p className="text-xs text-slate-500 mb-2">Hoy no aplica el mínimo de {MINIMO_VISITAS_DIA_REGULAR} visitas (fin de semana o feriado).</p>
+      )}
       {mostrarSinVisitar && (
         <div className="space-y-4">
-          {agruparPorZonaYTipo(sinVisitar).map(({ zona, tipo, estaciones }) => (
+          {agruparPorZonaYTipo(estadoVisitasHoy).map(({ zona, tipo, estaciones }) => (
             <div key={`${zona}-${tipo}`}>
               <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
                 {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo} ({estaciones.length})
               </p>
               {/* grid-tarjetas-compactas (ver index.css): 2/3/4 columnas según el ancho real del
-                  bloque — con suficiente espacio entran 4 tarjetas por fila. */}
+                  bloque — con suficiente espacio entran 4 tarjetas por fila. Cada tarjeta se
+                  pinta entera (fondo + borde) según el semáforo: rojo sin ninguna visita hoy,
+                  tomate (ámbar) con al menos 1 pero sin llegar a la meta, verde ya cumplida. */}
               <div className="grid-tarjetas-compactas">
-                {estaciones.map((e) => (
-                  <Link
-                    key={e.id}
-                    to={`/estaciones/${e.id}/nueva-visita`}
-                    className="tarjeta p-3 flex flex-col gap-1 hover:border-gauge-ok/50 transition"
-                  >
-                    <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
-                    <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
-                    <span className="text-xs text-gauge-ok mt-1">+ Visita →</span>
-                  </Link>
-                ))}
+                {estaciones.map((e) => {
+                  const semaforo = colorSemaforoVisita(e.visitasHoy, meta);
+                  return (
+                    <Link
+                      key={e.id}
+                      to={`/estaciones/${e.id}/nueva-visita`}
+                      className={`tarjeta p-3 flex flex-col gap-1 border-2 transition ${CLASE_TARJETA_SEMAFORO[semaforo]}`}
+                    >
+                      <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
+                      <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
+                      <span className={`text-xs mt-1 font-semibold ${CLASE_TEXTO_SEMAFORO[semaforo]}`}>
+                        {esRegular
+                          ? `${Math.min(e.visitasHoy, MINIMO_VISITAS_DIA_REGULAR)}/${MINIMO_VISITAS_DIA_REGULAR} hoy`
+                          : e.visitasHoy > 0
+                            ? `${e.visitasHoy} visita${e.visitasHoy > 1 ? 's' : ''} hoy`
+                            : 'Sin visitar'}
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           ))}
