@@ -27,7 +27,13 @@ export function Reports() {
   const [fechaInicio, setFechaInicio] = useState(hoyLocal());
   const [fechaFin, setFechaFin] = useState(hoyLocal());
   const [operadores, setOperadores] = useState<Usuario[]>([]);
-  const [operadorId, setOperadorId] = useState<string>(usuario?.id ?? '');
+  // Arranca en el propio id SOLO si quien mira la pantalla es operador (para "Diario por
+  // operador" viendo sus propias visitas) — un administrador/supervisor no es operador, así que
+  // arrancaba con un id que no calzaba con ninguna opción real del selector (el de abajo ya solo
+  // trae rol operador): el <select> mostraba "Todos los operadores" (primera opción, por no
+  // encontrar match) pero el estado seguía guardando el id del admin por dentro, desincronizado
+  // de lo que se veía en pantalla — eso rompía el filtro de Estación de más abajo.
+  const [operadorId, setOperadorId] = useState<string>(usuario?.rol === 'operador' ? usuario.id : '');
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
   const [estacionId, setEstacionId] = useState<string>('');
   const [generando, setGenerando] = useState(false);
@@ -202,7 +208,16 @@ export function Reports() {
   function cambiarTipo(nuevoTipo: TipoReporte) {
     setTipo(nuevoTipo);
     setEstacionId('');
-    setOperadorId(nuevoTipo === 'diario_operador' ? (usuario?.id ?? '') : '');
+    if (nuevoTipo !== 'diario_operador') {
+      setOperadorId('');
+      return;
+    }
+    // "Diario por operador" no tiene la opción "Todos" — siempre necesita alguien elegido. Si
+    // quien mira la pantalla es operador, se autoselecciona a sí mismo; si es administrador/
+    // supervisor (no aparece en la lista, que solo trae rol operador), se autoselecciona el
+    // primero de la lista para no dejar el selector desincronizado del estado real (mismo bug
+    // que el de operadorId inicial, ver arriba).
+    setOperadorId(usuario?.rol === 'operador' ? usuario.id : (operadores[0]?.id ?? ''));
   }
 
   return (
