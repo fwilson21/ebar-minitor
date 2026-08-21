@@ -355,15 +355,22 @@ function BloqueFiltrosGenerar({
             ) : (
               <option value="">Todas las estaciones</option>
             )}
-            {agruparPorZonaYTipo(estaciones).map(({ zona, tipo: tipoGrupo, estaciones: delGrupo }) => (
-              <optgroup key={`${zona}-${tipoGrupo}`} label={`${ETIQUETA_ZONA[zona] ?? zona} · ${ETIQUETA_TIPO[tipoGrupo] ?? tipoGrupo}`}>
-                {delGrupo.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.codigo} — {e.nombre}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
+            {/* <optgroup> lo dibuja el sistema operativo en el picker nativo del celular (no
+                respeta negrita/color/mayúsculas que le pongamos) — el encabezado terminaba
+                viéndose igual que las estaciones de adentro, sin forma de distinguirlos. En vez
+                de eso, cada grupo mete su propio encabezado como una <option disabled> más
+                dentro de la MISMA lista plana: los navegadores sí pintan las opciones
+                deshabilitadas más tenues y no se pueden tocar, así que igual se distinguen -- */}
+            {agruparPorZonaYTipo(estaciones).flatMap(({ zona, tipo: tipoGrupo, estaciones: delGrupo }) => [
+              <option key={`${zona}-${tipoGrupo}`} value="" disabled>
+                ── {(ETIQUETA_ZONA[zona] ?? zona).toUpperCase()} · {(ETIQUETA_TIPO[tipoGrupo] ?? tipoGrupo).toUpperCase()} ──
+              </option>,
+              ...delGrupo.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {'   '}{e.codigo} — {e.nombre}
+                </option>
+              )),
+            ])}
           </select>
         </div>
       )}
