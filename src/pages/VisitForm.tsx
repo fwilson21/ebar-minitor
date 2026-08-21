@@ -128,6 +128,7 @@ export function VisitForm() {
   const [jardineras, setJardineras] = useState<RegistroEquipo>(crearEquipo);
   const [patiosManiobras, setPatiosManiobras] = useState<RegistroEquipo>(crearEquipo);
   const [guardando, setGuardando] = useState(false);
+  const [eliminandoVisita, setEliminandoVisita] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [errores, setErrores] = useState<string[]>([]);
   const [pasoConfirmacion, setPasoConfirmacion] = useState<0 | 1 | 2>(0);
@@ -255,6 +256,29 @@ export function VisitForm() {
   function salirSinGuardar() {
     guardadoRef.current = true;
     navigate(`/estaciones/${estacionId}`);
+  }
+
+  // Exclusivo del administrador — útil para visitas mal cargadas o hechas solo de prueba. Borra
+  // en cascada sus fotos y registros de bombas (FK "on delete cascade", ver migración 0001); las
+  // fotos ya subidas a Drive quedan huérfanas ahí (mismo comportamiento ya aceptado al borrar una
+  // foto suelta, ver eliminarFotoGuardada en fotos.ts) — no se intenta borrar el archivo remoto.
+  async function eliminarVisita() {
+    if (!visitaId) return;
+    const confirmado = window.confirm(
+      'Vas a eliminar esta visita completa, junto con sus fotos y registros de bombas. Esta acción no se puede deshacer. ¿Continuar?',
+    );
+    if (!confirmado) return;
+    setEliminandoVisita(true);
+    setMensaje(null);
+    try {
+      const { error } = await supabase.from('visitas').delete().eq('id', visitaId);
+      if (error) throw error;
+      guardadoRef.current = true; // evita el aviso de "salir sin guardar" al navegar después de borrar
+      navigate(`/estaciones/${estacionId}`);
+    } catch (err: any) {
+      setMensaje(`No se pudo eliminar la visita: ${err.message ?? err}`);
+      setEliminandoVisita(false);
+    }
   }
 
   const snapshotInicialRef = useRef<string | null>(null);
@@ -920,6 +944,16 @@ export function VisitForm() {
             {!modoEdicion && (
               <button type="button" className="text-xs text-gauge-danger hover:underline mt-0.5" onClick={descartarYSalir}>
                 🚫 Descartar y salir
+              </button>
+            )}
+            {modoEdicion && esAdministrador && (
+              <button
+                type="button"
+                disabled={eliminandoVisita}
+                className="text-xs text-gauge-danger hover:underline mt-0.5 disabled:opacity-50"
+                onClick={eliminarVisita}
+              >
+                {eliminandoVisita ? 'Eliminando…' : '🗑 Eliminar visita'}
               </button>
             )}
           </div>
