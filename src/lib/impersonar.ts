@@ -25,18 +25,29 @@ export async function entrarComo(usuarioId: string): Promise<{ error?: string }>
   const { data: sesionActual } = await supabase.auth.getSession();
   if (!sesionActual.session) return { error: 'No hay sesión activa.' };
 
+  // Se refresca el token a propósito antes de invocar la función: si la sesión del administrador
+  // venía con el token de acceso vencido o a punto de vencer (ej. la pestaña estuvo mucho tiempo
+  // en segundo plano y el refresco automático no llegó a dispararse), la Edge Function la rechaza
+  // con "No autorizado." aunque en el navegador se siga viendo como sesión iniciada.
+  // refreshSession() fuerza un token nuevo usando el refresh_token, que dura mucho más.
+  const { data: refrescada, error: errorRefresh } = await supabase.auth.refreshSession();
+  if (errorRefresh || !refrescada.session) {
+    return { error: 'Tu sesión venció — cierra sesión y vuelve a entrar antes de intentar "Entrar como" de nuevo.' };
+  }
+
   const { data, error } = await supabase.functions.invoke('impersonate-user', {
     body: { usuario_id: usuarioId },
   });
   if (error) return { error: await mensajeErrorFuncion(error) };
   if (data?.error) return { error: data.error };
 
-  // Se guarda ANTES de cambiar de sesión (verifyOtp reemplaza la sesión actual en el navegador).
+  // Se guarda ANTES de cambiar de sesión (verifyOtp reemplaza la sesión actual en el navegador) —
+  // la recién refrescada, no la de antes (esa ya rotó y dejó de servir al refrescar arriba).
   localStorage.setItem(
     CLAVE_SESION_ADMIN,
     JSON.stringify({
-      access_token: sesionActual.session.access_token,
-      refresh_token: sesionActual.session.refresh_token,
+      access_token: refrescada.session.access_token,
+      refresh_token: refrescada.session.refresh_token,
     }),
   );
 
