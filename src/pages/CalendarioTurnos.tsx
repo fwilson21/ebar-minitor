@@ -17,6 +17,7 @@ import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
+import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
 
 const DIAS_SEMANA_CORTOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
@@ -796,6 +797,9 @@ function PanelDia({
   // Tamaño en vivo mientras se arrastra la manija (ver ManijaRedimension) — arranca del último
   // guardado y solo se persiste (onGuardarTamano) al soltar, no en cada pixel de movimiento.
   const [tamano, setTamano] = useState(tamanoPanel);
+  // Mismo agrupado urbana/rural + EBAR/PTAR/línea de conducción que Dashboard y Asignaciones —
+  // no cambia por operador, se calcula una sola vez para los 8 grupos de chips de abajo.
+  const gruposEstaciones = useMemo(() => agruparPorZonaYTipo(estaciones), [estaciones]);
   const [motivoActual, setMotivoActual] = useState(motivo);
   const [descripcionFeriado, setDescripcionFeriado] = useState('');
   const [declarando, setDeclarando] = useState(false);
@@ -1076,30 +1080,40 @@ function PanelDia({
                   Quitar
                 </button>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {estaciones.map((e) => {
-                  const activo = datos.estaciones.has(e.id);
-                  // Distingue las EBAR que ya son del operador por defecto (verde, igual que
-                  // siempre) de las que se sumaron por cobertura (ausentes o compañero de
-                  // turno) o se tildaron a mano (ámbar) — ver leyenda arriba de la lista.
-                  const esPropia = asignacionesDefaultPorOperador.get(operadorId)?.has(e.id) ?? false;
-                  return (
-                    <button
-                      key={e.id}
-                      type="button"
-                      onClick={() => toggleEstacion(operadorId, e.id)}
-                      className={`text-xs px-2.5 py-1 rounded-full border ${
-                        !activo
-                          ? 'border-panel-600 text-slate-600'
-                          : esPropia
-                            ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok'
-                            : 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn'
-                      }`}
-                    >
-                      {e.codigo}
-                    </button>
-                  );
-                })}
+              <div className="space-y-2">
+                {gruposEstaciones.map(({ zona, tipo, estaciones: delGrupo }) => (
+                  <div key={`${zona}-${tipo}`}>
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {delGrupo.map((e) => {
+                        const activo = datos.estaciones.has(e.id);
+                        // Distingue las EBAR que ya son del operador por defecto (verde, igual
+                        // que siempre) de las que se sumaron por cobertura (ausentes o
+                        // compañero de turno) o se tildaron a mano (ámbar) — ver leyenda arriba
+                        // de la lista.
+                        const esPropia = asignacionesDefaultPorOperador.get(operadorId)?.has(e.id) ?? false;
+                        return (
+                          <button
+                            key={e.id}
+                            type="button"
+                            onClick={() => toggleEstacion(operadorId, e.id)}
+                            className={`text-xs px-2.5 py-1 rounded-full border ${
+                              !activo
+                                ? 'border-panel-600 text-slate-600'
+                                : esPropia
+                                  ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok'
+                                  : 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn'
+                            }`}
+                          >
+                            {e.codigo}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
