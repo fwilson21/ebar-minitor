@@ -866,18 +866,18 @@ function PanelDia({
   }
 
   // Completa turnos ya guardados (de antes de que existiera el autocompletado en
-  // "Agregar operador", o guardados cuando todavía no estaba el compañero agregado): a cada
-  // operador ya puesto en este día le agrega las EBAR de TODOS los demás operadores — tanto de
-  // los que no quedan de turno ese día como de sus propios compañeros de turno — sin tocar lo
-  // que ya tenía tildado. No hace nada si ya está completo (unión de sets, no duplica ni pisa
-  // nada).
+  // "Agregar operador", guardados cuando todavía no estaba el compañero agregado, o cuando a un
+  // operador se le agregó una EBAR fija nueva DESPUÉS de haber guardado este turno): a cada
+  // operador ya puesto en este día le agrega las EBAR por defecto de TODOS los operadores —
+  // las propias (por si cambiaron después de guardado el turno) y las de los demás (ausentes o
+  // compañeros de turno) — sin tocar lo que ya tenía tildado. No hace nada si ya está completo
+  // (unión de sets, no duplica ni pisa nada).
   function completarCobertura() {
     setSeleccion((prev) => {
       const copia = new Map(prev);
       for (const [operadorId, datos] of prev) {
         const estaciones = new Set(datos.estaciones);
         for (const otro of operadores) {
-          if (otro.id === operadorId) continue;
           for (const estacionId of asignacionesDefaultPorOperador.get(otro.id) ?? []) {
             estaciones.add(estacionId);
           }
