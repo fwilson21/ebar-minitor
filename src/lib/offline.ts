@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { ejecutarSincronizacion, type AdaptadorSync } from './syncMotor';
+import { mensajeErrorFuncion } from './edgeFunctions';
 
 export {
   offlineDB,
@@ -91,7 +92,7 @@ const adaptadorSupabase: AdaptadorSync = {
     const { error } = await supabase.functions.invoke('upload-to-drive', {
       body: { visita_id: visitaId, file_base64: base64, content_type: contentType, descripcion },
     });
-    if (error) throw error;
+    if (error) throw new Error(await mensajeErrorFuncion(error));
   },
 };
 

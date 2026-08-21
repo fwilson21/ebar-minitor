@@ -5,6 +5,7 @@
 // administrador en localStorage, para poder restaurarla con volverAAdministrador().
 
 import { supabase } from './supabase';
+import { mensajeErrorFuncion } from './edgeFunctions';
 
 const CLAVE_SESION_ADMIN = 'ebar_impersonando_sesion_admin';
 
@@ -27,7 +28,7 @@ export async function entrarComo(usuarioId: string): Promise<{ error?: string }>
   const { data, error } = await supabase.functions.invoke('impersonate-user', {
     body: { usuario_id: usuarioId },
   });
-  if (error) return { error: error.message };
+  if (error) return { error: await mensajeErrorFuncion(error) };
   if (data?.error) return { error: data.error };
 
   // Se guarda ANTES de cambiar de sesión (verifyOtp reemplaza la sesión actual en el navegador).

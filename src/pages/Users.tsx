@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { entrarComo } from '../lib/impersonar';
+import { mensajeErrorFuncion } from '../lib/edgeFunctions';
 import { ROL_LABEL } from '../lib/roles';
 import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
@@ -133,7 +134,7 @@ export function Users() {
     setMensaje(null);
     try {
       const { data, error } = await supabase.functions.invoke('delete-user', { body: { usuario_id: id } });
-      if (error) throw error;
+      if (error) throw new Error(await mensajeErrorFuncion(error));
       if (data?.error) throw new Error(data.error);
       setUsuarios((prev) => prev.filter((u) => u.id !== id));
     } catch (err: any) {
@@ -158,7 +159,7 @@ export function Users() {
           rol: nuevoRol,
         },
       });
-      if (error) throw error;
+      if (error) throw new Error(await mensajeErrorFuncion(error));
       if (data?.error) throw new Error(data.error);
 
       setMensajeInvitar(`Usuario ${nuevoNombre} creado. Ya puede iniciar sesión con "${nuevoUsuario}" y la contraseña que definiste.`);
@@ -199,7 +200,7 @@ export function Users() {
       const { data, error } = await supabase.functions.invoke('rename-user', {
         body: { usuario_id: id, nuevo_usuario: nuevoNombreUsuario },
       });
-      if (error) throw error;
+      if (error) throw new Error(await mensajeErrorFuncion(error));
       if (data?.error) throw new Error(data.error);
       setUsuarios((prev) => prev.map((u) => (u.id === id ? { ...u, nombre_usuario: nuevoNombreUsuario } : u)));
       setMensajeRenombrar('Usuario actualizado. Ya puede iniciar sesión con el nuevo nombre.');
@@ -298,7 +299,7 @@ export function Users() {
       const { data, error } = await supabase.functions.invoke('reset-user-password', {
         body: { usuario_id: id, password: passwordReset },
       });
-      if (error) throw error;
+      if (error) throw new Error(await mensajeErrorFuncion(error));
       if (data?.error) throw new Error(data.error);
       setMensajeReset('Contraseña actualizada. Pásasela al usuario.');
       setPasswordReset('');
