@@ -61,16 +61,27 @@ export function esMismoDia(fechaISOa: string, fechaISOb: string): boolean {
  * Dibuja la fecha/hora de captura en la esquina inferior de la foto (evidencia visual
  * de cuándo se tomó, para que no se puedan reutilizar fotos de otro día en una visita).
  */
+// Lado más largo al que se achica cualquier foto antes de procesarla — de sobra para
+// documentación (se ve nítida en el PDF y a pantalla completa en el celular) pero evita que una
+// foto de cámara a resolución nativa (12+ megapíxeles en cualquier celular actual) dispare un
+// pico de memoria al decodificarla + dibujarla en un canvas del mismo tamaño. Causa real
+// confirmada (2026-08-21) de que la app se cerraba de golpe justo al tomar una foto en un celular
+// con poca RAM (Xiaomi HyperOS, 4GB) — Android mata la pestaña/app por memoria, perdiendo todo lo
+// cargado en el formulario.
+const LADO_MAXIMO_FOTO = 1600;
+
 export async function estamparFechaEnFoto(archivo: Blob, fechaISO: string): Promise<Blob> {
   try {
     const texto = formatearFechaHoraFoto(fechaISO);
     const bitmap = await createImageBitmap(archivo);
+    const escala = Math.min(1, LADO_MAXIMO_FOTO / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
+    canvas.width = Math.round(bitmap.width * escala);
+    canvas.height = Math.round(bitmap.height * escala);
     const ctx = canvas.getContext('2d');
     if (!ctx) return archivo;
-    ctx.drawImage(bitmap, 0, 0);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.(); // libera el bitmap decodificado (puede ser el doble de canvas.width x canvas.height) apenas se copió al canvas, sin esperar al recolector de basura
 
     const fontSize = Math.max(16, Math.round(canvas.width * 0.035));
     ctx.font = `bold ${fontSize}px sans-serif`;
