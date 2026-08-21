@@ -454,7 +454,7 @@ function BloqueAsignacionDefault({
       <div className="space-y-3">
         {agruparPorZonaYTipo(estaciones).map(({ zona, tipo, estaciones: delGrupo }) => (
           <div key={`${zona}-${tipo}`}>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+            <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
               {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -528,7 +528,7 @@ function BloqueAsignacionEspecial({
       <div className="space-y-3">
         {agruparPorZonaYTipo(estaciones).map(({ zona, tipo, estaciones: delGrupo }) => (
           <div key={`${zona}-${tipo}`}>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+            <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
               {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo}
             </p>
             <div className="flex flex-wrap gap-2">

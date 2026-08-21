@@ -436,7 +436,7 @@ function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: E
               agruparEstaciones.ts y .grid-tarjetas-compactas en index.css. */}
           {agruparPorZonaYTipo(misEstacionesHoy).map(({ zona, tipo, estaciones }) => (
             <div key={`${zona}-${tipo}`}>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
                 {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo} ({estaciones.length})
               </p>
               <div className="grid-tarjetas-compactas">
@@ -492,7 +492,7 @@ function BloquePendientesVisita({
         <div className="space-y-4">
           {agruparPorZonaYTipo(sinVisitar).map(({ zona, tipo, estaciones }) => (
             <div key={`${zona}-${tipo}`}>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
                 {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo} ({estaciones.length})
               </p>
               {/* grid-tarjetas-compactas (ver index.css): 2/3/4 columnas según el ancho real del
