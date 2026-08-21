@@ -38,10 +38,13 @@ export function Reports() {
 
   useEffect(() => {
     if (!esAdmin) return;
+    // Solo rol operador: el resto del personal (supervisor, administrador, digitador) no
+    // registra visitas, así que nunca tendría reportes que generar acá.
     supabase
       .from('usuarios')
       .select('id, nombre_completo, rol, activo, firma_url')
       .eq('activo', true)
+      .eq('rol', 'operador')
       .order('nombre_completo')
       .then(({ data }) => setOperadores((data as Usuario[]) ?? []));
   }, [esAdmin]);
