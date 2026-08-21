@@ -425,21 +425,24 @@ export function Dashboard() {
   }
 
   // Los bloques que un rol nunca llega a ver ("tus_ebar_hoy" es solo de operador,
-  // "visitas_sospechosas"/"bajo_minimo" son solo de admin/supervisor) se sacan del grid editable
-  // — si no, quedan como una celda vacía y arrastrable sin contenido dentro (ver
-  // renderBloque más abajo, que además explica por qué se ven vacíos AL EDITAR aunque si
-  // apliquen). En modo edición, el rol que importa es el que se está previsualizando en el
-  // selector de "Editar distribución" (objetivoActivo) — NO el rol real de quien edita: un
-  // administrador arreglando la distribución de "Operador" necesita seguir viendo (y poder
-  // agrandar) "Tus EBAR de hoy" aunque él mismo no sea operador. "Todos" no filtra nada, para
-  // poder acomodar el set completo del acomodo compartido.
+  // "visitas_sospechosas"/"bajo_minimo"/"pendientes_visita" son solo de admin/supervisor) se
+  // sacan del grid editable — si no, quedan como una celda vacía y arrastrable sin contenido
+  // dentro (ver renderBloque más abajo, que además explica por qué se ven vacíos AL EDITAR aunque
+  // si apliquen). "pendientes_visita" quedó redundante para operador desde que ambos bloques
+  // muestran las mismas EBAR con el mismo semáforo de colores — "Tus EBAR de hoy" ya cubre eso
+  // con el enfoque personal ("tus"), así que el operador ya no necesita las dos. En modo edición,
+  // el rol que importa es el que se está previsualizando en el selector de "Editar distribución"
+  // (objetivoActivo) — NO el rol real de quien edita: un administrador arreglando la distribución
+  // de "Operador" necesita seguir viendo (y poder agrandar) "Tus EBAR de hoy" aunque él mismo no
+  // sea operador. "Todos" no filtra nada, para poder acomodar el set completo del acomodo
+  // compartido.
   const modoEdicionActivo = puedeEditarDistribucion && editorDistribucion.modoEdicion;
   const rolParaBloques = modoEdicionActivo ? editorDistribucion.objetivoActivo : usuario?.rol;
   const bloquesDashboard = PANTALLAS_EDITABLES.find((p) => p.id === 'dashboard')!.bloques.filter((b) => {
     if (!rolParaBloques || rolParaBloques === 'todos') return true;
     const rolEsAdminComo = rolParaBloques === 'administrador' || rolParaBloques === 'supervisor';
     if (b.id === 'tus_ebar_hoy') return !rolEsAdminComo;
-    if (b.id === 'visitas_sospechosas' || b.id === 'bajo_minimo') return rolEsAdminComo;
+    if (b.id === 'visitas_sospechosas' || b.id === 'bajo_minimo' || b.id === 'pendientes_visita') return rolEsAdminComo;
     return true;
   });
 
@@ -457,12 +460,14 @@ export function Dashboard() {
           onAbrirDetalle={abrirDetalleMetrica}
         />
         {!esAdmin && <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} />}
-        <BloquePendientesVisita
-          estadoVisitasHoy={estadoVisitasHoy}
-          esRegular={esRegular}
-          mostrarSinVisitar={mostrarSinVisitar}
-          setMostrarSinVisitar={setMostrarSinVisitar}
-        />
+        {esAdmin && (
+          <BloquePendientesVisita
+            estadoVisitasHoy={estadoVisitasHoy}
+            esRegular={esRegular}
+            mostrarSinVisitar={mostrarSinVisitar}
+            setMostrarSinVisitar={setMostrarSinVisitar}
+          />
+        )}
         <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />
         {esAdmin && <BloqueVisitasSospechosas sospechosas={sospechosas} />}
         {esAdmin && <BloqueBajoMinimo bajoMinimo={bajoMinimo} />}
@@ -502,14 +507,20 @@ export function Dashboard() {
                 // contenido acá.
                 return modoEdicionActivo ? <BloqueVistaPreviaNoDisponible texto="Solo lo ve el operador." /> : null;
               case 'pendientes_visita':
-                return (
-                  <BloquePendientesVisita
-                    estadoVisitasHoy={estadoVisitasHoy}
-                    esRegular={esRegular}
-                    mostrarSinVisitar={mostrarSinVisitar}
-                    setMostrarSinVisitar={setMostrarSinVisitar}
-                  />
-                );
+                if (esAdmin) {
+                  return (
+                    <BloquePendientesVisita
+                      estadoVisitasHoy={estadoVisitasHoy}
+                      esRegular={esRegular}
+                      mostrarSinVisitar={mostrarSinVisitar}
+                      setMostrarSinVisitar={setMostrarSinVisitar}
+                    />
+                  );
+                }
+                // Redundante para operador (ya tiene "Tus EBAR de hoy" con la misma información) —
+                // igual que "tus_ebar_hoy" arriba, el bloque queda solo para poder acomodarlo en
+                // "Editar distribución" cuando se previsualiza el acomodo de Operador.
+                return modoEdicionActivo ? <BloqueVistaPreviaNoDisponible texto="Solo lo ve administrador/supervisor." /> : null;
               case 'requieren_atencion':
                 return <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />;
               case 'visitas_sospechosas':
