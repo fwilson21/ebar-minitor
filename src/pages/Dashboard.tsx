@@ -292,6 +292,12 @@ export function Dashboard() {
         year: 'numeric',
       })}`;
 
+  // Los Hooks (useMemo incluido) tienen que llamarse siempre, en el mismo orden, en cada
+  // renderizado — por eso este useMemo va ANTES de los `return` condicionales de más abajo
+  // (digitador / cargando). Ponerlo después rompía la regla (React error #310: "Rendered more
+  // hooks than during the previous render") apenas la pantalla pasaba por el estado "Cargando…".
+  const estacionesPorId = useMemo(() => new Map(todasEstacionesInfo.map((e) => [e.id, e])), [todasEstacionesInfo]);
+
   // Digitador no tiene esta pantalla (su trabajo es Turnos/Reportes, no monitoreo) — se manda
   // directo a Turnos en vez de mostrarle un mensaje de "no disponible" en lo primero que ve al
   // entrar a la app.
@@ -305,8 +311,6 @@ export function Dashboard() {
   }
 
   // --- Detalle de las 5 métricas de "Inicio" (ver ModalListaEstaciones más abajo) ---
-
-  const estacionesPorId = useMemo(() => new Map(todasEstacionesInfo.map((e) => [e.id, e])), [todasEstacionesInfo]);
 
   function contarPorEstacion(idsEstacion: string[]): FilaDetalleMetrica[] {
     const conteo = new Map<string, number>();
