@@ -1009,6 +1009,19 @@ function PanelDia({
           </button>
         )}
 
+        {seleccion.size > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600">
+            <span>
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-gauge-ok align-middle mr-1" />
+              Propia del operador
+            </span>
+            <span>
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-gauge-warn align-middle mr-1" />
+              Extra (cobertura o agregada a mano)
+            </span>
+          </div>
+        )}
+
         <div className="space-y-3">
           {[...seleccion.entries()].map(([operadorId, datos]) => (
             <div key={operadorId} className="border border-panel-600/40 rounded-lg p-3 space-y-2">
@@ -1021,13 +1034,21 @@ function PanelDia({
               <div className="flex flex-wrap gap-1.5">
                 {estaciones.map((e) => {
                   const activo = datos.estaciones.has(e.id);
+                  // Distingue las EBAR que ya son del operador por defecto (verde, igual que
+                  // siempre) de las que se sumaron por cobertura (ausentes o compañero de
+                  // turno) o se tildaron a mano (ámbar) — ver leyenda arriba de la lista.
+                  const esPropia = asignacionesDefaultPorOperador.get(operadorId)?.has(e.id) ?? false;
                   return (
                     <button
                       key={e.id}
                       type="button"
                       onClick={() => toggleEstacion(operadorId, e.id)}
                       className={`text-xs px-2.5 py-1 rounded-full border ${
-                        activo ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-600'
+                        !activo
+                          ? 'border-panel-600 text-slate-600'
+                          : esPropia
+                            ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok'
+                            : 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn'
                       }`}
                     >
                       {e.codigo}
