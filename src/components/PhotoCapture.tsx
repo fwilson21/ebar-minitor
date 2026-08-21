@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { FotoLocal } from '../lib/types';
 import { eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
 import { generarUUID } from '../lib/uuid';
+import { useObjectUrls } from '../lib/useObjectUrls';
 import { FotoLightbox } from './FotoLightbox';
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
 export function PhotoCapture({ fotos, onChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
+  const urls = useObjectUrls(fotos);
 
   async function manejarSeleccion(e: React.ChangeEvent<HTMLInputElement>) {
     const archivos = Array.from(e.target.files ?? []);
@@ -70,7 +72,7 @@ export function PhotoCapture({ fotos, onChange }: Props) {
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {fotos.map((foto, idx) => {
-            const src = foto.blob ? URL.createObjectURL(foto.blob) : foto.url_publica;
+            const src = foto.blob ? urls[foto.id] : foto.url_publica;
             return (
               <div key={foto.id} className="relative aspect-square rounded-lg overflow-hidden bg-panel-700">
                 {src && (

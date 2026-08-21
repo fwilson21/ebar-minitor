@@ -3,6 +3,7 @@ import type { EstadoEquipo, FotoLocal, RegistroEquipo } from '../lib/types';
 import { eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { generarUUID } from '../lib/uuid';
+import { useObjectUrls } from '../lib/useObjectUrls';
 import { FotoLightbox } from './FotoLightbox';
 import { BotonDictado } from './BotonDictado';
 
@@ -49,6 +50,7 @@ export function EquipoSection({
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
+  const urls = useObjectUrls(valor.fotos);
   const observacionesRef = useAutoResizeTextarea(valor.observaciones ?? '');
   const mostrarDetalle = !tieneSelector || valor.tiene === true;
   const mostrarEstado = !sinEstado && (!tieneSelector || (estadoSiTiene && valor.tiene === true));
@@ -218,7 +220,7 @@ export function EquipoSection({
         {valor.fotos.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
             {valor.fotos.map((foto, idx) => {
-              const src = foto.blob ? URL.createObjectURL(foto.blob) : foto.url_publica;
+              const src = foto.blob ? urls[foto.id] : foto.url_publica;
               return (
                 <div key={foto.id} className="relative aspect-square rounded-lg overflow-hidden bg-panel-700">
                   {src && (

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { FotoLocal } from '../lib/types';
+import { useObjectUrls } from '../lib/useObjectUrls';
 
 interface Props {
   fotos: FotoLocal[];
@@ -15,6 +16,7 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar }: Props
   const hayAnterior = indice > 0;
   const haySiguiente = indice < fotos.length - 1;
   const touchStartX = useRef<number | null>(null);
+  const urls = useObjectUrls(fotos);
 
   // Permite cerrar el visor con el botón de retroceso del celular en vez de
   // salir de la pantalla entera: se agrega una entrada de historial "sentinel"
@@ -57,7 +59,7 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar }: Props
   }
 
   if (!foto) return null;
-  const src = foto.blob ? URL.createObjectURL(foto.blob) : foto.url_publica;
+  const src = foto.blob ? urls[foto.id] : foto.url_publica;
 
   return (
     <div
