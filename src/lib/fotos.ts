@@ -73,7 +73,17 @@ const LADO_MAXIMO_FOTO = 1600;
 export async function estamparFechaEnFoto(archivo: Blob, fechaISO: string): Promise<Blob> {
   try {
     const texto = formatearFechaHoraFoto(fechaISO);
-    const bitmap = await createImageBitmap(archivo);
+    // `resizeWidth` le pide al navegador que decodifique la imagen YA achicada, en vez de
+    // decodificarla completa a su resolución nativa y recién después achicarla. Esto importaba
+    // poco con cámaras de 12 MP, pero muchos Xiaomi (como el celular de 4GB de RAM donde se
+    // confirmó este bug) traen sensores de 48-108 MP: decodificar esa foto completa puede pedir
+    // cientos de MB de golpe, ANTES de llegar siquiera a la línea de abajo que la achica — el
+    // achicado con `LADO_MAXIMO_FOTO` de por sí no alcanzaba a evitar ese pico porque llegaba
+    // demasiado tarde, ya con la foto completa decodificada en memoria. Solo se fija el ancho (no
+    // el alto) para no deformar la foto: el navegador calcula el otro lado manteniendo la
+    // proporción original, y el achicado de abajo (que sí respeta el lado más largo) sigue
+    // aplicando igual sobre este bitmap ya mucho más chico.
+    const bitmap = await createImageBitmap(archivo, { resizeWidth: LADO_MAXIMO_FOTO, resizeQuality: 'medium' });
     const escala = Math.min(1, LADO_MAXIMO_FOTO / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(bitmap.width * escala);
