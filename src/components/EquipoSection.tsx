@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import type { EstadoEquipo, FotoLocal, RegistroEquipo } from '../lib/types';
-import { eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
+import { crearFotoLocal, eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { generarUUID } from '../lib/uuid';
 import { useObjectUrls } from '../lib/useObjectUrls';
 import { FotoLightbox } from './FotoLightbox';
 import { BotonDictado } from './BotonDictado';
+import { CamaraFoto } from './CamaraFoto';
 
 const MAX_FOTOS = 3;
 
@@ -50,6 +51,14 @@ export function EquipoSection({
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
+  const [camaraAbierta, setCamaraAbierta] = useState(false);
+  // Cupo fijado al ABRIR la cámara (no recalculado en cada foto): CamaraFoto ya lleva su propio
+  // contador de disparos de la sesión, así que si acá se recalculara en vivo contra
+  // valor.fotos.length (que también crece con cada foto) se estaría restando dos veces el mismo
+  // avance y el disparador se apagaría antes de llegar a MAX_FOTOS.
+  const [cupoCamara, setCupoCamara] = useState(0);
+  const valorRef = useRef(valor);
+  valorRef.current = valor;
   const urls = useObjectUrls(valor.fotos);
   const observacionesRef = useAutoResizeTextarea(valor.observaciones ?? '');
   const mostrarDetalle = !tieneSelector || valor.tiene === true;
@@ -77,6 +86,12 @@ export function EquipoSection({
       })),
     );
     onChange({ ...valor, fotos: [...valor.fotos, ...nuevas] });
+  }
+
+  // Ver el mismo comentario en PhotoCapture.tsx: cada captura de CamaraFoto llega una por una.
+  async function agregarFotoDesdeCamara(blob: Blob) {
+    const nueva = await crearFotoLocal(blob, new Date().toISOString());
+    onChange({ ...valorRef.current, fotos: [...valorRef.current.fotos, nueva] });
   }
 
   async function manejarEliminarFoto(foto: FotoLocal) {
@@ -203,7 +218,10 @@ export function EquipoSection({
             <button
               type="button"
               className="boton-secundario text-sm py-1.5 px-3"
-              onClick={() => inputRef.current?.click()}
+              onClick={() => {
+                setCupoCamara(MAX_FOTOS - valor.fotos.length);
+                setCamaraAbierta(true);
+              }}
             >
               📷 Tomar foto
             </button>
@@ -217,6 +235,18 @@ export function EquipoSection({
             onChange={manejarFoto}
           />
         </div>
+
+        {camaraAbierta && (
+          <CamaraFoto
+            maxFotos={cupoCamara}
+            onCapturar={agregarFotoDesdeCamara}
+            onCerrar={() => setCamaraAbierta(false)}
+            onError={() => {
+              setCamaraAbierta(false);
+              inputRef.current?.click();
+            }}
+          />
+        )}
         {valor.fotos.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
             {valor.fotos.map((foto, idx) => {

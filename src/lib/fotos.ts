@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import type { VisitaParaReporte } from './pdf';
+import type { FotoLocal } from './types';
+import { generarUUID } from './uuid';
 
 /**
  * Elimina el registro de una foto ya subida (no borra el archivo de Drive,
@@ -113,6 +115,20 @@ export async function estamparFechaEnFoto(archivo: Blob, fechaISO: string): Prom
   } catch {
     return archivo;
   }
+}
+
+/**
+ * Arma un `FotoLocal` listo para agregar al estado del formulario a partir de un blob recién
+ * capturado (por `CamaraFoto` o por el `<input capture>` de respaldo) — mismo patrón repetido
+ * antes en PhotoCapture.tsx, EquipoSection.tsx y PumpForm.tsx, ahora centralizado acá.
+ */
+export async function crearFotoLocal(archivo: Blob, fechaISO: string): Promise<FotoLocal> {
+  return {
+    id: generarUUID(),
+    blob: await estamparFechaEnFoto(archivo, fechaISO),
+    tomada_en: fechaISO,
+    estado_subida: 'pendiente',
+  };
 }
 
 /**

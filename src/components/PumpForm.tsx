@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react';
 import type { Bomba, EstadoBomba, FotoLocal, RegistroBombaInput } from '../lib/types';
 import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
-import { eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
+import { crearFotoLocal, eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { generarUUID } from '../lib/uuid';
 import { useObjectUrls } from '../lib/useObjectUrls';
 import { FotoLightbox } from './FotoLightbox';
 import { BotonDictado } from './BotonDictado';
+import { CamaraFoto } from './CamaraFoto';
 
 const MAX_FOTOS = 3;
 
@@ -30,6 +31,11 @@ interface Props {
 export function PumpForm({ bomba, valor, onChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
+  const [camaraAbierta, setCamaraAbierta] = useState(false);
+  // Ver el comentario en EquipoSection.tsx: cupo fijado al abrir, no recalculado en vivo.
+  const [cupoCamara, setCupoCamara] = useState(0);
+  const valorRef = useRef(valor);
+  valorRef.current = valor;
   const urls = useObjectUrls(valor.fotos);
   const observacionesRef = useAutoResizeTextarea(valor.observaciones ?? '');
 
@@ -53,6 +59,12 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
       })),
     );
     onChange({ ...valor, fotos: [...valor.fotos, ...nuevas] });
+  }
+
+  // Ver el mismo comentario en PhotoCapture.tsx: cada captura de CamaraFoto llega una por una.
+  async function agregarFotoDesdeCamara(blob: Blob) {
+    const nueva = await crearFotoLocal(blob, new Date().toISOString());
+    onChange({ ...valorRef.current, fotos: [...valorRef.current.fotos, nueva] });
   }
 
   async function manejarEliminarFoto(foto: FotoLocal) {
@@ -170,7 +182,10 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
               <button
                 type="button"
                 className="boton-secundario text-sm py-1.5 px-3"
-                onClick={() => inputRef.current?.click()}
+                onClick={() => {
+                  setCupoCamara(MAX_FOTOS - valor.fotos.length);
+                  setCamaraAbierta(true);
+                }}
               >
                 📷 Tomar foto
               </button>
@@ -184,6 +199,18 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
               onChange={manejarFoto}
             />
           </div>
+
+          {camaraAbierta && (
+            <CamaraFoto
+              maxFotos={cupoCamara}
+              onCapturar={agregarFotoDesdeCamara}
+              onCerrar={() => setCamaraAbierta(false)}
+              onError={() => {
+                setCamaraAbierta(false);
+                inputRef.current?.click();
+              }}
+            />
+          )}
           {valor.fotos.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
               {valor.fotos.map((foto, idx) => {
