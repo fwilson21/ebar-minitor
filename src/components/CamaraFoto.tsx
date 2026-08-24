@@ -30,6 +30,11 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar, onError }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   const [listo, setListo] = useState(false);
   const [tomadas, setTomadas] = useState(0);
+  // Aviso "✓ Foto guardada" que aparece pegado a cada disparo — antes de esto solo cambiaba el
+  // número entre paréntesis en "Listo", que pasaba desapercibido; el operador no tenía ninguna
+  // señal clara de que la foto sí se había tomado.
+  const [avisoVisible, setAvisoVisible] = useState(false);
+  const timeoutAvisoRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelado = false;
@@ -58,6 +63,7 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar, onError }: Props) {
       cancelado = true;
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      if (timeoutAvisoRef.current) window.clearTimeout(timeoutAvisoRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -79,6 +85,9 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar, onError }: Props) {
         if (blob) {
           onCapturar(blob);
           setTomadas((n) => n + 1);
+          setAvisoVisible(true);
+          if (timeoutAvisoRef.current) window.clearTimeout(timeoutAvisoRef.current);
+          timeoutAvisoRef.current = window.setTimeout(() => setAvisoVisible(false), 1300);
         }
       },
       'image/jpeg',
@@ -97,6 +106,19 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar, onError }: Props) {
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
       <video ref={videoRef} autoPlay playsInline muted className="flex-1 w-full h-full object-cover" />
       {!listo && <p className="absolute inset-0 flex items-center justify-center text-white text-sm">Abriendo cámara…</p>}
+
+      {/* Aviso de éxito pegado al disparo — ver comentario en el estado `avisoVisible` de arriba. */}
+      <div
+        aria-live="polite"
+        className={`absolute inset-x-0 top-6 flex justify-center pointer-events-none transition-opacity duration-300 ${
+          avisoVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <span className="flex items-center gap-1.5 bg-gauge-ok/95 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg">
+          ✓ Foto guardada
+        </span>
+      </div>
+
       <div className="flex items-center justify-between px-6 py-5 bg-black/85">
         <button type="button" onClick={cerrar} className="text-white text-sm px-3 py-2">
           ✕ Cancelar
