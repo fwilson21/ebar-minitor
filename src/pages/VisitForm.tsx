@@ -34,6 +34,14 @@ import type {
 const crearEquipo = (): RegistroEquipo => ({ estado: '', observaciones: '', fotos: [] });
 
 const DISTANCIA_MAXIMA_METROS = 300;
+// Tope al margen de error del GPS que se le resta a la distancia (ver más abajo). Sin este tope,
+// un celular que reporte un margen de error enorme dejaría pasar a cualquier distancia: en
+// iPhone, si el operador tiene desactivada "Ubicación exacta" (Ajustes > Privacidad > Localización
+// > la app/Safari), el margen de error que entrega el sistema salta de metros a VARIOS
+// KILÓMETROS — con eso la resta siempre daba 0 y el bloqueo por distancia quedaba anulado sin
+// importar dónde estuviera el operador en realidad. 150 m es lo que el propio GPS normal reporta
+// como peor caso cerca de estructuras de concreto/metal (ver comentario en `distanciaEfectiva`).
+const MARGEN_GPS_MAXIMO_METROS = 150;
 const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 const CLAVE_CACHE_BOMBAS_PREFIJO = 'ebar_cache_bombas:';
 
@@ -837,9 +845,16 @@ export function VisitForm() {
   // Se descuenta el margen de precisión (`accuracy`) del GPS antes de comparar: cerca de
   // estructuras de concreto/metal el celular puede reportar 50-150 m de margen de error, y sin
   // esto un operador parado justo en el borde de los 300 m podía quedar bloqueado por error.
+  // El margen que se resta tiene un tope (MARGEN_GPS_MAXIMO_METROS): si no lo tuviera, un celular
+  // con "Ubicación exacta" desactivada (común en iPhone) reporta un margen de error de varios
+  // kilómetros y la resta anula el bloqueo por completo, sin importar dónde esté el operador.
   const distanciaEfectiva =
     requiereUbicacion && ubicacion.tipo === 'ok'
-      ? Math.max(0, distanciaMetros(ubicacion.lat, ubicacion.lon, estacion!.latitud!, estacion!.longitud!) - ubicacion.precision)
+      ? Math.max(
+          0,
+          distanciaMetros(ubicacion.lat, ubicacion.lon, estacion!.latitud!, estacion!.longitud!) -
+            Math.min(ubicacion.precision, MARGEN_GPS_MAXIMO_METROS),
+        )
       : null;
   // Mientras el GPS todavía no da su primera lectura no se bloquea (se trata como una carga
   // normal, sin mostrar el aviso) — así se evita el falso "no estás en el sitio" mientras el
@@ -854,8 +869,10 @@ export function VisitForm() {
   if (!estacion) {
     return (
       <p className="text-slate-600">
-        No se pudo cargar esta estación. Si no tienes señal, necesitas haber abierto esta pantalla
-        al menos una vez con conexión antes de poder usarla sin señal.
+        No se pudo cargar esta estación sin conexión. Para poder usarla sin señal, entra una vez a
+        la lista de "Estaciones EBAR" mientras tengas conexión — puede ser en cualquier lugar
+        (casa, oficina, en el camino), no hace falta estar en la EBAR — así queda guardada en el
+        celular junto con el resto de tus estaciones asignadas.
       </p>
     );
   }
