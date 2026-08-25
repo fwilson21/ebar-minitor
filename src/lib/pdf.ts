@@ -826,17 +826,9 @@ function bloqueDiaInforme(d: DiaInformePdf): any[] {
       },
     ];
   }
-  if (!d.aprobado) {
-    return [
-      {
-        text: `${formatFechaLarga(d.fecha)} — Día todavía no aprobado, no incluido en este informe.`,
-        italics: true,
-        fontSize: 9,
-        color: '#5B7184',
-        margin: [0, 0, 0, 8],
-      },
-    ];
-  }
+  // Día sin aprobar: no entra al informe impreso — ni su contenido ni ninguna mención de que
+  // existe (a diferencia del feriado de arriba, que sí es informativo aunque no haya actividad).
+  if (!d.aprobado) return [];
   if (d.bloques.length === 0) {
     return [
       {

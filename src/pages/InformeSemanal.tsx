@@ -337,6 +337,20 @@ export function InformeSemanal() {
           };
         }),
       );
+      // La tabla en pantalla muestra un código sugerido (T/F/-) para las celdas que la analista
+      // todavía no tocó a mano — eso vive solo en la vista, `informe.asistencia` solo tiene lo que
+      // se guardó explícitamente. El PDF tiene que ver lo mismo que se ve en pantalla, así que acá
+      // se resuelve cada celda con el mismo criterio antes de armar el documento.
+      const diasTabla = [...dias, ...finde];
+      const asistenciaParaPdf: Record<string, Record<string, string>> = {};
+      for (const op of operadoresDelDia) {
+        asistenciaParaPdf[op.id] = {};
+        for (const f of diasTabla) {
+          const tieneVisita = visitasSemana.some((v) => v.operador_id === op.id && fechaLocalDe(v.fecha_hora_llegada) === f);
+          asistenciaParaPdf[op.id][f] =
+            informe.asistencia[op.id]?.[f] ?? codigoAsistenciaSugerido(f, tieneVisita, feriadosAdicionales);
+        }
+      }
       const blob = await generarInformeSemanal({
         antecedentes: informe.antecedentes,
         conclusiones: informe.conclusiones,
@@ -349,8 +363,8 @@ export function InformeSemanal() {
         semanaHasta: informe.semana_hasta,
         dias: diasPdf,
         operadores: operadoresDelDia,
-        asistencia: informe.asistencia,
-        diasTabla: [...dias, ...finde],
+        asistencia: asistenciaParaPdf,
+        diasTabla,
       });
       const nombre = `informe_semanal_${informe.semana_desde}.pdf`;
       setUltimoPdf(blob);
