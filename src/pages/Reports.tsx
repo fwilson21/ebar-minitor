@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { abrirBlob, descargarBlob, generarReporteVisitas, type VisitaParaReporte } from '../lib/pdf';
@@ -217,7 +218,17 @@ export function Reports() {
 
   return (
     <div className="space-y-5">
-      <h1 className="titulo-pantalla">Reportes</h1>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="titulo-pantalla">Reportes</h1>
+        {/* Fuera de GridEditable a propósito (no es un bloque movible más) — el Informe Semanal
+            es una pantalla aparte, esto es solo la puerta de entrada. Exclusivo de
+            administrador/supervisor, igual que el resto de esta pantalla. */}
+        {esAdmin && (
+          <Link to="/informe-semanal" className="boton-secundario text-sm py-2 px-3">
+            📋 Informe Semanal
+          </Link>
+        )}
+      </div>
 
       {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
       <div className="lg:hidden space-y-5">

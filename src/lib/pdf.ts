@@ -2,6 +2,7 @@ import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { MEMBRETE_FONDO_BASE64 } from '../assets/membrete/membreteData';
+import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, type BloqueInformePdf } from './informeSemanal';
 
 (pdfMake as any).vfs = (pdfFonts as any).vfs;
 
@@ -748,6 +749,198 @@ function firmaSimple(nombre: string, rotulo: string, cargo: string): any {
       { text: cargo, alignment: 'center', style: 'firmaEtiqueta' },
     ],
   };
+}
+
+export interface DiaInformePdf {
+  fecha: string;
+  esFeriado: boolean;
+  nombreFeriado?: string;
+  bloques: BloqueInformePdf[];
+}
+
+export interface DatosInformeSemanal {
+  antecedentes: string;
+  conclusiones: string;
+  recomendaciones: string;
+  firmaFecha: string | null;
+  firmaNombre: string;
+  firmaCargo: string;
+  numeroInforme: string;
+  semanaDesde: string;
+  semanaHasta: string;
+  dias: DiaInformePdf[];
+  operadores: { id: string; nombre_completo: string }[];
+  asistencia: Record<string, Record<string, string>>;
+  /** Los 5 días laborables + sábado/domingo, para las columnas de la tabla de asistencia. */
+  diasTabla: string[];
+}
+
+function filasFotosInforme(fotos: { url: string; descripcion: string | null }[]): any[] {
+  if (!fotos.length) return [];
+  const filas: any[] = [];
+  for (let i = 0; i < fotos.length; i += 4) {
+    const grupo = fotos.slice(i, i + 4);
+    filas.push({
+      columns: grupo.map((f, j) => ({
+        width: '*',
+        stack: [
+          { image: f.url, fit: [110, 110], alignment: 'center' },
+          {
+            text: `Foto ${i + j + 1}${f.descripcion ? `: ${f.descripcion}` : ''}`,
+            fontSize: 6.5,
+            alignment: 'center',
+            color: '#5B7184',
+            margin: [0, 2, 0, 0],
+          },
+        ],
+      })),
+      columnGap: 6,
+      margin: [0, 4, 0, 4],
+    });
+  }
+  return filas;
+}
+
+function bloqueOperadorInforme(b: BloqueInformePdf): any[] {
+  const horario = b.hora_inicio || b.hora_fin ? ` (${b.hora_inicio ?? '—'} – ${b.hora_fin ?? '—'})` : '';
+  return [
+    { text: `${b.estacion_nombre}${horario}`, bold: true, fontSize: 10, margin: [0, 5, 0, 1] },
+    { text: [{ text: 'Responsable: ', bold: true }, b.responsable], fontSize: 9, margin: [0, 0, 0, 3] },
+    { ul: b.vinetas.length ? b.vinetas : ['Sin observaciones registradas.'], fontSize: 9, margin: [0, 0, 0, 2] },
+    ...filasFotosInforme(b.fotos),
+  ];
+}
+
+function bloqueDiaInforme(d: DiaInformePdf): any[] {
+  if (d.esFeriado) {
+    return [
+      {
+        text: `${formatFechaLarga(d.fecha)} — Feriado${d.nombreFeriado ? ` (${d.nombreFeriado})` : ''}. Sin actividad registrada.`,
+        italics: true,
+        fontSize: 9,
+        color: '#5B7184',
+        margin: [0, 0, 0, 8],
+      },
+    ];
+  }
+  if (d.bloques.length === 0) {
+    return [
+      {
+        text: `${formatFechaLarga(d.fecha)} — Ningún operador registró visitas.`,
+        italics: true,
+        fontSize: 9,
+        color: '#5B7184',
+        margin: [0, 0, 0, 8],
+      },
+    ];
+  }
+  return [
+    { text: formatFechaLarga(d.fecha), style: 'estacionTitulo', margin: [0, 8, 0, 4] },
+    ...d.bloques.flatMap(bloqueOperadorInforme),
+    lineaDivisoria(),
+  ];
+}
+
+function tablaAsistenciaInforme(datos: DatosInformeSemanal): any {
+  return {
+    table: {
+      headerRows: 1,
+      widths: ['*', ...datos.diasTabla.map(() => 30)],
+      body: [
+        [
+          { text: 'Operador', bold: true, fontSize: 8 },
+          ...datos.diasTabla.map((f) => {
+            const { dia, abrev } = formatFechaCortaTabla(f);
+            return { text: `${dia}\n${abrev}`, bold: true, fontSize: 7, alignment: 'center' };
+          }),
+        ],
+        ...datos.operadores.map((op) => [
+          { text: op.nombre_completo, fontSize: 8 },
+          ...datos.diasTabla.map((f) => ({
+            text: datos.asistencia[op.id]?.[f] || '-',
+            fontSize: 8,
+            alignment: 'center',
+          })),
+        ]),
+      ],
+    },
+    layout: 'lightHorizontalLines',
+    margin: [0, 0, 0, 6],
+  };
+}
+
+/** Informe Semanal de la analista de redes (formato GADMFO): antecedentes, desarrollo de la
+ * semana día por día (estación/responsable/viñetas/fotos), tabla de asistencia, conclusiones,
+ * recomendaciones y firma. Las fotos de `datos.dias[].bloques[].fotos` deben venir ya
+ * convertidas a base64 (ver `incrustarFotosBloques` en informeSemanal.ts) — pdfmake no puede usar
+ * directo una URL remota de Drive como `image`, igual que en `generarReporteVisitas`. */
+export function generarInformeSemanal(datos: DatosInformeSemanal): Promise<Blob> {
+  const docDefinition: TDocumentDefinitions = {
+    pageSize: 'A4',
+    pageOrientation: 'portrait',
+    pageMargins: [40, 100, 40, 100],
+    background: (_currentPage, pageSize) => ({
+      image: MEMBRETE_FONDO_BASE64,
+      width: pageSize.width,
+      height: pageSize.height,
+    }),
+    footer: (currentPage: number, pageCount: number) => ({
+      margin: [40, 12, 40, 25],
+      stack: [
+        {
+          columns: [
+            {
+              width: '55%',
+              margin: [95, 0, 0, 0],
+              stack: [
+                { text: 'www.orellana.gob.ec', fontSize: 7, bold: true, color: '#16303F' },
+                { text: 'Francisco de Orellana – Ecuador', fontSize: 7, color: '#16303F' },
+                { text: 'Calle Napo 11-05 y Uquillas', fontSize: 7, color: '#16303F' },
+              ],
+            },
+            {
+              width: '*',
+              alignment: 'right',
+              stack: [
+                { text: 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO', fontSize: 7, bold: true, color: '#16303F' },
+                { text: 'TELF.: 062-999-060   Ext. 1801', fontSize: 7, color: '#16303F' },
+              ],
+            },
+          ],
+        },
+        { text: `Hoja ${currentPage} de ${pageCount}`, alignment: 'center', fontSize: 7, color: '#16303F', margin: [0, 4, 0, 0] },
+      ],
+    }),
+    content: [
+      encabezado(`INFORME SEMANAL N.º ${datos.numeroInforme}`),
+      {
+        text: `Del ${formatFechaDMY(datos.semanaDesde)} al ${formatFechaDMY(datos.semanaHasta)}`,
+        alignment: 'center',
+        fontSize: 9,
+        color: '#5B7184',
+        margin: [0, -10, 0, 14],
+      },
+      { text: 'ANTECEDENTES', style: 'subtitulo', margin: [0, 0, 0, 4] },
+      { text: datos.antecedentes || '-', fontSize: 9, margin: [0, 0, 0, 14] },
+      { text: 'DESARROLLO DE LA SEMANA', style: 'subtitulo', margin: [0, 0, 0, 2] },
+      ...datos.dias.flatMap(bloqueDiaInforme),
+      { text: 'CONTROL SEMANAL DEL PERSONAL', style: 'subtitulo', margin: [0, 10, 0, 6], pageBreak: 'before' },
+      tablaAsistenciaInforme(datos),
+      { text: LEYENDA_CODIGOS_ASISTENCIA, fontSize: 7, color: '#5B7184', margin: [0, 0, 0, 14] },
+      { text: 'CONCLUSIONES', style: 'subtitulo', margin: [0, 0, 0, 4] },
+      { text: datos.conclusiones || '-', fontSize: 9, margin: [0, 0, 0, 10] },
+      { text: 'RECOMENDACIONES', style: 'subtitulo', margin: [0, 0, 0, 4] },
+      { text: datos.recomendaciones || '-', fontSize: 9, margin: [0, 0, 0, 14] },
+      { text: `Fecha de emisión: ${datos.firmaFecha ? formatFechaDMY(datos.firmaFecha) : '-'}`, fontSize: 9, margin: [0, 0, 0, 4] },
+      bloqueFirma(datos.firmaNombre, datos.firmaCargo, null),
+    ],
+    styles: ESTILOS,
+    defaultStyle: { fontSize: 9, color: '#16303F' },
+  };
+
+  return new Promise((resolve) => {
+    pdfMake.createPdf(docDefinition).getBlob((blob: Blob) => resolve(blob));
+  });
 }
 
 export function descargarBlob(blob: Blob, nombreArchivo: string) {

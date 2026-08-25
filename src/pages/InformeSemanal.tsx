@@ -1,0 +1,866 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Navigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { abrirBlob, descargarBlob, generarInformeSemanal } from '../lib/pdf';
+import { hoyLocal } from '../lib/fecha';
+import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
+import {
+  DIAS_SEMANA,
+  lunesDeSemana,
+  diasLaborables,
+  diasFinDeSemana,
+  formatFechaLarga,
+  formatRangoSemana,
+  formatFechaCortaTabla,
+  fechaLocalDe,
+  obtenerVisitasSemana,
+  construirBloquesDia,
+  fotosDelDia,
+  construirSnapshotDia,
+  detectarCambioDia,
+  incrustarFotosBloques,
+  codigoAsistenciaSugerido,
+  CODIGOS_ASISTENCIA,
+  LEYENDA_CODIGOS_ASISTENCIA,
+  type VisitaCruda,
+  type BloqueInforme,
+  type SnapshotVisita,
+  type CambioDetectado,
+} from '../lib/informeSemanal';
+
+const ANTECEDENTES_PLANTILLA =
+  'El Cantón Francisco de Orellana cuenta con un sistema de alcantarillado sanitario y catorce ' +
+  'estaciones de bombeo que impulsan las aguas residuales a la planta de tratamiento, ubicada Km ' +
+  '3½ vía El Auca. El sistema de saneamiento en las parroquias de El Dorado, García Moreno, La ' +
+  'Belleza y Nuevo Paraíso cuenta con infraestructura de impulsión dirigida a plantas de ' +
+  'tratamiento con pretratamiento, tanques Imhoff y humedales artificiales.';
+
+interface InformeRow {
+  id: string;
+  semana_desde: string;
+  semana_hasta: string;
+  antecedentes: string;
+  conclusiones: string;
+  recomendaciones: string;
+  firma_fecha: string | null;
+  firma_nombre: string;
+  firma_cargo: string;
+  asistencia: Record<string, Record<string, string>>;
+  numero_informe: string | null;
+  generado_en: string | null;
+}
+
+interface DiaRow {
+  id: string;
+  fecha: string;
+  contenido: BloqueInforme[];
+  aprobado: boolean;
+  aprobado_en: string | null;
+  snapshot_visitas: SnapshotVisita[] | null;
+}
+
+interface Operador {
+  id: string;
+  nombre_completo: string;
+}
+
+export function InformeSemanal() {
+  const { usuario } = useAuth();
+  const puedeVer = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
+
+  const [semanaDesde, setSemanaDesde] = useState(() => lunesDeSemana(hoyLocal()));
+  const [cargando, setCargando] = useState(true);
+  const [informe, setInforme] = useState<InformeRow | null>(null);
+  const [diasDB, setDiasDB] = useState<Record<string, DiaRow>>({});
+  const [visitasSemana, setVisitasSemana] = useState<VisitaCruda[]>([]);
+  const [operadoresDelDia, setOperadoresDelDia] = useState<Operador[]>([]);
+  const [feriadosAdicionales, setFeriadosAdicionales] = useState<Set<string>>(new Set());
+  const [edicion, setEdicion] = useState<Record<string, BloqueInforme[]>>({});
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [generando, setGenerando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [ultimoPdf, setUltimoPdf] = useState<Blob | null>(null);
+  const [ultimoNombre, setUltimoNombre] = useState('');
+
+  const dias = useMemo(() => diasLaborables(semanaDesde), [semanaDesde]);
+  const finde = useMemo(() => diasFinDeSemana(semanaDesde), [semanaDesde]);
+  const semanaBloqueada = Object.values(diasDB).some((d) => d.aprobado);
+
+  useEffect(() => {
+    if (!puedeVer) return;
+    let cancelado = false;
+    async function cargar() {
+      setCargando(true);
+      setEdicion({});
+      const hasta = dias[DIAS_SEMANA - 1];
+      const [{ data: informeRow }, visitas, { data: feriadosAdic }] = await Promise.all([
+        supabase.from('informes_semanales').select('*').eq('semana_desde', semanaDesde).maybeSingle(),
+        obtenerVisitasSemana(semanaDesde, hasta),
+        supabase.from('feriados_adicionales').select('fecha'),
+      ]);
+      if (cancelado) return;
+
+      setVisitasSemana(visitas);
+      setFeriadosAdicionales(new Set((feriadosAdic ?? []).map((f: { fecha: string }) => f.fecha)));
+
+      // Operadores activos con al menos una visita esta semana — nadie más entra en "Desarrollo
+      // de la semana" ni en "Control semanal del personal" (ver memoria del proyecto).
+      const idsConVisita = [...new Set(visitas.map((v) => v.operador_id))];
+      if (idsConVisita.length > 0) {
+        const { data: activos } = await supabase
+          .from('usuarios')
+          .select('id, nombre_completo')
+          .eq('rol', 'operador')
+          .eq('activo', true)
+          .in('id', idsConVisita)
+          .order('nombre_completo');
+        if (!cancelado) setOperadoresDelDia((activos as Operador[]) ?? []);
+      } else {
+        setOperadoresDelDia([]);
+      }
+
+      let informeFinal = informeRow as InformeRow | null;
+      if (!informeFinal) {
+        // Primera vez que se abre esta semana: conclusiones/recomendaciones se copian de la
+        // semana pasada (si existe) como punto de partida editable, antecedentes arranca con la
+        // plantilla fija.
+        const semanaAnterior = new Date(`${semanaDesde}T12:00:00`);
+        semanaAnterior.setDate(semanaAnterior.getDate() - 7);
+        const desdeAnterior = semanaAnterior.toISOString().slice(0, 10);
+        const { data: anterior } = await supabase
+          .from('informes_semanales')
+          .select('conclusiones, recomendaciones')
+          .eq('semana_desde', desdeAnterior)
+          .maybeSingle();
+        const { data: creado, error } = await supabase
+          .from('informes_semanales')
+          .upsert(
+            {
+              semana_desde: semanaDesde,
+              semana_hasta: hasta,
+              antecedentes: ANTECEDENTES_PLANTILLA,
+              conclusiones: anterior?.conclusiones ?? '',
+              recomendaciones: anterior?.recomendaciones ?? '',
+              creado_por: usuario!.id,
+            },
+            { onConflict: 'semana_desde' },
+          )
+          .select()
+          .single();
+        if (error) {
+          if (!cancelado) setMensaje(`No se pudo crear el informe de esta semana: ${error.message}`);
+        } else {
+          informeFinal = creado as InformeRow;
+        }
+      }
+      if (!cancelado) setInforme(informeFinal);
+
+      if (informeFinal) {
+        const { data: diasRow } = await supabase
+          .from('informes_semanales_dias')
+          .select('*')
+          .eq('informe_id', informeFinal.id);
+        if (!cancelado) {
+          const mapa: Record<string, DiaRow> = {};
+          for (const d of (diasRow as DiaRow[]) ?? []) mapa[d.fecha] = d;
+          setDiasDB(mapa);
+        }
+      }
+      if (!cancelado) setCargando(false);
+    }
+    cargar();
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [semanaDesde, puedeVer]);
+
+  if (!puedeVer) return <Navigate to="/reportes" replace />;
+
+  async function guardarCampoInforme(campo: keyof InformeRow, valor: string) {
+    if (!informe) return;
+    setInforme({ ...informe, [campo]: valor });
+    await supabase.from('informes_semanales').update({ [campo]: valor }).eq('id', informe.id);
+  }
+
+  async function guardarAsistencia(operadorId: string, fecha: string, codigo: string) {
+    if (!informe) return;
+    const nueva = {
+      ...informe.asistencia,
+      [operadorId]: { ...(informe.asistencia[operadorId] ?? {}), [fecha]: codigo },
+    };
+    setInforme({ ...informe, asistencia: nueva });
+    await supabase.from('informes_semanales').update({ asistencia: nueva }).eq('id', informe.id);
+  }
+
+  function visitasDelDia(fecha: string): VisitaCruda[] {
+    return visitasSemana.filter((v) => fechaLocalDe(v.fecha_hora_llegada) === fecha);
+  }
+
+  function bloquesDeHoy(fecha: string): BloqueInforme[] {
+    return edicion[fecha] ?? construirBloquesDia(visitasDelDia(fecha));
+  }
+
+  function actualizarBloques(fecha: string, nuevos: BloqueInforme[]) {
+    setEdicion((prev) => ({ ...prev, [fecha]: nuevos }));
+  }
+
+  async function aprobarDia(fecha: string) {
+    if (!informe) return;
+    const vDia = visitasDelDia(fecha);
+    const contenido = bloquesDeHoy(fecha);
+    const snapshot = construirSnapshotDia(vDia);
+    const { data, error } = await supabase
+      .from('informes_semanales_dias')
+      .upsert(
+        {
+          informe_id: informe.id,
+          fecha,
+          contenido,
+          aprobado: true,
+          aprobado_en: new Date().toISOString(),
+          aprobado_por: usuario!.id,
+          snapshot_visitas: snapshot,
+        },
+        { onConflict: 'informe_id,fecha' },
+      )
+      .select()
+      .single();
+    if (error) {
+      setMensaje(`No se pudo aprobar el día: ${error.message}`);
+      return;
+    }
+    setDiasDB((prev) => ({ ...prev, [fecha]: data as DiaRow }));
+    setEdicion((prev) => {
+      const { [fecha]: _, ...resto } = prev;
+      return resto;
+    });
+  }
+
+  async function actualizarDiaConCambio(fecha: string) {
+    await aprobarDia(fecha); // recalcula contenido + snapshot desde las visitas actuales y re-aprueba
+  }
+
+  async function mantenerDiaComoEsta(fecha: string) {
+    const fila = diasDB[fecha];
+    if (!fila) return;
+    const snapshot = construirSnapshotDia(visitasDelDia(fecha));
+    const { data, error } = await supabase
+      .from('informes_semanales_dias')
+      .update({ snapshot_visitas: snapshot })
+      .eq('id', fila.id)
+      .select()
+      .single();
+    if (error) {
+      setMensaje(`No se pudo actualizar: ${error.message}`);
+      return;
+    }
+    setDiasDB((prev) => ({ ...prev, [fecha]: data as DiaRow }));
+  }
+
+  function rehacerBorrador() {
+    setEdicion({});
+    setMensaje('Los días sin aprobar se recalcularon desde las visitas.');
+  }
+
+  // Días laborables que de verdad necesitan aprobación (los feriados sin ninguna visita se
+  // muestran como informativos y no cuentan para habilitar "Generar informe final").
+  const diasRequeridos = dias.filter((f) => visitasDelDia(f).length > 0 || !esDiaNoRegular(f, feriadosAdicionales));
+  const diasSinResolver = diasRequeridos.filter((f) => {
+    const fila = diasDB[f];
+    if (!fila?.aprobado) return true;
+    return !!detectarCambioDia(fila.snapshot_visitas, visitasDelDia(f));
+  });
+  const puedeGenerar = diasSinResolver.length === 0 && diasRequeridos.length > 0;
+
+  async function generarPdf() {
+    if (!informe || !puedeGenerar) return;
+    setGenerando(true);
+    setMensaje(null);
+    try {
+      const numero = informe.numero_informe || (await sugerirNumeroInforme());
+      const diasPdf = await Promise.all(
+        dias.map(async (f) => {
+          const visitasDia = visitasDelDia(f);
+          const contenido = diasDB[f]?.contenido ?? [];
+          return {
+            fecha: f,
+            esFeriado: esDiaNoRegular(f, feriadosAdicionales) && visitasDia.length === 0,
+            nombreFeriado: nombreFeriadoCalculado(f),
+            bloques: await incrustarFotosBloques(contenido, fotosDelDia(visitasDia)),
+          };
+        }),
+      );
+      const blob = await generarInformeSemanal({
+        antecedentes: informe.antecedentes,
+        conclusiones: informe.conclusiones,
+        recomendaciones: informe.recomendaciones,
+        firmaFecha: informe.firma_fecha,
+        firmaNombre: informe.firma_nombre,
+        firmaCargo: informe.firma_cargo,
+        numeroInforme: numero,
+        semanaDesde: informe.semana_desde,
+        semanaHasta: informe.semana_hasta,
+        dias: diasPdf,
+        operadores: operadoresDelDia,
+        asistencia: informe.asistencia,
+        diasTabla: [...dias, ...finde],
+      });
+      const nombre = `informe_semanal_${informe.semana_desde}.pdf`;
+      setUltimoPdf(blob);
+      setUltimoNombre(nombre);
+      descargarBlob(blob, nombre);
+      abrirBlob(blob);
+      await supabase
+        .from('informes_semanales')
+        .update({ numero_informe: numero, generado_en: new Date().toISOString() })
+        .eq('id', informe.id);
+      setInforme({ ...informe, numero_informe: numero, generado_en: new Date().toISOString() });
+      setMensaje('Informe generado y descargado.');
+    } catch (err: any) {
+      setMensaje(`Error al generar el informe: ${err.message ?? err}`);
+    } finally {
+      setGenerando(false);
+    }
+  }
+
+  async function sugerirNumeroInforme(): Promise<string> {
+    const { count } = await supabase
+      .from('informes_semanales')
+      .select('id', { count: 'exact', head: true })
+      .not('numero_informe', 'is', null);
+    return String((count ?? 0) + 1).padStart(3, '0');
+  }
+
+  async function compartirPdf() {
+    if (!ultimoPdf) {
+      setMensaje('Primero genera el informe en PDF.');
+      return;
+    }
+    setEnviando(true);
+    setMensaje(null);
+    try {
+      const archivo = new File([ultimoPdf], ultimoNombre, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({ files: [archivo], title: 'Informe Semanal EBAR', text: ultimoNombre });
+        setMensaje('Informe compartido.');
+      } else {
+        descargarBlob(ultimoPdf, ultimoNombre);
+        setMensaje('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente.');
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') setMensaje(`No se pudo compartir: ${err.message ?? err}`);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (cargando || !informe) return <p className="text-slate-600">Cargando…</p>;
+
+  return (
+    <div className="space-y-4 max-w-3xl">
+      <Link to="/reportes" className="text-sm text-slate-600 hover:text-slate-900">
+        ← Reportes
+      </Link>
+      <h1 className="titulo-pantalla">Informe Semanal</h1>
+
+      {/* Candado de semana */}
+      <div className="tarjeta p-4">
+        {semanaBloqueada ? (
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="text-sm font-semibold text-slate-800">
+              🔒 Semana del {formatRangoSemana(dias[0], dias[4])}
+            </span>
+            <Link to="/reportes" className="text-sm text-slate-600 hover:text-slate-900 underline">
+              Cambiar de semana →
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <label className="etiqueta">Semana (elige cualquier día — se ajusta al lunes)</label>
+            <input
+              type="date"
+              className="campo max-w-[220px]"
+              value={semanaDesde}
+              onChange={(e) => setSemanaDesde(lunesDeSemana(e.target.value))}
+            />
+            <p className="text-xs text-slate-500">
+              La semana queda fija apenas apruebes el primer día, para que ningún día ya aprobado se desarme por un
+              cambio de fecha a mitad de semana.
+            </p>
+          </div>
+        )}
+        <button type="button" onClick={rehacerBorrador} className="boton-secundario w-full mt-3">
+          🔄 Rehacer borrador desde las visitas
+        </button>
+      </div>
+
+      {mensaje && <p className="text-sm text-slate-700 bg-panel-700 rounded-lg px-3 py-2">{mensaje}</p>}
+
+      {/* Antecedentes */}
+      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Antecedentes</h2>
+      <div className="tarjeta p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="etiqueta mb-0">Antecedentes</label>
+          <span className="text-[10px] text-slate-500 bg-panel-700 px-2 py-1 rounded-full">📌 Plantilla fija, editable</span>
+        </div>
+        <textarea
+          className="campo"
+          rows={4}
+          value={informe.antecedentes}
+          onChange={(e) => setInforme({ ...informe, antecedentes: e.target.value })}
+          onBlur={(e) => guardarCampoInforme('antecedentes', e.target.value)}
+        />
+      </div>
+
+      {/* Desarrollo de la semana */}
+      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Desarrollo de la semana</h2>
+      <p className="text-xs text-slate-500 -mt-2">
+        Incluye a todos los operadores que registraron al menos una visita esta semana — nadie queda afuera ni hay
+        que armar la lista a mano.
+      </p>
+      <div className="space-y-3">
+        {dias.map((fecha) => (
+          <DiaCard
+            key={fecha}
+            fecha={fecha}
+            fila={diasDB[fecha]}
+            visitasDia={visitasDelDia(fecha)}
+            feriadosAdicionales={feriadosAdicionales}
+            bloques={bloquesDeHoy(fecha)}
+            onCambiarBloques={(nuevos) => actualizarBloques(fecha, nuevos)}
+            onAprobar={() => aprobarDia(fecha)}
+            onActualizarConCambio={() => actualizarDiaConCambio(fecha)}
+            onMantener={() => mantenerDiaComoEsta(fecha)}
+          />
+        ))}
+      </div>
+
+      {/* Control semanal del personal */}
+      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Control semanal del personal</h2>
+      <p className="text-xs text-slate-500 -mt-2">
+        Las filas salen solas de los operadores activos: si se da de baja a alguien o se agrega uno nuevo, la
+        próxima semana la tabla ya viene así, sin tocar nada a mano.
+      </p>
+      <div className="tarjeta p-4 overflow-x-auto">
+        {operadoresDelDia.length === 0 ? (
+          <p className="text-sm text-slate-500">Todavía no hay ninguna visita registrada esta semana.</p>
+        ) : (
+          <>
+            <table className="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr className="text-left text-xs text-slate-500">
+                  <th className="pb-2 pr-2">Operador</th>
+                  {[...dias, ...finde].map((f) => {
+                    const { dia, abrev } = formatFechaCortaTabla(f);
+                    const esFinde = finde.includes(f);
+                    return (
+                      <th
+                        key={f}
+                        className={`pb-2 px-1 text-center font-normal ${esFinde ? 'text-slate-400' : ''}`}
+                      >
+                        {dia}
+                        <br />
+                        {abrev}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {operadoresDelDia.map((op) => (
+                  <tr key={op.id} className="border-t border-panel-600">
+                    <td className="py-1.5 pr-2 whitespace-nowrap">{op.nombre_completo}</td>
+                    {[...dias, ...finde].map((f) => {
+                      const tieneVisita = visitasSemana.some(
+                        (v) => v.operador_id === op.id && fechaLocalDe(v.fecha_hora_llegada) === f,
+                      );
+                      const valor =
+                        informe.asistencia[op.id]?.[f] ?? codigoAsistenciaSugerido(f, tieneVisita, feriadosAdicionales);
+                      return (
+                        <td key={f} className="py-1 px-1 text-center">
+                          <select
+                            className="text-xs border border-panel-600 rounded px-1 py-1 bg-panel-900 w-14"
+                            value={valor}
+                            onChange={(e) => guardarAsistencia(op.id, f, e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {CODIGOS_ASISTENCIA.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
+              Se pre-llena solo: <b>T</b> únicamente si ese operador tiene al menos una visita registrada ese día,{' '}
+              <b>F</b> en feriado, "-" en fin de semana. Sin visita y sin ser feriado/fin de semana, la celda queda
+              vacía para completarla a mano.
+              <br />
+              {LEYENDA_CODIGOS_ASISTENCIA}
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Conclusiones y recomendaciones */}
+      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Conclusiones y recomendaciones</h2>
+      <div className="tarjeta p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="etiqueta mb-0">Conclusiones</label>
+          <span className="text-[10px] text-slate-500 bg-panel-700 px-2 py-1 rounded-full">↺ Copiado de la semana pasada</span>
+        </div>
+        <textarea
+          className="campo"
+          rows={3}
+          value={informe.conclusiones}
+          onChange={(e) => setInforme({ ...informe, conclusiones: e.target.value })}
+          onBlur={(e) => guardarCampoInforme('conclusiones', e.target.value)}
+        />
+      </div>
+      <div className="tarjeta p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="etiqueta mb-0">Recomendaciones</label>
+          <span className="text-[10px] text-slate-500 bg-panel-700 px-2 py-1 rounded-full">↺ Copiado de la semana pasada</span>
+        </div>
+        <textarea
+          className="campo"
+          rows={3}
+          value={informe.recomendaciones}
+          onChange={(e) => setInforme({ ...informe, recomendaciones: e.target.value })}
+          onBlur={(e) => guardarCampoInforme('recomendaciones', e.target.value)}
+        />
+      </div>
+
+      {/* Firma */}
+      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Firma</h2>
+      <div className="tarjeta p-4 grid grid-cols-2 gap-3">
+        <div>
+          <label className="etiqueta">Fecha de emisión</label>
+          <input
+            type="date"
+            className="campo"
+            value={informe.firma_fecha ?? ''}
+            onChange={(e) => setInforme({ ...informe, firma_fecha: e.target.value })}
+            onBlur={(e) => guardarCampoInforme('firma_fecha', e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="etiqueta">Nombre</label>
+          <input
+            type="text"
+            className="campo"
+            value={informe.firma_nombre}
+            onChange={(e) => setInforme({ ...informe, firma_nombre: e.target.value })}
+            onBlur={(e) => guardarCampoInforme('firma_nombre', e.target.value)}
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="etiqueta">Cargo</label>
+          <input
+            type="text"
+            className="campo"
+            value={informe.firma_cargo}
+            onChange={(e) => setInforme({ ...informe, firma_cargo: e.target.value })}
+            onBlur={(e) => guardarCampoInforme('firma_cargo', e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Consolidar y generar */}
+      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Consolidar y generar</h2>
+      <div className="tarjeta p-4 space-y-4">
+        {!puedeGenerar && (
+          <div className="rounded-lg border border-gauge-warn/30 bg-gauge-warn/10 p-3 text-sm text-gauge-warn">
+            <p className="font-semibold">⚠️ Todavía hay días por resolver</p>
+            <p className="text-xs text-slate-600 mt-1">
+              El informe final se habilita cuando los {diasRequeridos.length || DIAS_SEMANA} días de la semana quedan
+              en "✓ Aprobado".
+            </p>
+          </div>
+        )}
+        <div className="max-w-[220px]">
+          <label className="etiqueta">N.º de informe</label>
+          <input
+            type="text"
+            className="campo font-mono"
+            placeholder="autosugerido"
+            value={informe.numero_informe ?? ''}
+            onChange={(e) => setInforme({ ...informe, numero_informe: e.target.value })}
+            onBlur={(e) => guardarCampoInforme('numero_informe', e.target.value)}
+          />
+        </div>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <p className="text-xs text-slate-500 max-w-[380px]">
+            Al generar, el PDF se guarda solo en Descargas y se abre en una pestaña nueva — no hay que ir a
+            buscarlo. Ya trae el membrete institucional de siempre.
+          </p>
+          <button type="button" disabled={!puedeGenerar || generando} onClick={generarPdf} className="boton-primario">
+            {generando ? 'Generando…' : '📄 Generar informe final (PDF)'}
+          </button>
+        </div>
+        <button
+          type="button"
+          disabled={!ultimoPdf || enviando}
+          onClick={compartirPdf}
+          className="boton-secundario w-full"
+        >
+          {enviando ? 'Compartiendo…' : '📤 Descargar y compartir'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Tarjeta de un día
+// ----------------------------------------------------------------------------
+
+function resumenDia(bloques: BloqueInforme[]) {
+  const estaciones = new Set(bloques.map((b) => b.estacion_id)).size;
+  const responsables = new Set(bloques.map((b) => b.operador_id)).size;
+  return { estaciones, responsables };
+}
+
+function DiaCard({
+  fecha,
+  fila,
+  visitasDia,
+  feriadosAdicionales,
+  bloques,
+  onCambiarBloques,
+  onAprobar,
+  onActualizarConCambio,
+  onMantener,
+}: {
+  fecha: string;
+  fila: DiaRow | undefined;
+  visitasDia: VisitaCruda[];
+  feriadosAdicionales: Set<string>;
+  bloques: BloqueInforme[];
+  onCambiarBloques: (nuevos: BloqueInforme[]) => void;
+  onAprobar: () => void;
+  onActualizarConCambio: () => void;
+  onMantener: () => void;
+}) {
+  const esFeriado = esDiaNoRegular(fecha, feriadosAdicionales);
+  const nombreFeriado = nombreFeriadoCalculado(fecha);
+
+  if (esFeriado && visitasDia.length === 0) {
+    return (
+      <div className="tarjeta p-3 flex items-center justify-between text-sm">
+        <span className="text-slate-700">{formatFechaLarga(fecha)}</span>
+        <span className="text-xs text-slate-500">Feriado{nombreFeriado ? ` (${nombreFeriado})` : ''} — sin actividad registrada</span>
+      </div>
+    );
+  }
+
+  const cambio: CambioDetectado | null = fila?.aprobado ? detectarCambioDia(fila.snapshot_visitas, visitasDia) : null;
+
+  if (fila?.aprobado && !cambio) {
+    const { estaciones, responsables } = resumenDia(fila.contenido);
+    return (
+      <details className="tarjeta p-4">
+        <summary className="cursor-pointer flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="font-semibold text-slate-800">{formatFechaLarga(fecha)}</h3>
+          <span className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gauge-ok/15 text-gauge-ok">✓ Aprobado</span>
+            {estaciones} estación{estaciones === 1 ? '' : 'es'} · {responsables} responsable
+            {responsables === 1 ? '' : 's'}
+          </span>
+        </summary>
+        <p className="text-xs text-slate-500 mt-3">
+          Aprobado el {fila.aprobado_en ? new Date(fila.aprobado_en).toLocaleDateString('es-EC') : ''}, sin cambios en
+          las visitas desde entonces. {estaciones} estación{estaciones === 1 ? '' : 'es'} con actividad ese día.
+        </p>
+      </details>
+    );
+  }
+
+  if (fila?.aprobado && cambio) {
+    return (
+      <details className="tarjeta p-4" open>
+        <summary className="cursor-pointer flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="font-semibold text-slate-800">{formatFechaLarga(fecha)}</h3>
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gauge-warn/15 text-gauge-warn">⚠️ Cambió algo</span>
+        </summary>
+        <div className="mt-3 rounded-lg border border-gauge-warn/30 bg-gauge-warn/10 p-3 space-y-3">
+          <p className="text-sm font-semibold text-gauge-warn">
+            ⚠️ Los reportes de los operadores cambiaron desde que aprobaste este día
+            {fila.aprobado_en ? ` (${new Date(fila.aprobado_en).toLocaleDateString('es-EC')})` : ''}
+          </p>
+          <div className="rounded-lg bg-panel-900 border border-panel-600 p-3 text-xs space-y-1.5">
+            <p className="text-slate-500">
+              {cambio.quien}
+              {cambio.cuando ? ` actualizó su visita hoy a las ${cambio.cuando}` : ''}
+            </p>
+            <p className="text-slate-500 line-through">{cambio.textoAntes}</p>
+            <p className="text-slate-800">{cambio.textoAhora}</p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" onClick={onActualizarConCambio} className="boton-primario text-sm py-2 px-3">
+              ✅ Actualizar este día con el cambio
+            </button>
+            <button type="button" onClick={onMantener} className="boton-secundario text-sm py-2 px-3">
+              Mantener como está
+            </button>
+          </div>
+        </div>
+      </details>
+    );
+  }
+
+  // Sin aprobar (borrador editable)
+  const { estaciones, responsables } = resumenDia(bloques);
+  return (
+    <div className="tarjeta p-4 space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="font-semibold text-slate-800">{formatFechaLarga(fecha)}</h3>
+        <span className="flex items-center gap-2 text-xs text-slate-500">
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-panel-700 text-slate-600">✏️ Sin aprobar</span>
+          {bloques.length > 0
+            ? `${estaciones} estación${estaciones === 1 ? '' : 'es'} · ${responsables} responsable${responsables === 1 ? '' : 's'}`
+            : 'Sin visitas registradas'}
+        </span>
+      </div>
+
+      {bloques.length === 0 ? (
+        <p className="text-sm text-slate-500">Ningún operador registró visitas este día.</p>
+      ) : (
+        <div className="space-y-4">
+          {bloques.map((b, i) => (
+            <BloqueEditor
+              key={`${b.estacion_id}-${b.operador_id}`}
+              bloque={b}
+              fotosDisponibles={visitasDia
+                .filter((v) => v.estacion_id === b.estacion_id && v.operador_id === b.operador_id)
+                .flatMap((v) => v.fotos)}
+              onCambiar={(nuevo) => {
+                const copia = [...bloques];
+                copia[i] = nuevo;
+                onCambiarBloques(copia);
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="border-t border-dashed border-panel-600 pt-3 flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-xs text-slate-500 max-w-[380px]">
+          Al aprobar, este día queda guardado tal cual. Si después cambia algo en las visitas de los operadores, va
+          a avisar antes de tocarlo.
+        </p>
+        <button type="button" onClick={onAprobar} className="boton-primario text-sm py-2 px-4">
+          ✓ Aprobar y guardar este día
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BloqueEditor({
+  bloque,
+  fotosDisponibles,
+  onCambiar,
+}: {
+  bloque: BloqueInforme;
+  fotosDisponibles: { id: string; url: string; descripcion: string | null; tomada_en: string }[];
+  onCambiar: (nuevo: BloqueInforme) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-panel-600 p-3 space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap text-sm">
+        <span className="font-medium text-slate-800">🏭 {bloque.estacion_nombre}</span>
+        {(bloque.hora_inicio || bloque.hora_fin) && (
+          <span className="text-xs text-slate-500">
+            {bloque.hora_inicio ?? '—'} – {bloque.hora_fin ?? '—'}
+          </span>
+        )}
+      </div>
+
+      <div>
+        <label className="etiqueta">Responsable</label>
+        <input
+          type="text"
+          className="campo"
+          value={bloque.responsable}
+          onChange={(e) => onCambiar({ ...bloque, responsable: e.target.value })}
+        />
+      </div>
+
+      <div>
+        <label className="etiqueta">Actividad (viñetas editables, sacadas de las observaciones del operador)</label>
+        <div className="space-y-2">
+          {bloque.vinetas.map((v, i) => (
+            <div key={i} className="flex gap-2 items-start">
+              <span className="mt-3 w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0" />
+              <textarea
+                className="campo flex-1"
+                rows={2}
+                value={v}
+                onChange={(e) => {
+                  const nuevas = [...bloque.vinetas];
+                  nuevas[i] = e.target.value;
+                  onCambiar({ ...bloque, vinetas: nuevas });
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => onCambiar({ ...bloque, vinetas: bloque.vinetas.filter((_, j) => j !== i) })}
+                className="text-slate-400 hover:text-gauge-danger text-sm mt-2"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => onCambiar({ ...bloque, vinetas: [...bloque.vinetas, ''] })}
+          className="text-xs text-slate-600 hover:text-slate-900 underline mt-1"
+        >
+          + Agregar viñeta
+        </button>
+      </div>
+
+      {fotosDisponibles.length > 0 && (
+        <div>
+          <label className="etiqueta">Fotos a incluir en el PDF</label>
+          <div className="grid grid-cols-4 gap-2">
+            {fotosDisponibles.map((f, i) => {
+              const marcada = bloque.fotos_seleccionadas.includes(f.id);
+              return (
+                <label key={f.id} className="relative cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="absolute top-1 left-1 z-10"
+                    checked={marcada}
+                    onChange={(e) => {
+                      const seleccionadas = e.target.checked
+                        ? [...bloque.fotos_seleccionadas, f.id]
+                        : bloque.fotos_seleccionadas.filter((id) => id !== f.id);
+                      onCambiar({ ...bloque, fotos_seleccionadas: seleccionadas });
+                    }}
+                  />
+                  <img
+                    src={f.url}
+                    className={`w-full aspect-square object-cover rounded-md ${marcada ? '' : 'opacity-40'}`}
+                    alt=""
+                  />
+                  <span className="block text-[10px] text-slate-500 mt-0.5">Foto {i + 1}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

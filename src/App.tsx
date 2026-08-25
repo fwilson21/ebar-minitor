@@ -8,6 +8,7 @@ import { StationDetail } from './pages/StationDetail';
 import { VisitForm } from './pages/VisitForm';
 import { VisitaDetalle } from './pages/VisitaDetalle';
 import { Reports } from './pages/Reports';
+import { InformeSemanal } from './pages/InformeSemanal';
 import { Users } from './pages/Users';
 import { Asignaciones } from './pages/Asignaciones';
 import { CalendarioTurnos } from './pages/CalendarioTurnos';
@@ -38,6 +39,7 @@ export const routes = createRoutesFromElements(
       <Route path="estaciones/:id/visitas/:visitaId/editar" element={<VisitForm />} />
       <Route path="estaciones/:id/visitas/:visitaId/ver" element={<VisitaDetalle />} />
       <Route path="reportes" element={<Reports />} />
+      <Route path="informe-semanal" element={<InformeSemanal />} />
       <Route path="usuarios" element={<Users />} />
       <Route path="asignaciones" element={<Asignaciones />} />
       <Route path="calendario-turnos" element={<CalendarioTurnos />} />
