@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
-import { abrirBlob, descargarBlob, generarInformeSemanal } from '../lib/pdf';
+import { descargarBlob, generarInformeSemanal } from '../lib/pdf';
 import { hoyLocal } from '../lib/fecha';
 import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
 import {
@@ -404,14 +404,16 @@ export function InformeSemanal() {
       const nombre = `Informe semanal No ${numeroArchivo} del ${periodoArchivo} ${marcaTiempo}.pdf`;
       setUltimoPdf(blob);
       setUltimoNombre(nombre);
-      descargarBlob(blob, nombre);
-      abrirBlob(blob);
+      // Ya no se descarga ni se abre sola en una pestaña acá: abrir el blob en una pestaña nueva
+      // le pone de nombre el id interno del blob (ej. "92ce371a-...") en vez de "Informe semanal
+      // No…", y si la analista guardaba desde esa pestaña el PDF le quedaba con ese nombre feo.
+      // Los botones "⬇️ Descargar" y "📤 Compartir" de abajo sí usan el nombre correcto siempre.
       await supabase
         .from('informes_semanales')
         .update({ numero_informe: numero, generado_en: new Date().toISOString() })
         .eq('id', informe.id);
       setInforme({ ...informe, numero_informe: numero, generado_en: new Date().toISOString() });
-      setMensaje('Informe generado y descargado.');
+      setMensaje('Informe generado — descárgalo o compártelo con los botones de abajo.');
     } catch (err: any) {
       setMensaje(`Error al generar el informe: ${err.message ?? err}`);
     } finally {
@@ -729,21 +731,31 @@ export function InformeSemanal() {
         </div>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <p className="text-xs text-slate-500 max-w-[380px]">
-            Al generar, el PDF se guarda solo en Descargas y se abre en una pestaña nueva — no hay que ir a
-            buscarlo. Ya trae el membrete institucional de siempre.
+            Genera el PDF con el membrete institucional de siempre. Después usa los botones de abajo para
+            descargarlo o compartirlo.
           </p>
           <button type="button" disabled={!puedeGenerar || generando} onClick={manejarClickGenerar} className="boton-primario">
             {generando ? 'Generando…' : '📄 Generar informe final (PDF)'}
           </button>
         </div>
-        <button
-          type="button"
-          disabled={!ultimoPdf || enviando}
-          onClick={compartirPdf}
-          className="boton-secundario w-full"
-        >
-          {enviando ? 'Compartiendo…' : '📤 Descargar y compartir'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={!ultimoPdf}
+            onClick={() => descargarBlob(ultimoPdf!, ultimoNombre)}
+            className="boton-secundario flex-1"
+          >
+            ⬇️ Descargar
+          </button>
+          <button
+            type="button"
+            disabled={!ultimoPdf || enviando}
+            onClick={compartirPdf}
+            className="boton-secundario flex-1"
+          >
+            {enviando ? 'Compartiendo…' : '📤 Compartir'}
+          </button>
+        </div>
       </div>
 
       {avisoDiasSinAprobar && (
