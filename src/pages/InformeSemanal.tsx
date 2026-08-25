@@ -443,15 +443,22 @@ export function InformeSemanal() {
     setMensajeGenerar(null);
     try {
       const archivo = new File([ultimoPdf], ultimoNombre, { type: 'application/pdf' });
-      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-        await navigator.share({ files: [archivo], title: 'Informe Semanal EBAR', text: ultimoNombre });
-        setMensajeGenerar('✅ Informe compartido.');
-      } else {
+      if (!navigator.canShare || !navigator.canShare({ files: [archivo] })) {
         descargarBlob(ultimoPdf, ultimoNombre);
         setMensajeGenerar('Tu navegador no soporta compartir directo con archivo — el PDF se descargó, compártelo manualmente.');
+        return;
       }
-    } catch (err: any) {
-      if (err?.name !== 'AbortError') setMensajeGenerar(`No se pudo compartir: ${err.message ?? err}`);
+      try {
+        await navigator.share({ files: [archivo], title: 'Informe Semanal EBAR', text: ultimoNombre });
+        setMensajeGenerar('✅ Informe compartido.');
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return; // cerró el selector sin elegir nada, no es un error
+        // El navegador dice que sí puede compartir (canShare) pero después lo niega al intentarlo
+        // (ej. "Permission denied" según el contexto/navegador) — se descarga como respaldo en vez
+        // de dejar a la analista solo con un error técnico y sin el archivo.
+        descargarBlob(ultimoPdf, ultimoNombre);
+        setMensajeGenerar('Tu navegador bloqueó compartir directo — el PDF se descargó, compártelo manualmente (WhatsApp, correo, etc.).');
+      }
     } finally {
       setEnviando(false);
     }
