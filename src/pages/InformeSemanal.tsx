@@ -92,6 +92,9 @@ export function InformeSemanal() {
   const [enviando, setEnviando] = useState(false);
   const [ultimoPdf, setUltimoPdf] = useState<Blob | null>(null);
   const [ultimoNombre, setUltimoNombre] = useState('');
+  // Fechas (con visitas registradas) que faltan por aprobar al momento de tocar "Generar informe
+  // final" — se avisa antes de generar en vez de dejarlas caer del informe en silencio.
+  const [avisoDiasSinAprobar, setAvisoDiasSinAprobar] = useState<string[] | null>(null);
 
   const dias = useMemo(() => diasLaborables(semanaDesde), [semanaDesde]);
   const finde = useMemo(() => diasFinDeSemana(semanaDesde), [semanaDesde]);
@@ -315,6 +318,23 @@ export function InformeSemanal() {
   // con contenido desactualizado sin que la analista lo haya visto.
   const puedeGenerar = diasAprobados.length > 0 && diasConCambioPendiente.length === 0;
 
+  // Antes de generar: si queda algún día con visitas registradas por los operadores pero todavía
+  // sin aprobar, avisa en vez de dejarlo caer del informe en silencio — el botón solo dispara
+  // generarPdf() directo cuando ya no hay ninguno de esos.
+  function manejarClickGenerar() {
+    const diasConDatosSinAprobar = diasPorAprobar.filter((f) => visitasDelDia(f).length > 0);
+    if (diasConDatosSinAprobar.length > 0) {
+      setAvisoDiasSinAprobar(diasConDatosSinAprobar);
+      return;
+    }
+    generarPdf();
+  }
+
+  function irAAprobar(fechas: string[]) {
+    setAvisoDiasSinAprobar(null);
+    document.getElementById(`dia-${fechas[0]}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   async function generarPdf() {
     if (!informe || !puedeGenerar) return;
     setGenerando(true);
@@ -351,6 +371,9 @@ export function InformeSemanal() {
             informe.asistencia[op.id]?.[f] ?? codigoAsistenciaSugerido(f, tieneVisita, feriadosAdicionales);
         }
       }
+      // El encabezado "Del ... al ..." refleja solo el tramo de días ya aprobados (puede ser más
+      // corto que la semana completa si todavía falta aprobar alguno) — no la semana calendario
+      // fija que identifica al informe en la base.
       const blob = await generarInformeSemanal({
         antecedentes: informe.antecedentes,
         conclusiones: informe.conclusiones,
@@ -359,8 +382,8 @@ export function InformeSemanal() {
         firmaNombre: informe.firma_nombre,
         firmaCargo: informe.firma_cargo,
         numeroInforme: numero,
-        semanaDesde: informe.semana_desde,
-        semanaHasta: informe.semana_hasta,
+        semanaDesde: diasAprobados[0],
+        semanaHasta: diasAprobados[diasAprobados.length - 1],
         dias: diasPdf,
         operadores: operadoresDelDia,
         asistencia: asistenciaParaPdf,
@@ -500,21 +523,22 @@ export function InformeSemanal() {
       </p>
       <div className="space-y-3">
         {dias.map((fecha) => (
-          <DiaCard
-            key={fecha}
-            fecha={fecha}
-            fila={diasDB[fecha]}
-            visitasDia={visitasDelDia(fecha)}
-            feriadosAdicionales={feriadosAdicionales}
-            bloques={bloquesDeHoy(fecha)}
-            estaForzado={forzarEdicion.has(fecha)}
-            onCambiarBloques={(nuevos) => actualizarBloques(fecha, nuevos)}
-            onAprobar={() => aprobarDia(fecha)}
-            onActualizarConCambio={() => actualizarDiaConCambio(fecha)}
-            onMantener={() => mantenerDiaComoEsta(fecha)}
-            onEditar={() => editarDiaAprobado(fecha)}
-            onCancelarEdicion={() => cancelarEdicionAprobado(fecha)}
-          />
+          <div id={`dia-${fecha}`} key={fecha}>
+            <DiaCard
+              fecha={fecha}
+              fila={diasDB[fecha]}
+              visitasDia={visitasDelDia(fecha)}
+              feriadosAdicionales={feriadosAdicionales}
+              bloques={bloquesDeHoy(fecha)}
+              estaForzado={forzarEdicion.has(fecha)}
+              onCambiarBloques={(nuevos) => actualizarBloques(fecha, nuevos)}
+              onAprobar={() => aprobarDia(fecha)}
+              onActualizarConCambio={() => actualizarDiaConCambio(fecha)}
+              onMantener={() => mantenerDiaComoEsta(fecha)}
+              onEditar={() => editarDiaAprobado(fecha)}
+              onCancelarEdicion={() => cancelarEdicionAprobado(fecha)}
+            />
+          </div>
         ))}
       </div>
 
@@ -696,7 +720,7 @@ export function InformeSemanal() {
             Al generar, el PDF se guarda solo en Descargas y se abre en una pestaña nueva — no hay que ir a
             buscarlo. Ya trae el membrete institucional de siempre.
           </p>
-          <button type="button" disabled={!puedeGenerar || generando} onClick={generarPdf} className="boton-primario">
+          <button type="button" disabled={!puedeGenerar || generando} onClick={manejarClickGenerar} className="boton-primario">
             {generando ? 'Generando…' : '📄 Generar informe final (PDF)'}
           </button>
         </div>
@@ -709,6 +733,42 @@ export function InformeSemanal() {
           {enviando ? 'Compartiendo…' : '📤 Descargar y compartir'}
         </button>
       </div>
+
+      {avisoDiasSinAprobar && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setAvisoDiasSinAprobar(null)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[90vw] max-w-md p-4 space-y-3">
+            <h2 className="font-semibold text-sm text-gauge-warn">⚠️ Hay días con actividad sin aprobar</h2>
+            <p className="text-xs text-slate-600">
+              Estos días tienen visitas registradas por los operadores pero todavía no están aprobados — si generas
+              ahora, van a quedar fuera del informe:
+            </p>
+            <ul className="text-xs text-slate-700 list-disc list-inside space-y-0.5">
+              {avisoDiasSinAprobar.map((f) => (
+                <li key={f}>{formatFechaLarga(f)}</li>
+              ))}
+            </ul>
+            <div className="flex flex-col gap-2 pt-1">
+              <button type="button" onClick={() => irAAprobar(avisoDiasSinAprobar)} className="boton-primario">
+                Ir a aprobarlos
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAvisoDiasSinAprobar(null);
+                  generarPdf();
+                }}
+                className="boton-secundario"
+              >
+                Generar de todas formas
+              </button>
+              <button type="button" onClick={() => setAvisoDiasSinAprobar(null)} className="text-xs text-slate-500 hover:text-slate-900 underline">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
