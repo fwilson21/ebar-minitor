@@ -85,17 +85,43 @@ export async function estamparFechaEnFoto(archivo: Blob, fechaISO: string): Prom
     // el alto) para no deformar la foto: el navegador calcula el otro lado manteniendo la
     // proporción original, y el achicado de abajo (que sí respeta el lado más largo) sigue
     // aplicando igual sobre este bitmap ya mucho más chico.
-    const bitmap = await createImageBitmap(archivo, { resizeWidth: LADO_MAXIMO_FOTO, resizeQuality: 'medium' });
+    // `imageOrientation: 'from-image'` respeta el tag EXIF de rotación cuando el archivo lo trae
+    // (fotos de la cámara nativa, usada de respaldo si falla la cámara en vivo) — sin esto,
+    // createImageBitmap ignora el EXIF y decodifica los píxeles tal cual vienen del sensor.
+    const bitmap = await createImageBitmap(archivo, {
+      resizeWidth: LADO_MAXIMO_FOTO,
+      resizeQuality: 'medium',
+      imageOrientation: 'from-image',
+    });
     const escala = Math.min(1, LADO_MAXIMO_FOTO / Math.max(bitmap.width, bitmap.height));
+    const anchoFoto = Math.round(bitmap.width * escala);
+    const altoFoto = Math.round(bitmap.height * escala);
+
+    // La cámara en vivo (CamaraFoto.tsx, getUserMedia + canvas) no lleva EXIF y en algunos
+    // celulares entrega el cuadro acostado (más ancho que alto) aunque el operador sostenga el
+    // celular en vertical — a pedido del usuario, toda foto se muestra vertical en el informe:
+    // si sigue quedando horizontal después de aplicar el EXIF de arriba, se rota acá.
+    const esHorizontal = anchoFoto > altoFoto;
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(bitmap.width * escala);
-    canvas.height = Math.round(bitmap.height * escala);
+    canvas.width = esHorizontal ? altoFoto : anchoFoto;
+    canvas.height = esHorizontal ? anchoFoto : altoFoto;
     const ctx = canvas.getContext('2d');
     if (!ctx) return archivo;
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close?.(); // libera el bitmap decodificado (puede ser el doble de canvas.width x canvas.height) apenas se copió al canvas, sin esperar al recolector de basura
+    if (esHorizontal) {
+      // Antihorario (-90°): en las fotos donde se detectó este problema, el lado derecho del
+      // cuadro acostado era el que debía terminar arriba. Si alguna vez sale al revés, cambiar el
+      // signo de este ángulo (y el translate de abajo) es todo lo que hay que tocar.
+      ctx.translate(0, canvas.height);
+      ctx.rotate(-Math.PI / 2);
+    }
+    ctx.drawImage(bitmap, 0, 0, anchoFoto, altoFoto);
+    bitmap.close?.(); // libera el bitmap decodificado apenas se copió al canvas, sin esperar al recolector de basura
 
+    // El sello se dibuja DESPUÉS de rotar, ya sobre el lienzo vertical final (canvas.width/height
+    // de acá abajo son los de la foto ya derecha) — así el texto queda horizontal y pegado a la
+    // esquina inferior derecha tal como se ve la foto, no de lado.
     const fontSize = Math.max(16, Math.round(canvas.width * 0.035));
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // deshace la rotación de arriba: el sello no debe rotar
     ctx.font = `bold ${fontSize}px sans-serif`;
     const paddingX = fontSize * 0.6;
     const paddingY = fontSize * 0.5;
