@@ -1298,14 +1298,20 @@ function EditorPlanilla({
     setMensaje(null);
     try {
       const archivo = new File([pdfBlob], pdfNombre, { type: 'application/pdf' });
-      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-        await navigator.share({ files: [archivo], title: 'Planilla de horas extras', text: nombreTrabajador.trim() });
-      } else {
+      if (!navigator.canShare || !navigator.canShare({ files: [archivo] })) {
         descargarBlob(pdfBlob, pdfNombre);
         setMensaje('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente por WhatsApp.');
+        return;
       }
-    } catch (err: any) {
-      if (err?.name !== 'AbortError') setMensaje(`No se pudo compartir: ${err.message ?? err}`);
+      try {
+        await navigator.share({ files: [archivo], title: 'Planilla de horas extras', text: nombreTrabajador.trim() });
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+        // El navegador dice que sí puede compartir (canShare) pero lo niega al intentarlo — se
+        // descarga como respaldo en vez de dejar al usuario solo con un error técnico.
+        descargarBlob(pdfBlob, pdfNombre);
+        setMensaje('Tu navegador bloqueó compartir directo — se descargó, compártelo manualmente por WhatsApp.');
+      }
     } finally {
       setCompartiendo(false);
     }

@@ -181,20 +181,25 @@ export function Reports() {
     setMensaje(null);
     try {
       const archivo = new File([ultimoPdf], ultimoNombre, { type: 'application/pdf' });
-      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+      if (!navigator.canShare || !navigator.canShare({ files: [archivo] })) {
+        descargarBlob(ultimoPdf, ultimoNombre);
+        setMensaje('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente por WhatsApp, correo, etc.');
+        return;
+      }
+      try {
         await navigator.share({
           files: [archivo],
           title: 'Reporte EBAR',
           text: `Reporte EBAR — ${rangoLabel}`,
         });
         setMensaje('Reporte compartido.');
-      } else {
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return; // cerró el selector sin elegir nada, no es un error
+        // El navegador dice que sí puede compartir (canShare) pero lo niega al intentarlo (ej. un
+        // reporte con muchas fotos pesa más de lo que el selector nativo admite) — se descarga como
+        // respaldo en vez de dejar al usuario solo con un error técnico y sin el archivo.
         descargarBlob(ultimoPdf, ultimoNombre);
-        setMensaje('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente por WhatsApp, correo, etc.');
-      }
-    } catch (err: any) {
-      if (err?.name !== 'AbortError') {
-        setMensaje(`No se pudo compartir: ${err.message ?? err}`);
+        setMensaje('Tu navegador bloqueó compartir directo (puede ser por el tamaño del PDF) — se descargó, compártelo manualmente.');
       }
     } finally {
       setEnviando(false);

@@ -318,12 +318,20 @@ export function CalendarioTurnos() {
     setMensajeCompartir(null);
     try {
       const archivo = new File([pdfBlob], pdfNombre, { type: 'application/pdf' });
-      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-        await navigator.share({ files: [archivo], title: 'Calendario de turnos', text: tituloMesLabel });
-        setMensajeCompartir('Compartido.');
-      } else {
+      if (!navigator.canShare || !navigator.canShare({ files: [archivo] })) {
         descargarBlob(pdfBlob, pdfNombre);
         setMensajeCompartir('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente por WhatsApp.');
+        return;
+      }
+      try {
+        await navigator.share({ files: [archivo], title: 'Calendario de turnos', text: tituloMesLabel });
+        setMensajeCompartir('Compartido.');
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+        // El navegador dice que sí puede compartir (canShare) pero lo niega al intentarlo — se
+        // descarga como respaldo en vez de dejar al usuario solo con un error técnico.
+        descargarBlob(pdfBlob, pdfNombre);
+        setMensajeCompartir('Tu navegador bloqueó compartir directo — se descargó, compártelo manualmente por WhatsApp.');
       }
     } catch (err: any) {
       if (err?.name !== 'AbortError') setMensajeCompartir(`No se pudo compartir: ${err.message ?? err}`);
