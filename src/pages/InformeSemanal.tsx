@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { BarraDistribucion } from '../components/BarraDistribucion';
+import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { abrirBlob, descargarBlob, generarInformeSemanal } from '../lib/pdf';
 import { hoyLocal } from '../lib/fecha';
 import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
@@ -66,10 +68,18 @@ interface Operador {
 }
 
 export function InformeSemanal() {
-  const { usuario } = useAuth();
+  const { usuario, tienePermiso } = useAuth();
   const puedeVer = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
+  // "Editar distribución" acá es solo el control de ancho de esta pantalla (sinBloques en
+  // BarraDistribucion) — es un único documento largo, no una grilla de bloques movibles. Mismo
+  // criterio que VisitForm.tsx.
+  const esAdministrador = usuario?.rol === 'administrador';
+  const puedeEditarDistribucion = esAdministrador || tienePermiso('editar_distribucion');
+  const editorDistribucion = useEditorDistribucion('informe_semanal');
 
   const [semanaDesde, setSemanaDesde] = useState(() => lunesDeSemana(hoyLocal()));
+  const [cambiandoSemana, setCambiandoSemana] = useState(false);
+  const [forzarEdicion, setForzarEdicion] = useState<Set<string>>(new Set());
   const [cargando, setCargando] = useState(true);
   const [informe, setInforme] = useState<InformeRow | null>(null);
   const [diasDB, setDiasDB] = useState<Record<string, DiaRow>>({});
@@ -236,6 +246,34 @@ export function InformeSemanal() {
       const { [fecha]: _, ...resto } = prev;
       return resto;
     });
+    setForzarEdicion((prev) => {
+      if (!prev.has(fecha)) return prev;
+      const copia = new Set(prev);
+      copia.delete(fecha);
+      return copia;
+    });
+  }
+
+  // Editar un día ya aprobado aunque no haya ningún cambio detectado en las visitas — arranca la
+  // edición desde el contenido ya guardado (no desde las visitas en crudo), para no perder ajustes
+  // manuales previos (viñetas editadas/borradas, responsable, fotos elegidas).
+  function editarDiaAprobado(fecha: string) {
+    const fila = diasDB[fecha];
+    if (!fila) return;
+    setEdicion((prev) => ({ ...prev, [fecha]: fila.contenido }));
+    setForzarEdicion((prev) => new Set(prev).add(fecha));
+  }
+
+  function cancelarEdicionAprobado(fecha: string) {
+    setEdicion((prev) => {
+      const { [fecha]: _, ...resto } = prev;
+      return resto;
+    });
+    setForzarEdicion((prev) => {
+      const copia = new Set(prev);
+      copia.delete(fecha);
+      return copia;
+    });
   }
 
   async function actualizarDiaConCambio(fecha: string) {
@@ -265,14 +303,17 @@ export function InformeSemanal() {
   }
 
   // Días laborables que de verdad necesitan aprobación (los feriados sin ninguna visita se
-  // muestran como informativos y no cuentan para habilitar "Generar informe final").
+  // muestran como informativos y no cuentan para nada de lo de abajo).
   const diasRequeridos = dias.filter((f) => visitasDelDia(f).length > 0 || !esDiaNoRegular(f, feriadosAdicionales));
-  const diasSinResolver = diasRequeridos.filter((f) => {
-    const fila = diasDB[f];
-    if (!fila?.aprobado) return true;
-    return !!detectarCambioDia(fila.snapshot_visitas, visitasDelDia(f));
-  });
-  const puedeGenerar = diasSinResolver.length === 0 && diasRequeridos.length > 0;
+  const diasAprobados = diasRequeridos.filter((f) => diasDB[f]?.aprobado);
+  const diasPorAprobar = diasRequeridos.filter((f) => !diasDB[f]?.aprobado);
+  const diasConCambioPendiente = diasAprobados.filter(
+    (f) => !!detectarCambioDia(diasDB[f].snapshot_visitas, visitasDelDia(f)),
+  );
+  // Ya no exige los 5 días aprobados: alcanza con al menos uno, y que ninguno de los ya aprobados
+  // tenga un aviso de "⚠️ Cambió algo" sin resolver — eso sí bloquea, para no generar un informe
+  // con contenido desactualizado sin que la analista lo haya visto.
+  const puedeGenerar = diasAprobados.length > 0 && diasConCambioPendiente.length === 0;
 
   async function generarPdf() {
     if (!informe || !puedeGenerar) return;
@@ -283,12 +324,16 @@ export function InformeSemanal() {
       const diasPdf = await Promise.all(
         dias.map(async (f) => {
           const visitasDia = visitasDelDia(f);
-          const contenido = diasDB[f]?.contenido ?? [];
+          const fila = diasDB[f];
+          // Un día que todavía no se aprobó no entra al PDF con contenido (se marca aparte como
+          // pendiente) — ya no hace falta que los 5 días estén aprobados para generar.
+          const bloques = fila?.aprobado ? await incrustarFotosBloques(fila.contenido, fotosDelDia(visitasDia)) : [];
           return {
             fecha: f,
             esFeriado: esDiaNoRegular(f, feriadosAdicionales) && visitasDia.length === 0,
             nombreFeriado: nombreFeriadoCalculado(f),
-            bloques: await incrustarFotosBloques(contenido, fotosDelDia(visitasDia)),
+            aprobado: !!fila?.aprobado,
+            bloques,
           };
         }),
       );
@@ -359,22 +404,28 @@ export function InformeSemanal() {
   if (cargando || !informe) return <p className="text-slate-600">Cargando…</p>;
 
   return (
-    <div className="space-y-4 max-w-3xl">
+    <div className="space-y-4">
       <Link to="/reportes" className="text-sm text-slate-600 hover:text-slate-900">
         ← Reportes
       </Link>
       <h1 className="titulo-pantalla">Informe Semanal</h1>
 
+      {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} sinBloques />}
+
       {/* Candado de semana */}
       <div className="tarjeta p-4">
-        {semanaBloqueada ? (
+        {semanaBloqueada && !cambiandoSemana ? (
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span className="text-sm font-semibold text-slate-800">
               🔒 Semana del {formatRangoSemana(dias[0], dias[4])}
             </span>
-            <Link to="/reportes" className="text-sm text-slate-600 hover:text-slate-900 underline">
+            <button
+              type="button"
+              onClick={() => setCambiandoSemana(true)}
+              className="text-sm text-slate-600 hover:text-slate-900 underline"
+            >
               Cambiar de semana →
-            </Link>
+            </button>
           </div>
         ) : (
           <div className="space-y-2">
@@ -383,12 +434,25 @@ export function InformeSemanal() {
               type="date"
               className="campo max-w-[220px]"
               value={semanaDesde}
-              onChange={(e) => setSemanaDesde(lunesDeSemana(e.target.value))}
+              onChange={(e) => {
+                setSemanaDesde(lunesDeSemana(e.target.value));
+                setCambiandoSemana(false);
+              }}
             />
             <p className="text-xs text-slate-500">
-              La semana queda fija apenas apruebes el primer día, para que ningún día ya aprobado se desarme por un
-              cambio de fecha a mitad de semana.
+              {semanaBloqueada
+                ? 'Vas a otra semana sin perder nada de esta — cada semana se guarda por separado.'
+                : 'La semana queda fija apenas apruebes el primer día, para que ningún día ya aprobado se desarme por un cambio de fecha a mitad de semana.'}
             </p>
+            {semanaBloqueada && (
+              <button
+                type="button"
+                onClick={() => setCambiandoSemana(false)}
+                className="text-xs text-slate-500 hover:text-slate-900 underline"
+              >
+                Cancelar
+              </button>
+            )}
           </div>
         )}
         <button type="button" onClick={rehacerBorrador} className="boton-secundario w-full mt-3">
@@ -429,10 +493,13 @@ export function InformeSemanal() {
             visitasDia={visitasDelDia(fecha)}
             feriadosAdicionales={feriadosAdicionales}
             bloques={bloquesDeHoy(fecha)}
+            estaForzado={forzarEdicion.has(fecha)}
             onCambiarBloques={(nuevos) => actualizarBloques(fecha, nuevos)}
             onAprobar={() => aprobarDia(fecha)}
             onActualizarConCambio={() => actualizarDiaConCambio(fecha)}
             onMantener={() => mantenerDiaComoEsta(fecha)}
+            onEditar={() => editarDiaAprobado(fecha)}
+            onCancelarEdicion={() => cancelarEdicionAprobado(fecha)}
           />
         ))}
       </div>
@@ -577,13 +644,26 @@ export function InformeSemanal() {
       {/* Consolidar y generar */}
       <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Consolidar y generar</h2>
       <div className="tarjeta p-4 space-y-4">
-        {!puedeGenerar && (
+        {diasConCambioPendiente.length > 0 && (
           <div className="rounded-lg border border-gauge-warn/30 bg-gauge-warn/10 p-3 text-sm text-gauge-warn">
-            <p className="font-semibold">⚠️ Todavía hay días por resolver</p>
+            <p className="font-semibold">⚠️ Hay días con cambios sin resolver</p>
             <p className="text-xs text-slate-600 mt-1">
-              El informe final se habilita cuando los {diasRequeridos.length || DIAS_SEMANA} días de la semana quedan
-              en "✓ Aprobado".
+              Resuelve el aviso "⚠️ Cambió algo" en cada día marcado antes de generar el informe.
             </p>
+          </div>
+        )}
+        {diasConCambioPendiente.length === 0 && diasAprobados.length === 0 && (
+          <div className="rounded-lg border border-gauge-warn/30 bg-gauge-warn/10 p-3 text-sm text-gauge-warn">
+            <p className="font-semibold">⚠️ Todavía no hay ningún día aprobado</p>
+            <p className="text-xs text-slate-600 mt-1">Aprueba al menos un día para poder generar el informe.</p>
+          </div>
+        )}
+        {puedeGenerar && diasPorAprobar.length > 0 && (
+          <div className="rounded-lg border border-panel-600 bg-panel-700 p-3 text-sm text-slate-600">
+            ℹ️ Todavía falta{diasPorAprobar.length === 1 ? '' : 'n'} {diasPorAprobar.length} día
+            {diasPorAprobar.length === 1 ? '' : 's'} por aprobar. El informe se genera solo con los{' '}
+            {diasAprobados.length} día{diasAprobados.length === 1 ? '' : 's'} ya aprobado
+            {diasAprobados.length === 1 ? '' : 's'} — puedes volver a generarlo más tarde cuando apruebes el resto.
           </div>
         )}
         <div className="max-w-[220px]">
@@ -635,20 +715,26 @@ function DiaCard({
   visitasDia,
   feriadosAdicionales,
   bloques,
+  estaForzado,
   onCambiarBloques,
   onAprobar,
   onActualizarConCambio,
   onMantener,
+  onEditar,
+  onCancelarEdicion,
 }: {
   fecha: string;
   fila: DiaRow | undefined;
   visitasDia: VisitaCruda[];
   feriadosAdicionales: Set<string>;
   bloques: BloqueInforme[];
+  estaForzado: boolean;
   onCambiarBloques: (nuevos: BloqueInforme[]) => void;
   onAprobar: () => void;
   onActualizarConCambio: () => void;
   onMantener: () => void;
+  onEditar: () => void;
+  onCancelarEdicion: () => void;
 }) {
   const esFeriado = esDiaNoRegular(fecha, feriadosAdicionales);
   const nombreFeriado = nombreFeriadoCalculado(fecha);
@@ -664,7 +750,7 @@ function DiaCard({
 
   const cambio: CambioDetectado | null = fila?.aprobado ? detectarCambioDia(fila.snapshot_visitas, visitasDia) : null;
 
-  if (fila?.aprobado && !cambio) {
+  if (fila?.aprobado && !cambio && !estaForzado) {
     const { estaciones, responsables } = resumenDia(fila.contenido);
     return (
       <details className="tarjeta p-4">
@@ -680,6 +766,11 @@ function DiaCard({
           Aprobado el {fila.aprobado_en ? new Date(fila.aprobado_en).toLocaleDateString('es-EC') : ''}, sin cambios en
           las visitas desde entonces. {estaciones} estación{estaciones === 1 ? '' : 'es'} con actividad ese día.
         </p>
+        <div className="mt-3 flex justify-end">
+          <button type="button" onClick={onEditar} className="boton-secundario text-xs py-1.5 px-3">
+            ✏️ Editar este día
+          </button>
+        </div>
       </details>
     );
   }
@@ -717,14 +808,20 @@ function DiaCard({
     );
   }
 
-  // Sin aprobar (borrador editable)
+  // Sin aprobar (borrador editable), o edición forzada de un día ya aprobado sin cambios.
   const { estaciones, responsables } = resumenDia(bloques);
   return (
     <div className="tarjeta p-4 space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="font-semibold text-slate-800">{formatFechaLarga(fecha)}</h3>
         <span className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-panel-700 text-slate-600">✏️ Sin aprobar</span>
+          <span
+            className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+              estaForzado ? 'bg-gauge-ok/15 text-gauge-ok' : 'bg-panel-700 text-slate-600'
+            }`}
+          >
+            {estaForzado ? '✓ Aprobado — editando' : '✏️ Sin aprobar'}
+          </span>
           {bloques.length > 0
             ? `${estaciones} estación${estaciones === 1 ? '' : 'es'} · ${responsables} responsable${responsables === 1 ? '' : 's'}`
             : 'Sin visitas registradas'}
@@ -754,12 +851,20 @@ function DiaCard({
 
       <div className="border-t border-dashed border-panel-600 pt-3 flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-slate-500 max-w-[380px]">
-          Al aprobar, este día queda guardado tal cual. Si después cambia algo en las visitas de los operadores, va
-          a avisar antes de tocarlo.
+          {estaForzado
+            ? 'Guarda para actualizar el día ya aprobado con estos cambios.'
+            : 'Al aprobar, este día queda guardado tal cual. Si después cambia algo en las visitas de los operadores, va a avisar antes de tocarlo.'}
         </p>
-        <button type="button" onClick={onAprobar} className="boton-primario text-sm py-2 px-4">
-          ✓ Aprobar y guardar este día
-        </button>
+        <div className="flex items-center gap-2">
+          {estaForzado && (
+            <button type="button" onClick={onCancelarEdicion} className="boton-secundario text-sm py-2 px-4">
+              Cancelar
+            </button>
+          )}
+          <button type="button" onClick={onAprobar} className="boton-primario text-sm py-2 px-4">
+            {estaForzado ? '💾 Guardar cambios' : '✓ Aprobar y guardar este día'}
+          </button>
+        </div>
       </div>
     </div>
   );

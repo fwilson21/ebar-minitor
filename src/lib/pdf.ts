@@ -755,6 +755,9 @@ export interface DiaInformePdf {
   fecha: string;
   esFeriado: boolean;
   nombreFeriado?: string;
+  /** false si el día todavía no se aprobó — el informe ya no exige los 5 días aprobados para
+   * generarse, así que un día pendiente entra igual pero sin su contenido. */
+  aprobado: boolean;
   bloques: BloqueInformePdf[];
 }
 
@@ -816,6 +819,17 @@ function bloqueDiaInforme(d: DiaInformePdf): any[] {
     return [
       {
         text: `${formatFechaLarga(d.fecha)} — Feriado${d.nombreFeriado ? ` (${d.nombreFeriado})` : ''}. Sin actividad registrada.`,
+        italics: true,
+        fontSize: 9,
+        color: '#5B7184',
+        margin: [0, 0, 0, 8],
+      },
+    ];
+  }
+  if (!d.aprobado) {
+    return [
+      {
+        text: `${formatFechaLarga(d.fecha)} — Día todavía no aprobado, no incluido en este informe.`,
         italics: true,
         fontSize: 9,
         color: '#5B7184',

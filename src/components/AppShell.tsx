@@ -48,6 +48,9 @@ function pantallaPorRuta(pathname: string): string {
   if (PANTALLA_POR_RUTA[pathname]) return PANTALLA_POR_RUTA[pathname];
   if (RUTA_VISITA_FORMULARIO.test(pathname)) return 'visita_formulario';
   if (RUTA_ESTACION_DETALLE.test(pathname)) return 'estacion_detalle';
+  // No entra a PANTALLA_POR_RUTA a propósito: no es un ítem del menú principal (se entra desde el
+  // botón de Reportes), así que mantiene el "← Volver" de más abajo en vez de perderlo.
+  if (pathname === '/informe-semanal') return 'informe_semanal';
   return 'global';
 }
 
