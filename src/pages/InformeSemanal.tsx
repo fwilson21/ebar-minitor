@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
-import { descargarBlob, generarInformeSemanal } from '../lib/pdf';
+import { abrirBlob, descargarBlob, generarInformeSemanal } from '../lib/pdf';
 import { hoyLocal } from '../lib/fecha';
 import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
 import {
@@ -96,6 +96,11 @@ export function InformeSemanal() {
   // Fechas (con visitas registradas) que faltan por aprobar al momento de tocar "Generar informe
   // final" — se avisa antes de generar en vez de dejarlas caer del informe en silencio.
   const [avisoDiasSinAprobar, setAvisoDiasSinAprobar] = useState<string[] | null>(null);
+  // Aviso propio de "Generar/Descargar/Compartir", separado de `mensaje` (que se usa para el resto
+  // de la pantalla) — este grupo de botones queda hasta abajo de una pantalla larga, así que su
+  // aviso tiene que aparecer pegado a los botones, no arriba del todo donde no se ve (ver memoria
+  // del proyecto sobre mensajes junto al botón).
+  const [mensajeGenerar, setMensajeGenerar] = useState<string | null>(null);
 
   const dias = useMemo(() => diasLaborables(semanaDesde), [semanaDesde]);
   const finde = useMemo(() => diasFinDeSemana(semanaDesde), [semanaDesde]);
@@ -339,7 +344,7 @@ export function InformeSemanal() {
   async function generarPdf() {
     if (!informe || !puedeGenerar) return;
     setGenerando(true);
-    setMensaje(null);
+    setMensajeGenerar(null);
     try {
       const numero = informe.numero_informe || (await sugerirNumeroInforme());
       const diasPdf = await Promise.all(
@@ -404,18 +409,18 @@ export function InformeSemanal() {
       const nombre = `Informe semanal No ${numeroArchivo} del ${periodoArchivo} ${marcaTiempo}.pdf`;
       setUltimoPdf(blob);
       setUltimoNombre(nombre);
-      // Ya no se descarga ni se abre sola en una pestaña acá: abrir el blob en una pestaña nueva
-      // le pone de nombre el id interno del blob (ej. "92ce371a-...") en vez de "Informe semanal
-      // No…", y si la analista guardaba desde esa pestaña el PDF le quedaba con ese nombre feo.
-      // Los botones "⬇️ Descargar" y "📤 Compartir" de abajo sí usan el nombre correcto siempre.
+      // Se abre para que la analista vea de una que sí se generó — para guardarlo, usa el botón
+      // "⬇️ Descargar" de abajo (esta pestaña muestra el PDF con su id interno de blob en la
+      // dirección, no con el nombre real; si se guarda desde acá sale con ese nombre feo).
+      abrirBlob(blob);
       await supabase
         .from('informes_semanales')
         .update({ numero_informe: numero, generado_en: new Date().toISOString() })
         .eq('id', informe.id);
       setInforme({ ...informe, numero_informe: numero, generado_en: new Date().toISOString() });
-      setMensaje('Informe generado — descárgalo o compártelo con los botones de abajo.');
+      setMensajeGenerar('✅ Informe generado y abierto en una pestaña nueva. Para guardarlo con su nombre, usa "Descargar" o "Compartir" acá abajo.');
     } catch (err: any) {
-      setMensaje(`Error al generar el informe: ${err.message ?? err}`);
+      setMensajeGenerar(`Error al generar el informe: ${err.message ?? err}`);
     } finally {
       setGenerando(false);
     }
@@ -431,22 +436,22 @@ export function InformeSemanal() {
 
   async function compartirPdf() {
     if (!ultimoPdf) {
-      setMensaje('Primero genera el informe en PDF.');
+      setMensajeGenerar('Primero genera el informe en PDF.');
       return;
     }
     setEnviando(true);
-    setMensaje(null);
+    setMensajeGenerar(null);
     try {
       const archivo = new File([ultimoPdf], ultimoNombre, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
         await navigator.share({ files: [archivo], title: 'Informe Semanal EBAR', text: ultimoNombre });
-        setMensaje('Informe compartido.');
+        setMensajeGenerar('✅ Informe compartido.');
       } else {
         descargarBlob(ultimoPdf, ultimoNombre);
-        setMensaje('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente.');
+        setMensajeGenerar('Tu navegador no soporta compartir directo con archivo — el PDF se descargó, compártelo manualmente.');
       }
     } catch (err: any) {
-      if (err?.name !== 'AbortError') setMensaje(`No se pudo compartir: ${err.message ?? err}`);
+      if (err?.name !== 'AbortError') setMensajeGenerar(`No se pudo compartir: ${err.message ?? err}`);
     } finally {
       setEnviando(false);
     }
@@ -742,7 +747,10 @@ export function InformeSemanal() {
           <button
             type="button"
             disabled={!ultimoPdf}
-            onClick={() => descargarBlob(ultimoPdf!, ultimoNombre)}
+            onClick={() => {
+              descargarBlob(ultimoPdf!, ultimoNombre);
+              setMensajeGenerar('⬇️ Descargado a tu carpeta de Descargas.');
+            }}
             className="boton-secundario flex-1"
           >
             ⬇️ Descargar
@@ -756,6 +764,9 @@ export function InformeSemanal() {
             {enviando ? 'Compartiendo…' : '📤 Compartir'}
           </button>
         </div>
+        {mensajeGenerar && (
+          <p className="text-sm text-slate-700 bg-panel-700 rounded-lg px-3 py-2">{mensajeGenerar}</p>
+        )}
       </div>
 
       {avisoDiasSinAprobar && (
