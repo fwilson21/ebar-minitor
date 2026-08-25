@@ -930,7 +930,11 @@ export function generarInformeSemanal(datos: DatosInformeSemanal): Promise<Blob>
       { text: datos.antecedentes || '-', fontSize: 9, margin: [0, 0, 0, 14] },
       { text: 'DESARROLLO DE LA SEMANA', style: 'subtitulo', margin: [0, 0, 0, 2] },
       ...datos.dias.flatMap(bloqueDiaInforme),
-      { text: 'CONTROL SEMANAL DEL PERSONAL', style: 'subtitulo', margin: [0, 10, 0, 6], pageBreak: 'before' },
+      // Sin pageBreak:'before' a propósito: si el contenido de arriba termina justo al borde de
+      // una página, un salto forzado incondicional deja una página en blanco antes de esta
+      // sección (pdfmake no sabe "saltar solo si hace falta") — mismo motivo por el que el resto
+      // del documento no fuerza saltos entre secciones, deja que fluya solo.
+      { text: 'CONTROL SEMANAL DEL PERSONAL', style: 'subtitulo', margin: [0, 10, 0, 6] },
       tablaAsistenciaInforme(datos),
       { text: LEYENDA_CODIGOS_ASISTENCIA, fontSize: 7, color: '#5B7184', margin: [0, 0, 0, 14] },
       { text: 'CONCLUSIONES', style: 'subtitulo', margin: [0, 0, 0, 4] },

@@ -14,6 +14,7 @@ import {
   diasFinDeSemana,
   formatFechaLarga,
   formatRangoSemana,
+  formatRangoParaArchivo,
   formatFechaCortaTabla,
   fechaLocalDe,
   obtenerVisitasSemana,
@@ -389,7 +390,18 @@ export function InformeSemanal() {
         asistencia: asistenciaParaPdf,
         diasTabla,
       });
-      const nombre = `informe_semanal_${informe.semana_desde}.pdf`;
+      // "Informe semanal No <número> del 24 al 26 de julio 2026 20260825_154411.pdf" — número tal
+      // cual lo escribió la analista (puede no ser solo dígitos, ej. "MEMORANDO 258-458"), período
+      // real (solo días aprobados) y marca de tiempo de cuándo se generó, para poder distinguir
+      // reintentos del mismo informe sin pisar el archivo anterior en Descargas.
+      const pad2 = (n: number) => String(n).padStart(2, '0');
+      const ahora = new Date();
+      const marcaTiempo =
+        `${ahora.getFullYear()}${pad2(ahora.getMonth() + 1)}${pad2(ahora.getDate())}_` +
+        `${pad2(ahora.getHours())}${pad2(ahora.getMinutes())}${pad2(ahora.getSeconds())}`;
+      const numeroArchivo = numero.replace(/[\\/:*?"<>|]/g, '-');
+      const periodoArchivo = formatRangoParaArchivo(diasAprobados[0], diasAprobados[diasAprobados.length - 1]);
+      const nombre = `Informe semanal No ${numeroArchivo} del ${periodoArchivo} ${marcaTiempo}.pdf`;
       setUltimoPdf(blob);
       setUltimoNombre(nombre);
       descargarBlob(blob, nombre);

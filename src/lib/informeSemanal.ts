@@ -71,6 +71,16 @@ export function formatRangoSemana(desde: string, hasta: string): string {
   return `${dD} de ${MESES_LABEL[mD - 1]} de ${yD} al ${dH} de ${MESES_LABEL[mH - 1]} de ${yH}`;
 }
 
+/** Igual que formatRangoSemana pero sin la segunda "de" antes del año ("24 al 26 de julio 2026")
+ * — pensado para el nombre del archivo del PDF, no para el texto dentro del documento. */
+export function formatRangoParaArchivo(desde: string, hasta: string): string {
+  const [yD, mD, dD] = desde.split('-').map(Number);
+  const [yH, mH, dH] = hasta.split('-').map(Number);
+  if (yD === yH && mD === mH) return `${dD} al ${dH} de ${MESES_LABEL[mD - 1]} ${yD}`;
+  if (yD === yH) return `${dD} de ${MESES_LABEL[mD - 1]} al ${dH} de ${MESES_LABEL[mH - 1]} ${yD}`;
+  return `${dD} de ${MESES_LABEL[mD - 1]} ${yD} al ${dH} de ${MESES_LABEL[mH - 1]} ${yH}`;
+}
+
 /** "10" (día) + "Lun" (abreviatura), para el encabezado de la tabla de asistencia. */
 export function formatFechaCortaTabla(fechaIso: string): { dia: string; abrev: string } {
   const [, , d] = fechaIso.split('-');
