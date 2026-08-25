@@ -745,6 +745,9 @@ function EditorPlanilla({
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfNombre, setPdfNombre] = useState('');
   const [compartiendo, setCompartiendo] = useState(false);
+  // Caso puntual "no se pudo compartir directo, quedó descargado" — su propio aviso destacado con
+  // la instrucción de qué hacer, no un renglón de texto plano más.
+  const [avisoCompartirManual, setAvisoCompartirManual] = useState(false);
 
   // Flujo de "campos incompletos" antes de Guardar/Generar PDF: primero se ofrece elegir entre
   // guardar igual o completar; si elige guardar igual se pregunta una segunda vez para confirmar;
@@ -1247,6 +1250,7 @@ function EditorPlanilla({
     }
     setGenerandoPdf(true);
     setMensaje(null);
+    setAvisoCompartirManual(false);
     try {
       const filasReporte: FilaPlanillaReporte[] = filas.map((f) => ({
         fecha: f.fecha,
@@ -1296,11 +1300,12 @@ function EditorPlanilla({
     if (!pdfBlob) return;
     setCompartiendo(true);
     setMensaje(null);
+    setAvisoCompartirManual(false);
     try {
       const archivo = new File([pdfBlob], pdfNombre, { type: 'application/pdf' });
       if (!navigator.canShare || !navigator.canShare({ files: [archivo] })) {
         descargarBlob(pdfBlob, pdfNombre);
-        setMensaje('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente por WhatsApp.');
+        setAvisoCompartirManual(true);
         return;
       }
       try {
@@ -1310,7 +1315,7 @@ function EditorPlanilla({
         // El navegador dice que sí puede compartir (canShare) pero lo niega al intentarlo — se
         // descarga como respaldo en vez de dejar al usuario solo con un error técnico.
         descargarBlob(pdfBlob, pdfNombre);
-        setMensaje('Tu navegador bloqueó compartir directo — se descargó, compártelo manualmente por WhatsApp.');
+        setAvisoCompartirManual(true);
       }
     } finally {
       setCompartiendo(false);
@@ -1474,8 +1479,10 @@ function EditorPlanilla({
     aprobadoCargo,
     setAprobadoCargo,
     pdfBlob,
+    pdfNombre,
     compartirPorWhatsApp,
     compartiendo,
+    avisoCompartirManual,
     alGuardarClick,
     guardando,
     alGenerarPdfClick,
@@ -2197,8 +2204,10 @@ interface BloqueAccionesProps {
   aprobadoCargo: string;
   setAprobadoCargo: Dispatch<SetStateAction<string>>;
   pdfBlob: Blob | null;
+  pdfNombre: string;
   compartirPorWhatsApp: () => void;
   compartiendo: boolean;
+  avisoCompartirManual: boolean;
   alGuardarClick: () => void;
   guardando: boolean;
   alGenerarPdfClick: () => void;
@@ -2226,8 +2235,10 @@ function BloqueAcciones({
   aprobadoCargo,
   setAprobadoCargo,
   pdfBlob,
+  pdfNombre,
   compartirPorWhatsApp,
   compartiendo,
+  avisoCompartirManual,
   alGuardarClick,
   guardando,
   alGenerarPdfClick,
@@ -2291,6 +2302,15 @@ function BloqueAcciones({
           <button onClick={compartirPorWhatsApp} disabled={compartiendo} className="boton-primario w-full">
             {compartiendo ? 'Abriendo…' : '📤 Compartir por WhatsApp'}
           </button>
+        )}
+        {avisoCompartirManual && (
+          <div className="rounded-lg border-2 border-gauge-warn/40 bg-gauge-warn/10 p-3 space-y-1">
+            <p className="text-sm font-bold text-gauge-warn">📥 El PDF ya está en tu carpeta de Descargas</p>
+            <p className="text-xs text-slate-700">
+              Tu navegador no dejó enviarlo directo — abre WhatsApp y <b>adjúntalo a mano desde Descargas</b>, ya
+              tiene el nombre "{pdfNombre}".
+            </p>
+          </div>
         )}
       </div>
 

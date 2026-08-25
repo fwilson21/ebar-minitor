@@ -101,6 +101,9 @@ export function InformeSemanal() {
   // aviso tiene que aparecer pegado a los botones, no arriba del todo donde no se ve (ver memoria
   // del proyecto sobre mensajes junto al botón).
   const [mensajeGenerar, setMensajeGenerar] = useState<string | null>(null);
+  // Caso puntual "no se pudo compartir directo, quedó descargado" — necesita su propio aviso
+  // destacado con la instrucción de qué hacer, no un renglón de texto plano más.
+  const [avisoCompartirManual, setAvisoCompartirManual] = useState(false);
 
   const dias = useMemo(() => diasLaborables(semanaDesde), [semanaDesde]);
   const finde = useMemo(() => diasFinDeSemana(semanaDesde), [semanaDesde]);
@@ -345,6 +348,7 @@ export function InformeSemanal() {
     if (!informe || !puedeGenerar) return;
     setGenerando(true);
     setMensajeGenerar(null);
+    setAvisoCompartirManual(false);
     try {
       const numero = informe.numero_informe || (await sugerirNumeroInforme());
       const diasPdf = await Promise.all(
@@ -441,11 +445,12 @@ export function InformeSemanal() {
     }
     setEnviando(true);
     setMensajeGenerar(null);
+    setAvisoCompartirManual(false);
     try {
       const archivo = new File([ultimoPdf], ultimoNombre, { type: 'application/pdf' });
       if (!navigator.canShare || !navigator.canShare({ files: [archivo] })) {
         descargarBlob(ultimoPdf, ultimoNombre);
-        setMensajeGenerar('Tu navegador no soporta compartir directo con archivo — el PDF se descargó, compártelo manualmente.');
+        setAvisoCompartirManual(true);
         return;
       }
       try {
@@ -457,7 +462,7 @@ export function InformeSemanal() {
         // (ej. "Permission denied" según el contexto/navegador) — se descarga como respaldo en vez
         // de dejar a la analista solo con un error técnico y sin el archivo.
         descargarBlob(ultimoPdf, ultimoNombre);
-        setMensajeGenerar('Tu navegador bloqueó compartir directo — el PDF se descargó, compártelo manualmente (WhatsApp, correo, etc.).');
+        setAvisoCompartirManual(true);
       }
     } finally {
       setEnviando(false);
@@ -756,6 +761,7 @@ export function InformeSemanal() {
             disabled={!ultimoPdf}
             onClick={() => {
               descargarBlob(ultimoPdf!, ultimoNombre);
+              setAvisoCompartirManual(false);
               setMensajeGenerar('⬇️ Descargado a tu carpeta de Descargas.');
             }}
             className="boton-secundario flex-1"
@@ -771,7 +777,17 @@ export function InformeSemanal() {
             {enviando ? 'Compartiendo…' : '📤 Compartir'}
           </button>
         </div>
-        {mensajeGenerar && (
+        {avisoCompartirManual && (
+          <div className="rounded-lg border-2 border-gauge-warn/40 bg-gauge-warn/10 p-3 space-y-1">
+            <p className="text-sm font-bold text-gauge-warn">📥 El PDF ya está en tu carpeta de Descargas</p>
+            <p className="text-xs text-slate-700">
+              Tu navegador no dejó enviarlo directo (suele ser por el tamaño del archivo, con muchas fotos). Para
+              mandarlo: abre WhatsApp, correo o la app que prefieras y <b>adjúntalo a mano desde Descargas</b> — ya
+              tiene el nombre "{ultimoNombre}".
+            </p>
+          </div>
+        )}
+        {!avisoCompartirManual && mensajeGenerar && (
           <p className="text-sm text-slate-700 bg-panel-700 rounded-lg px-3 py-2">{mensajeGenerar}</p>
         )}
       </div>

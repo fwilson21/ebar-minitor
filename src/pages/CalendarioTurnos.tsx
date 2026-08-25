@@ -130,6 +130,9 @@ export function CalendarioTurnos() {
   const [pdfNombre, setPdfNombre] = useState('');
   const [compartiendo, setCompartiendo] = useState(false);
   const [mensajeCompartir, setMensajeCompartir] = useState<string | null>(null);
+  // Caso puntual "no se pudo compartir directo, quedó descargado" — su propio aviso destacado con
+  // la instrucción de qué hacer, no un renglón de texto plano más.
+  const [avisoCompartirManual, setAvisoCompartirManual] = useState(false);
 
   // Editar distribución en vivo: a diferencia de la vieja "Distribución de entorno" (que
   // mostraba solo el nombre de cada bloque), acá se arrastra el bloque real con su contenido
@@ -280,6 +283,7 @@ export function CalendarioTurnos() {
   async function manejarGenerarPdf() {
     setGenerandoPdf(true);
     setMensaje(null);
+    setAvisoCompartirManual(false);
     try {
       const filas: FilaTurnoReporte[] = [...turnosPorFecha.entries()].map(([fecha, lista]) => ({
         fecha,
@@ -316,11 +320,12 @@ export function CalendarioTurnos() {
     }
     setCompartiendo(true);
     setMensajeCompartir(null);
+    setAvisoCompartirManual(false);
     try {
       const archivo = new File([pdfBlob], pdfNombre, { type: 'application/pdf' });
       if (!navigator.canShare || !navigator.canShare({ files: [archivo] })) {
         descargarBlob(pdfBlob, pdfNombre);
-        setMensajeCompartir('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente por WhatsApp.');
+        setAvisoCompartirManual(true);
         return;
       }
       try {
@@ -331,7 +336,7 @@ export function CalendarioTurnos() {
         // El navegador dice que sí puede compartir (canShare) pero lo niega al intentarlo — se
         // descarga como respaldo en vez de dejar al usuario solo con un error técnico.
         descargarBlob(pdfBlob, pdfNombre);
-        setMensajeCompartir('Tu navegador bloqueó compartir directo — se descargó, compártelo manualmente por WhatsApp.');
+        setAvisoCompartirManual(true);
       }
     } catch (err: any) {
       if (err?.name !== 'AbortError') setMensajeCompartir(`No se pudo compartir: ${err.message ?? err}`);
@@ -385,6 +390,8 @@ export function CalendarioTurnos() {
           manejarCompartir={manejarCompartir}
           compartiendo={compartiendo}
           mensajeCompartir={mensajeCompartir}
+          avisoCompartirManual={avisoCompartirManual}
+          pdfNombre={pdfNombre}
         />
         <BloquePlanillaHorasExtras operadores={operadores} usuarioId={usuario.id} esAdmin={esAdmin} />
         <BloqueFeriados
@@ -444,6 +451,8 @@ export function CalendarioTurnos() {
                     manejarCompartir={manejarCompartir}
                     compartiendo={compartiendo}
                     mensajeCompartir={mensajeCompartir}
+                    avisoCompartirManual={avisoCompartirManual}
+                    pdfNombre={pdfNombre}
                   />
                 );
               case 'planilla_horas_extras':
@@ -709,6 +718,8 @@ interface BloqueExportarProps {
   manejarCompartir: () => void;
   compartiendo: boolean;
   mensajeCompartir: string | null;
+  avisoCompartirManual: boolean;
+  pdfNombre: string;
 }
 
 function BloqueExportar({
@@ -719,6 +730,8 @@ function BloqueExportar({
   manejarCompartir,
   compartiendo,
   mensajeCompartir,
+  avisoCompartirManual,
+  pdfNombre,
 }: BloqueExportarProps) {
   return (
     <div className="tarjeta p-4 space-y-3">
@@ -734,10 +747,20 @@ function BloqueExportar({
         <button onClick={manejarCompartir} disabled={compartiendo} className="boton-primario w-full">
           {compartiendo ? 'Abriendo…' : '📤 Compartir por WhatsApp'}
         </button>
-        {mensajeCompartir && (
-          <p className={`text-xs ${mensajeCompartir.startsWith('No se pudo') || !pdfBlob ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
-            {mensajeCompartir}
-          </p>
+        {avisoCompartirManual ? (
+          <div className="rounded-lg border-2 border-gauge-warn/40 bg-gauge-warn/10 p-3 space-y-1">
+            <p className="text-sm font-bold text-gauge-warn">📥 El PDF ya está en tu carpeta de Descargas</p>
+            <p className="text-xs text-slate-700">
+              Tu navegador no dejó enviarlo directo — abre WhatsApp y <b>adjúntalo a mano desde Descargas</b>, ya
+              tiene el nombre "{pdfNombre}".
+            </p>
+          </div>
+        ) : (
+          mensajeCompartir && (
+            <p className={`text-xs ${mensajeCompartir.startsWith('No se pudo') || !pdfBlob ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+              {mensajeCompartir}
+            </p>
+          )
         )}
       </div>
     </div>

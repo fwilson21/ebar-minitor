@@ -42,6 +42,9 @@ export function Reports() {
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ultimoPdf, setUltimoPdf] = useState<Blob | null>(null);
   const [ultimoNombre, setUltimoNombre] = useState('');
+  // Caso puntual "no se pudo compartir directo, quedó descargado" — su propio aviso destacado con
+  // la instrucción de qué hacer, no un renglón de texto plano más.
+  const [avisoCompartirManual, setAvisoCompartirManual] = useState(false);
 
   useEffect(() => {
     if (!esAdmin) return;
@@ -122,6 +125,7 @@ export function Reports() {
   async function manejarGenerar() {
     setGenerando(true);
     setMensaje(null);
+    setAvisoCompartirManual(false);
     try {
       const visitasSinFotos = await obtenerVisitas();
       if (visitasSinFotos.length === 0) {
@@ -179,11 +183,12 @@ export function Reports() {
     }
     setEnviando(true);
     setMensaje(null);
+    setAvisoCompartirManual(false);
     try {
       const archivo = new File([ultimoPdf], ultimoNombre, { type: 'application/pdf' });
       if (!navigator.canShare || !navigator.canShare({ files: [archivo] })) {
         descargarBlob(ultimoPdf, ultimoNombre);
-        setMensaje('Tu navegador no soporta compartir directo. El PDF se descargó — compártelo manualmente por WhatsApp, correo, etc.');
+        setAvisoCompartirManual(true);
         return;
       }
       try {
@@ -199,7 +204,7 @@ export function Reports() {
         // reporte con muchas fotos pesa más de lo que el selector nativo admite) — se descarga como
         // respaldo en vez de dejar al usuario solo con un error técnico y sin el archivo.
         descargarBlob(ultimoPdf, ultimoNombre);
-        setMensaje('Tu navegador bloqueó compartir directo (puede ser por el tamaño del PDF) — se descargó, compártelo manualmente.');
+        setAvisoCompartirManual(true);
       }
     } finally {
       setEnviando(false);
@@ -255,7 +260,14 @@ export function Reports() {
           generando={generando}
           manejarGenerar={manejarGenerar}
         />
-        <BloqueCompartir enviando={enviando} ultimoPdf={ultimoPdf} manejarCompartir={manejarCompartir} mensaje={mensaje} />
+        <BloqueCompartir
+          enviando={enviando}
+          ultimoPdf={ultimoPdf}
+          manejarCompartir={manejarCompartir}
+          mensaje={mensaje}
+          avisoCompartirManual={avisoCompartirManual}
+          ultimoNombre={ultimoNombre}
+        />
       </div>
 
       {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
@@ -293,7 +305,16 @@ export function Reports() {
                   />
                 );
               case 'compartir':
-                return <BloqueCompartir enviando={enviando} ultimoPdf={ultimoPdf} manejarCompartir={manejarCompartir} mensaje={mensaje} />;
+                return (
+                  <BloqueCompartir
+                    enviando={enviando}
+                    ultimoPdf={ultimoPdf}
+                    manejarCompartir={manejarCompartir}
+                    mensaje={mensaje}
+                    avisoCompartirManual={avisoCompartirManual}
+                    ultimoNombre={ultimoNombre}
+                  />
+                );
               default:
                 return null;
             }
@@ -532,11 +553,15 @@ function BloqueCompartir({
   ultimoPdf,
   manejarCompartir,
   mensaje,
+  avisoCompartirManual,
+  ultimoNombre,
 }: {
   enviando: boolean;
   ultimoPdf: Blob | null;
   manejarCompartir: () => void;
   mensaje: string | null;
+  avisoCompartirManual: boolean;
+  ultimoNombre: string;
 }) {
   return (
     <div className="tarjeta p-4 space-y-2 lg:h-full lg:overflow-auto">
@@ -547,7 +572,18 @@ function BloqueCompartir({
       <p className="text-xs text-slate-500">
         El PDF ya se descarga al generarlo. Este botón abre el menú para reenviarlo por WhatsApp, correo u otra app.
       </p>
-      {mensaje && <p className="text-sm text-slate-700">{mensaje}</p>}
+      {avisoCompartirManual ? (
+        <div className="rounded-lg border-2 border-gauge-warn/40 bg-gauge-warn/10 p-3 space-y-1">
+          <p className="text-sm font-bold text-gauge-warn">📥 El PDF ya está en tu carpeta de Descargas</p>
+          <p className="text-xs text-slate-700">
+            Tu navegador no dejó enviarlo directo (suele ser por el tamaño del archivo, con muchas fotos). Para
+            mandarlo: abre WhatsApp, correo o la app que prefieras y <b>adjúntalo a mano desde Descargas</b> — ya
+            tiene el nombre "{ultimoNombre}".
+          </p>
+        </div>
+      ) : (
+        mensaje && <p className="text-sm text-slate-700">{mensaje}</p>
+      )}
     </div>
   );
 }
