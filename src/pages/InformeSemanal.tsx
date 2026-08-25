@@ -943,17 +943,19 @@ function BloqueEditor({
               const marcada = bloque.fotos_seleccionadas.includes(f.id);
               return (
                 <label key={f.id} className="relative cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="absolute top-1 left-1 z-10"
-                    checked={marcada}
-                    onChange={(e) => {
-                      const seleccionadas = e.target.checked
-                        ? [...bloque.fotos_seleccionadas, f.id]
-                        : bloque.fotos_seleccionadas.filter((id) => id !== f.id);
-                      onCambiar({ ...bloque, fotos_seleccionadas: seleccionadas });
-                    }}
-                  />
+                  <span className="absolute top-1.5 right-1.5 z-10 bg-white/90 rounded-md p-0.5 shadow leading-none">
+                    <input
+                      type="checkbox"
+                      className="block w-5 h-5 accent-gauge-ok cursor-pointer"
+                      checked={marcada}
+                      onChange={(e) => {
+                        const seleccionadas = e.target.checked
+                          ? [...bloque.fotos_seleccionadas, f.id]
+                          : bloque.fotos_seleccionadas.filter((id) => id !== f.id);
+                        onCambiar({ ...bloque, fotos_seleccionadas: seleccionadas });
+                      }}
+                    />
+                  </span>
                   <img
                     src={f.url}
                     className={`w-full aspect-square object-cover rounded-md ${marcada ? '' : 'opacity-40'}`}
