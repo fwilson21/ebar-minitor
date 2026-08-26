@@ -443,6 +443,13 @@ function SelectorEstaciones({
   const [abierto, setAbierto] = useState(false);
   const grupos = agruparPorZonaYTipo(estaciones);
 
+  // Conjunto vacío = "Todas las estaciones" (así se guarda: sin filtro, en vez de listar cada id a
+  // mano — de paso, una estación nueva que se cree después ya queda incluida sola). Antes esto
+  // dejaba cada casilla individual sin marcar mientras "Todas" sí lo estaba, que se veía
+  // contradictorio — `modoTodas` hace que las casillas de abajo se vean marcadas también en ese
+  // caso, sin cambiar cómo se guarda el filtro.
+  const modoTodas = !obligatorio && seleccionadas.size === 0;
+
   const resumen =
     seleccionadas.size === 0
       ? obligatorio
@@ -452,21 +459,36 @@ function SelectorEstaciones({
         ? estaciones.find((e) => seleccionadas.has(e.id))?.codigo ?? '1 estación'
         : `${seleccionadas.size} estaciones seleccionadas`;
 
+  // Si estaba en "Todas" (selección implícita), tocar una estación puntual la vuelve explícita —
+  // todas menos la que se acaba de destildar — en vez de partir de un conjunto vacío y terminar
+  // con esa única estación marcada (que es lo contrario de lo que se tocó).
+  function expandirSiModoTodas(): Set<string> {
+    return modoTodas ? new Set(estaciones.map((e) => e.id)) : new Set(seleccionadas);
+  }
+
+  // Si el resultado termina incluyendo TODAS las estaciones a mano, "colapsa" de vuelta al
+  // conjunto vacío — mismo estado (y mismo query sin filtro) que tocar "Todas las estaciones". No
+  // aplica en modo obligatorio: ahí no existe "Todas", así que el conjunto vacío sí significa
+  // "nada elegido todavía" y no hay que colapsar aunque se marquen todas a mano.
+  function colapsarSiCompleto(nuevo: Set<string>) {
+    onCambiar(!obligatorio && nuevo.size === estaciones.length ? new Set() : nuevo);
+  }
+
   function alternarEstacion(id: string) {
-    const nuevo = new Set(seleccionadas);
+    const nuevo = expandirSiModoTodas();
     if (nuevo.has(id)) nuevo.delete(id);
     else nuevo.add(id);
-    onCambiar(nuevo);
+    colapsarSiCompleto(nuevo);
   }
 
   function alternarGrupo(idsGrupo: string[]) {
-    const todasMarcadas = idsGrupo.every((id) => seleccionadas.has(id));
-    const nuevo = new Set(seleccionadas);
+    const todasMarcadas = idsGrupo.every((id) => modoTodas || seleccionadas.has(id));
+    const nuevo = expandirSiModoTodas();
     for (const id of idsGrupo) {
       if (todasMarcadas) nuevo.delete(id);
       else nuevo.add(id);
     }
-    onCambiar(nuevo);
+    colapsarSiCompleto(nuevo);
   }
 
   return (
@@ -509,8 +531,8 @@ function SelectorEstaciones({
               )}
               {grupos.map(({ zona, tipo, estaciones: delGrupo }) => {
                 const idsGrupo = delGrupo.map((e) => e.id);
-                const todasMarcadas = idsGrupo.every((id) => seleccionadas.has(id));
-                const algunaMarcada = idsGrupo.some((id) => seleccionadas.has(id));
+                const todasMarcadas = modoTodas || idsGrupo.every((id) => seleccionadas.has(id));
+                const algunaMarcada = modoTodas || idsGrupo.some((id) => seleccionadas.has(id));
                 return (
                   <div key={`${zona}-${tipo}`}>
                     <label className="flex items-center gap-2 text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
@@ -531,7 +553,7 @@ function SelectorEstaciones({
                           <input
                             type="checkbox"
                             className="w-4 h-4 accent-gauge-ok shrink-0"
-                            checked={seleccionadas.has(e.id)}
+                            checked={modoTodas || seleccionadas.has(e.id)}
                             onChange={() => alternarEstacion(e.id)}
                           />
                           {e.codigo} — {e.nombre}
