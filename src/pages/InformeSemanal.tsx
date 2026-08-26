@@ -90,20 +90,20 @@ export function InformeSemanal() {
   const [edicion, setEdicion] = useState<Record<string, BloqueInforme[]>>({});
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
-  const [enviando, setEnviando] = useState(false);
-  const [ultimoPdf, setUltimoPdf] = useState<Blob | null>(null);
-  const [ultimoNombre, setUltimoNombre] = useState('');
-  // Fechas (con visitas registradas) que faltan por aprobar al momento de tocar "Generar informe
-  // final" — se avisa antes de generar en vez de dejarlas caer del informe en silencio.
+  // Fechas (con visitas registradas) que faltan por aprobar al momento de tocar "Descargar" — se
+  // avisa antes de descargar en vez de dejarlas caer del informe en silencio (aviso que ya existía).
   const [avisoDiasSinAprobar, setAvisoDiasSinAprobar] = useState<string[] | null>(null);
-  // Aviso propio de "Generar/Descargar/Compartir", separado de `mensaje` (que se usa para el resto
-  // de la pantalla) — este grupo de botones queda hasta abajo de una pantalla larga, así que su
-  // aviso tiene que aparecer pegado a los botones, no arriba del todo donde no se ve (ver memoria
-  // del proyecto sobre mensajes junto al botón).
+  // Aparte del anterior: campos de texto que la analista normalmente completa (fecha de emisión,
+  // nombre, N.º de informe, conclusiones, recomendaciones) que están vacíos — mismo patrón de
+  // aviso con lista concreta y "Descargar de todas formas", pero como cuadro propio y separado.
+  const [avisoCamposFaltantes, setAvisoCamposFaltantes] = useState<{ etiqueta: string; anchorId: string }[] | null>(
+    null,
+  );
+  // Aviso propio de "Descargar", separado de `mensaje` (que se usa para el resto de la pantalla) —
+  // este botón queda hasta abajo de una pantalla larga, así que su aviso tiene que aparecer pegado
+  // al botón, no arriba del todo donde no se ve (ver memoria del proyecto sobre mensajes junto al
+  // botón).
   const [mensajeGenerar, setMensajeGenerar] = useState<string | null>(null);
-  // Caso puntual "no se pudo compartir directo, quedó descargado" — necesita su propio aviso
-  // destacado con la instrucción de qué hacer, no un renglón de texto plano más.
-  const [avisoCompartirManual, setAvisoCompartirManual] = useState(false);
 
   const dias = useMemo(() => diasLaborables(semanaDesde), [semanaDesde]);
   const finde = useMemo(() => diasFinDeSemana(semanaDesde), [semanaDesde]);
@@ -327,16 +327,39 @@ export function InformeSemanal() {
   // con contenido desactualizado sin que la analista lo haya visto.
   const puedeGenerar = diasAprobados.length > 0 && diasConCambioPendiente.length === 0;
 
-  // Antes de generar: si queda algún día con visitas registradas por los operadores pero todavía
-  // sin aprobar, avisa en vez de dejarlo caer del informe en silencio — el botón solo dispara
-  // generarPdf() directo cuando ya no hay ninguno de esos.
-  function manejarClickGenerar() {
-    const diasConDatosSinAprobar = diasPorAprobar.filter((f) => visitasDelDia(f).length > 0);
-    if (diasConDatosSinAprobar.length > 0) {
-      setAvisoDiasSinAprobar(diasConDatosSinAprobar);
+  // Campos de texto que la analista normalmente completa antes de un informe "de verdad" —
+  // vacíos, el informe igual se puede descargar (con el aviso de abajo y "Descargar de todas
+  // formas"), pero por defecto se avisa en vez de dejarlos pasar en silencio.
+  function camposFaltantes(): { etiqueta: string; anchorId: string }[] {
+    if (!informe) return [];
+    const faltan: { etiqueta: string; anchorId: string }[] = [];
+    if (!informe.firma_fecha) faltan.push({ etiqueta: 'Fecha de emisión', anchorId: 'tarjeta-firma' });
+    if (!informe.firma_nombre.trim()) faltan.push({ etiqueta: 'Nombre', anchorId: 'tarjeta-firma' });
+    if (!(informe.numero_informe ?? '').trim()) faltan.push({ etiqueta: 'N.º de informe', anchorId: 'campo-numero-informe' });
+    if (!informe.conclusiones.trim()) faltan.push({ etiqueta: 'Conclusiones', anchorId: 'campo-conclusiones' });
+    if (!informe.recomendaciones.trim()) faltan.push({ etiqueta: 'Recomendaciones', anchorId: 'campo-recomendaciones' });
+    return faltan;
+  }
+
+  // Antes de descargar: primero el aviso de días sin aprobar que ya existía (se revisa primero,
+  // como siempre) y recién si ese ya está resuelto (o se saltó con "Descargar de todas formas"),
+  // el aviso aparte de campos vacíos — cada uno con su propio cuadro, no mezclados en uno solo.
+  function manejarClickDescargar() {
+    const diasSinAprobar = diasPorAprobar.filter((f) => visitasDelDia(f).length > 0);
+    if (diasSinAprobar.length > 0) {
+      setAvisoDiasSinAprobar(diasSinAprobar);
       return;
     }
-    generarPdf();
+    continuarTrasDiasSinAprobar();
+  }
+
+  function continuarTrasDiasSinAprobar() {
+    const camposVacios = camposFaltantes();
+    if (camposVacios.length > 0) {
+      setAvisoCamposFaltantes(camposVacios);
+      return;
+    }
+    generarYDescargar();
   }
 
   function irAAprobar(fechas: string[]) {
@@ -344,11 +367,17 @@ export function InformeSemanal() {
     document.getElementById(`dia-${fechas[0]}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
-  async function generarPdf() {
+  function irACompletarCampos() {
+    if (!avisoCamposFaltantes) return;
+    const anchorId = avisoCamposFaltantes[0]?.anchorId;
+    setAvisoCamposFaltantes(null);
+    if (anchorId) document.getElementById(anchorId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  async function generarYDescargar() {
     if (!informe || !puedeGenerar) return;
     setGenerando(true);
     setMensajeGenerar(null);
-    setAvisoCompartirManual(false);
     try {
       const numero = informe.numero_informe || (await sugerirNumeroInforme());
       const diasPdf = await Promise.all(
@@ -411,18 +440,17 @@ export function InformeSemanal() {
       const numeroArchivo = numero.replace(/[\\/:*?"<>|]/g, '-');
       const periodoArchivo = formatRangoParaArchivo(diasAprobados[0], diasAprobados[diasAprobados.length - 1]);
       const nombre = `Informe semanal No ${numeroArchivo} del ${periodoArchivo} ${marcaTiempo}.pdf`;
-      setUltimoPdf(blob);
-      setUltimoNombre(nombre);
-      // Se abre para que la analista vea de una que sí se generó — para guardarlo, usa el botón
-      // "⬇️ Descargar" de abajo (esta pestaña muestra el PDF con su id interno de blob en la
-      // dirección, no con el nombre real; si se guarda desde acá sale con ese nombre feo).
+      // Se abre en una pestaña nueva para que la analista vea de una que sí se generó (esa pestaña
+      // muestra el PDF con el id interno del blob en la dirección, no con el nombre real) y además
+      // se descarga directo con el nombre correcto — ya no hace falta un segundo click aparte.
       abrirBlob(blob);
+      descargarBlob(blob, nombre);
       await supabase
         .from('informes_semanales')
         .update({ numero_informe: numero, generado_en: new Date().toISOString() })
         .eq('id', informe.id);
       setInforme({ ...informe, numero_informe: numero, generado_en: new Date().toISOString() });
-      setMensajeGenerar('✅ Informe generado y abierto en una pestaña nueva. Para guardarlo con su nombre, usa "Descargar" o "Compartir" acá abajo.');
+      setMensajeGenerar('✅ Informe descargado a tu carpeta de Descargas y abierto en una pestaña nueva.');
     } catch (err: any) {
       setMensajeGenerar(`Error al generar el informe: ${err.message ?? err}`);
     } finally {
@@ -436,37 +464,6 @@ export function InformeSemanal() {
       .select('id', { count: 'exact', head: true })
       .not('numero_informe', 'is', null);
     return String((count ?? 0) + 1).padStart(3, '0');
-  }
-
-  async function compartirPdf() {
-    if (!ultimoPdf) {
-      setMensajeGenerar('Primero genera el informe en PDF.');
-      return;
-    }
-    setEnviando(true);
-    setMensajeGenerar(null);
-    setAvisoCompartirManual(false);
-    try {
-      const archivo = new File([ultimoPdf], ultimoNombre, { type: 'application/pdf' });
-      if (!navigator.canShare || !navigator.canShare({ files: [archivo] })) {
-        descargarBlob(ultimoPdf, ultimoNombre);
-        setAvisoCompartirManual(true);
-        return;
-      }
-      try {
-        await navigator.share({ files: [archivo], title: 'Informe Semanal EBAR', text: ultimoNombre });
-        setMensajeGenerar('✅ Informe compartido.');
-      } catch (err: any) {
-        if (err?.name === 'AbortError') return; // cerró el selector sin elegir nada, no es un error
-        // El navegador dice que sí puede compartir (canShare) pero después lo niega al intentarlo
-        // (ej. "Permission denied" según el contexto/navegador) — se descarga como respaldo en vez
-        // de dejar a la analista solo con un error técnico y sin el archivo.
-        descargarBlob(ultimoPdf, ultimoNombre);
-        setAvisoCompartirManual(true);
-      }
-    } finally {
-      setEnviando(false);
-    }
   }
 
   if (cargando || !informe) return <p className="text-slate-600">Cargando…</p>;
@@ -648,7 +645,7 @@ export function InformeSemanal() {
 
       {/* Conclusiones y recomendaciones */}
       <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Conclusiones y recomendaciones</h2>
-      <div className="tarjeta p-4 space-y-2">
+      <div id="campo-conclusiones" className="tarjeta p-4 space-y-2">
         <div className="flex items-center justify-between">
           <label className="etiqueta mb-0">Conclusiones</label>
           <span className="text-[10px] text-slate-500 bg-panel-700 px-2 py-1 rounded-full">↺ Copiado de la semana pasada</span>
@@ -661,7 +658,7 @@ export function InformeSemanal() {
           onBlur={(e) => guardarCampoInforme('conclusiones', e.target.value)}
         />
       </div>
-      <div className="tarjeta p-4 space-y-2">
+      <div id="campo-recomendaciones" className="tarjeta p-4 space-y-2">
         <div className="flex items-center justify-between">
           <label className="etiqueta mb-0">Recomendaciones</label>
           <span className="text-[10px] text-slate-500 bg-panel-700 px-2 py-1 rounded-full">↺ Copiado de la semana pasada</span>
@@ -677,7 +674,7 @@ export function InformeSemanal() {
 
       {/* Firma */}
       <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Firma</h2>
-      <div className="tarjeta p-4 grid grid-cols-2 gap-3">
+      <div id="tarjeta-firma" className="tarjeta p-4 grid grid-cols-2 gap-3">
         <div>
           <label className="etiqueta">Fecha de emisión</label>
           <input
@@ -717,25 +714,25 @@ export function InformeSemanal() {
           <div className="rounded-lg border border-gauge-warn/30 bg-gauge-warn/10 p-3 text-sm text-gauge-warn">
             <p className="font-semibold">⚠️ Hay días con cambios sin resolver</p>
             <p className="text-xs text-slate-600 mt-1">
-              Resuelve el aviso "⚠️ Cambió algo" en cada día marcado antes de generar el informe.
+              Resuelve el aviso "⚠️ Cambió algo" en cada día marcado antes de descargar el informe.
             </p>
           </div>
         )}
         {diasConCambioPendiente.length === 0 && diasAprobados.length === 0 && (
           <div className="rounded-lg border border-gauge-warn/30 bg-gauge-warn/10 p-3 text-sm text-gauge-warn">
             <p className="font-semibold">⚠️ Todavía no hay ningún día aprobado</p>
-            <p className="text-xs text-slate-600 mt-1">Aprueba al menos un día para poder generar el informe.</p>
+            <p className="text-xs text-slate-600 mt-1">Aprueba al menos un día para poder descargar el informe.</p>
           </div>
         )}
         {puedeGenerar && diasPorAprobar.length > 0 && (
           <div className="rounded-lg border border-panel-600 bg-panel-700 p-3 text-sm text-slate-600">
             ℹ️ Todavía falta{diasPorAprobar.length === 1 ? '' : 'n'} {diasPorAprobar.length} día
-            {diasPorAprobar.length === 1 ? '' : 's'} por aprobar. El informe se genera solo con los{' '}
+            {diasPorAprobar.length === 1 ? '' : 's'} por aprobar. El informe se descarga solo con los{' '}
             {diasAprobados.length} día{diasAprobados.length === 1 ? '' : 's'} ya aprobado
-            {diasAprobados.length === 1 ? '' : 's'} — puedes volver a generarlo más tarde cuando apruebes el resto.
+            {diasAprobados.length === 1 ? '' : 's'} — puedes volver a descargarlo más tarde cuando apruebes el resto.
           </div>
         )}
-        <div className="max-w-[220px]">
+        <div id="campo-numero-informe" className="max-w-[220px]">
           <label className="etiqueta">N.º de informe</label>
           <input
             type="text"
@@ -748,48 +745,19 @@ export function InformeSemanal() {
         </div>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <p className="text-xs text-slate-500 max-w-[380px]">
-            Genera el PDF con el membrete institucional de siempre. Después usa los botones de abajo para
-            descargarlo o compartirlo.
+            Descarga el PDF con el membrete institucional de siempre, directo a tu carpeta de Descargas (y lo abre
+            en una pestaña nueva para verlo de una).
           </p>
-          <button type="button" disabled={!puedeGenerar || generando} onClick={manejarClickGenerar} className="boton-primario">
-            {generando ? 'Generando…' : '📄 Generar informe final (PDF)'}
-          </button>
-        </div>
-        <div className="flex gap-2">
           <button
             type="button"
-            disabled={!ultimoPdf}
-            onClick={() => {
-              descargarBlob(ultimoPdf!, ultimoNombre);
-              setAvisoCompartirManual(false);
-              setMensajeGenerar('⬇️ Descargado a tu carpeta de Descargas.');
-            }}
-            className="boton-secundario flex-1"
+            disabled={!puedeGenerar || generando}
+            onClick={manejarClickDescargar}
+            className="boton-primario"
           >
-            ⬇️ Descargar
-          </button>
-          <button
-            type="button"
-            disabled={!ultimoPdf || enviando}
-            onClick={compartirPdf}
-            className="boton-secundario flex-1"
-          >
-            {enviando ? 'Compartiendo…' : '📤 Compartir'}
+            {generando ? 'Generando…' : '⬇️ Descargar informe (PDF)'}
           </button>
         </div>
-        {avisoCompartirManual && (
-          <div className="rounded-lg border-2 border-gauge-warn/40 bg-gauge-warn/10 p-3 space-y-1">
-            <p className="text-sm font-bold text-gauge-warn">📥 El PDF ya está en tu carpeta de Descargas</p>
-            <p className="text-xs text-slate-700">
-              Tu navegador no dejó enviarlo directo (suele ser por el tamaño del archivo, con muchas fotos). Para
-              mandarlo: abre WhatsApp, correo o la app que prefieras y <b>adjúntalo a mano desde Descargas</b> — ya
-              tiene el nombre "{ultimoNombre}".
-            </p>
-          </div>
-        )}
-        {!avisoCompartirManual && mensajeGenerar && (
-          <p className="text-sm text-slate-700 bg-panel-700 rounded-lg px-3 py-2">{mensajeGenerar}</p>
-        )}
+        {mensajeGenerar && <p className="text-sm text-slate-700 bg-panel-700 rounded-lg px-3 py-2">{mensajeGenerar}</p>}
       </div>
 
       {avisoDiasSinAprobar && (
@@ -798,8 +766,8 @@ export function InformeSemanal() {
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[90vw] max-w-md p-4 space-y-3">
             <h2 className="font-semibold text-sm text-gauge-warn">⚠️ Hay días con actividad sin aprobar</h2>
             <p className="text-xs text-slate-600">
-              Estos días tienen visitas registradas por los operadores pero todavía no están aprobados — si generas
-              ahora, van a quedar fuera del informe:
+              Estos días tienen visitas registradas por los operadores pero todavía no están aprobados — si
+              descargas ahora, van a quedar fuera del informe:
             </p>
             <ul className="text-xs text-slate-700 list-disc list-inside space-y-0.5">
               {avisoDiasSinAprobar.map((f) => (
@@ -814,13 +782,46 @@ export function InformeSemanal() {
                 type="button"
                 onClick={() => {
                   setAvisoDiasSinAprobar(null);
-                  generarPdf();
+                  continuarTrasDiasSinAprobar();
                 }}
                 className="boton-secundario"
               >
-                Generar de todas formas
+                Descargar de todas formas
               </button>
               <button type="button" onClick={() => setAvisoDiasSinAprobar(null)} className="text-xs text-slate-500 hover:text-slate-900 underline">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {avisoCamposFaltantes && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setAvisoCamposFaltantes(null)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[90vw] max-w-md p-4 space-y-3">
+            <h2 className="font-semibold text-sm text-gauge-warn">⚠️ Faltan algunos datos del informe</h2>
+            <p className="text-xs text-slate-600">Estos campos todavía están vacíos:</p>
+            <ul className="text-xs text-slate-700 list-disc list-inside space-y-0.5">
+              {avisoCamposFaltantes.map((c) => (
+                <li key={c.etiqueta}>{c.etiqueta}</li>
+              ))}
+            </ul>
+            <div className="flex flex-col gap-2 pt-1">
+              <button type="button" onClick={irACompletarCampos} className="boton-primario">
+                Ir a completarlos
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAvisoCamposFaltantes(null);
+                  generarYDescargar();
+                }}
+                className="boton-secundario"
+              >
+                Descargar de todas formas
+              </button>
+              <button type="button" onClick={() => setAvisoCamposFaltantes(null)} className="text-xs text-slate-500 hover:text-slate-900 underline">
                 Cancelar
               </button>
             </div>
