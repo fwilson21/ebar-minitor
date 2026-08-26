@@ -353,9 +353,8 @@ export function VisitForm() {
         if (b.amperaje == null) lista.push(`Bomba ${b.numero_bomba}: amperaje no ingresado`);
       }
     }
-    if (estadoEstacion !== 'operativa' && !observaciones.trim()) {
-      lista.push('Estación con problemas: agrega observaciones generales');
-    }
+    // "Estación con problemas sin observaciones" se subió a primerCampoObligatorioFaltante() —
+    // pasó de aviso blando (se podía "Guardar de todas formas") a bloqueo real.
     return lista;
   }
 
@@ -565,6 +564,12 @@ export function VisitForm() {
       return 'Selecciona el estado general de la estación antes de guardar.';
     }
 
+    // Antes esto era "blando" (se podía "Guardar de todas formas" sin escribir nada) — el usuario
+    // pidió que se vuelva obligatorio de verdad porque los operadores lo estaban saltando.
+    if (!esLineaConduccion && estadoEstacion !== '' && estadoEstacion !== 'operativa' && !observaciones.trim()) {
+      return 'La estación no está operativa: agrega observaciones generales antes de guardar.';
+    }
+
     if (!esLineaConduccion && nivelTanque === '') {
       return 'Selecciona el nivel del tanque de almacenamiento antes de guardar.';
     }
@@ -575,6 +580,17 @@ export function VisitForm() {
       );
       if (bombaSinEstado) {
         return `Selecciona el estado de la bomba ${bombaSinEstado.numero_bomba} antes de guardar.`;
+      }
+      // Mismo criterio que las secciones de equipo de abajo: un estado que indica un problema
+      // ("En falla"/"Retirado para mtto.", no "Encendida"/"Apagada") necesita explicación.
+      const bombaSinObservaciones = Object.values(registrosBombas).find(
+        (b) =>
+          bombasSeleccionadas.has(b.bomba_id) &&
+          (b.estado === 'en_falla' || b.estado === 'retirado_para_mantenimiento') &&
+          !b.observaciones?.trim(),
+      );
+      if (bombaSinObservaciones) {
+        return `Agrega observaciones para la bomba ${bombaSinObservaciones.numero_bomba} (su estado indica un problema) antes de guardar.`;
       }
     }
 
@@ -601,6 +617,16 @@ export function VisitForm() {
     const equipoSinEstado = equiposActivos.find((e) => e.valor.estado === '');
     if (equipoSinEstado) {
       return `Selecciona el estado de "${equipoSinEstado.titulo}" antes de guardar.`;
+    }
+
+    // Cualquier equipo marcado "En falla"/"Requiere mtto." (o "Fuera de servicio", que internamente
+    // es el mismo valor "en_falla" en las secciones que usan esa etiqueta) necesita explicar qué
+    // pasa — pedido explícito del usuario porque los operadores estaban dejando esto en blanco.
+    const equipoSinObservaciones = equiposActivos.find(
+      (e) => e.valor.estado !== 'operativo' && !e.valor.observaciones?.trim(),
+    );
+    if (equipoSinObservaciones) {
+      return `Agrega observaciones para "${equipoSinObservaciones.titulo}" (su estado indica un problema) antes de guardar.`;
     }
 
     if (!esLineaConduccion && descargaEmergencia.tiene == null) {

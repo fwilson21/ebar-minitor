@@ -128,7 +128,12 @@ export function EquipoSection({
               type="button"
               onClick={() => elegirTiene(false)}
               className={`flex-1 rounded-lg px-2 py-2 text-xs border transition ${
-                valor.tiene === false ? 'bg-panel-700 border-panel-600 text-slate-800' : CLASE_INACTIVA
+                // Antes usaba casi el mismo gris que el botón SIN marcar (bg-panel-700 sobre
+                // CLASE_INACTIVA con bg-panel-900) — apenas se distinguía cuál de los dos estaba
+                // elegido. gauge-idle (el mismo tono que ya se usa en otras pantallas para "no
+                // aplica"/neutral) marca "No tiene" con un color propio y bien distinto del verde
+                // de "Sí tiene", sin sugerir que sea un problema.
+                valor.tiene === false ? 'bg-gauge-idle/15 border-gauge-idle text-gauge-idle' : CLASE_INACTIVA
               }`}
             >
               No tiene
