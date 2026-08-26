@@ -565,8 +565,13 @@ export function VisitForm() {
     }
 
     // Antes esto era "blando" (se podía "Guardar de todas formas" sin escribir nada) — el usuario
-    // pidió que se vuelva obligatorio de verdad porque los operadores lo estaban saltando.
-    if (!esLineaConduccion && estadoEstacion !== '' && estadoEstacion !== 'operativa' && !observaciones.trim()) {
+    // pidió que se vuelva obligatorio de verdad porque los operadores lo estaban saltando. Solo en
+    // visitas NUEVAS (!modoEdicion): exigir esto también al editar bloquearía para siempre
+    // cualquier visita vieja (de antes de este cambio) que haya quedado sin esa observación —
+    // nadie puede "retroactivamente" escribirla como si estuviera ahí de nuevo. Mismo criterio
+    // que ya usa el chequeo de ubicación por GPS (requiereUbicacion, más abajo), que tampoco
+    // aplica al editar.
+    if (!modoEdicion && !esLineaConduccion && estadoEstacion !== '' && estadoEstacion !== 'operativa' && !observaciones.trim()) {
       return 'La estación no está operativa: agrega observaciones generales antes de guardar.';
     }
 
@@ -581,16 +586,22 @@ export function VisitForm() {
       if (bombaSinEstado) {
         return `Selecciona el estado de la bomba ${bombaSinEstado.numero_bomba} antes de guardar.`;
       }
-      // Mismo criterio que las secciones de equipo de abajo: un estado que indica un problema
-      // ("En falla"/"Retirado para mtto.", no "Encendida"/"Apagada") necesita explicación.
-      const bombaSinObservaciones = Object.values(registrosBombas).find(
-        (b) =>
-          bombasSeleccionadas.has(b.bomba_id) &&
-          (b.estado === 'en_falla' || b.estado === 'retirado_para_mantenimiento') &&
-          !b.observaciones?.trim(),
-      );
+      // Observaciones y al menos 1 foto, en TODAS las bombas seleccionadas, sea cual sea su
+      // estado (antes solo se pedía si el estado indicaba un problema) — pedido explícito del
+      // usuario, otra vez, porque los operadores seguían sin registrar nada. Solo en visitas
+      // NUEVAS (ver comentario más arriba sobre por qué no en modoEdicion — no se puede
+      // retroactivamente tomar una foto de algo que ya pasó).
+      const bombaSinObservaciones = !modoEdicion
+        ? Object.values(registrosBombas).find((b) => bombasSeleccionadas.has(b.bomba_id) && !b.observaciones?.trim())
+        : undefined;
       if (bombaSinObservaciones) {
-        return `Agrega observaciones para la bomba ${bombaSinObservaciones.numero_bomba} (su estado indica un problema) antes de guardar.`;
+        return `Agrega observaciones para la bomba ${bombaSinObservaciones.numero_bomba} antes de guardar.`;
+      }
+      const bombaSinFoto = !modoEdicion
+        ? Object.values(registrosBombas).find((b) => bombasSeleccionadas.has(b.bomba_id) && b.fotos.length === 0)
+        : undefined;
+      if (bombaSinFoto) {
+        return `Agrega al menos una foto para la bomba ${bombaSinFoto.numero_bomba} antes de guardar.`;
       }
     }
 
@@ -619,14 +630,32 @@ export function VisitForm() {
       return `Selecciona el estado de "${equipoSinEstado.titulo}" antes de guardar.`;
     }
 
-    // Cualquier equipo marcado "En falla"/"Requiere mtto." (o "Fuera de servicio", que internamente
-    // es el mismo valor "en_falla" en las secciones que usan esa etiqueta) necesita explicar qué
-    // pasa — pedido explícito del usuario porque los operadores estaban dejando esto en blanco.
-    const equipoSinObservaciones = equiposActivos.find(
-      (e) => e.valor.estado !== 'operativo' && !e.valor.observaciones?.trim(),
-    );
-    if (equipoSinObservaciones) {
-      return `Agrega observaciones para "${equipoSinObservaciones.titulo}" (su estado indica un problema) antes de guardar.`;
+    // Observaciones y al menos 1 foto en TODOS los campos que los llevan — no solo los equipos
+    // con estado (antes solo se pedía si el estado indicaba un problema), sino también
+    // Cerramiento y seguridad/Jardineras/Patios de maniobras (sin estado, siempre visibles) y
+    // Descarga de emergencia cuando "Sí tiene". Pedido explícito del usuario, ampliando el
+    // primer intento porque los operadores seguían sin registrar nada en varios campos. Solo en
+    // visitas NUEVAS (ver comentario más arriba sobre por qué no en modoEdicion).
+    if (!modoEdicion) {
+      const camposConObservacionYFoto: Array<{ titulo: string; valor: RegistroEquipo }> = [
+        ...equiposActivos,
+        ...(!esLineaConduccion
+          ? [
+              { titulo: 'Cerramiento y seguridad', valor: cerramientoSeguridad },
+              { titulo: 'Jardineras y áreas verdes', valor: jardineras },
+              { titulo: 'Patios de maniobras', valor: patiosManiobras },
+              ...(descargaEmergencia.tiene === true ? [{ titulo: 'Descarga de emergencia', valor: descargaEmergencia }] : []),
+            ]
+          : []),
+      ];
+      const campoSinObservaciones = camposConObservacionYFoto.find((e) => !e.valor.observaciones?.trim());
+      if (campoSinObservaciones) {
+        return `Agrega observaciones para "${campoSinObservaciones.titulo}" antes de guardar.`;
+      }
+      const campoSinFoto = camposConObservacionYFoto.find((e) => e.valor.fotos.length === 0);
+      if (campoSinFoto) {
+        return `Agrega al menos una foto para "${campoSinFoto.titulo}" antes de guardar.`;
+      }
     }
 
     if (!esLineaConduccion && descargaEmergencia.tiene == null) {

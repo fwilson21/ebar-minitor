@@ -13,7 +13,11 @@ const MAX_FOTOS = 3;
 
 const ESTADOS: { value: EstadoBomba; label: string; claseActiva: string }[] = [
   { value: 'encendida', label: 'Encendida', claseActiva: 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' },
-  { value: 'apagada', label: 'Apagada', claseActiva: 'bg-panel-700 border-panel-600 text-slate-800' },
+  // gauge-idle (no el gris casi igual al de "sin elegir" que tenía antes — mismo arreglo que
+  // "No tiene" en EquipoSection.tsx, pedido por el usuario): "Apagada" es un estado normal, no
+  // un problema, así que no lleva verde/rojo/ámbar, pero sí necesita su propio color para
+  // distinguirse de un vistazo de que SÍ está elegido.
+  { value: 'apagada', label: 'Apagada', claseActiva: 'bg-gauge-idle/15 border-gauge-idle text-gauge-idle' },
   { value: 'en_falla', label: 'En falla', claseActiva: 'bg-gauge-danger/15 border-gauge-danger text-gauge-danger' },
   {
     value: 'retirado_para_mantenimiento',
