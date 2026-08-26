@@ -124,11 +124,23 @@ export function iniciarAutoSincronizacion(onResultado?: (r: { ok: number; fallid
     onResultado?.(resultado);
   };
 
+  // Al recuperar señal, el navegador puede avisar "online" un instante antes de que la conexión
+  // esté de verdad utilizable (DNS/TLS todavía terminando de establecerse) — visto 2 veces
+  // probando en un celular real: el primer intento automático falló ("Failed to fetch" / el
+  // servidor respondió algo que no era JSON) y un reintento manual segundos después funcionó sin
+  // problema. Este margen de 3s antes del primer intento automático busca evitar justo esa
+  // ventana en vez de gastar el único intento automático justo cuando es más probable que falle.
+  let temporizador: ReturnType<typeof setTimeout> | null = null;
+  const alRecuperarConexion = () => {
+    if (temporizador) clearTimeout(temporizador);
+    temporizador = setTimeout(intentar, 3000);
+  };
+
   const alVolverVisible = () => {
     if (document.visibilityState === 'visible') intentar();
   };
 
-  window.addEventListener('online', intentar);
+  window.addEventListener('online', alRecuperarConexion);
   window.addEventListener('focus', intentar);
   document.addEventListener('visibilitychange', alVolverVisible);
   // también reintentar periódicamente por si la conexión es intermitente sin disparar el evento
@@ -136,9 +148,10 @@ export function iniciarAutoSincronizacion(onResultado?: (r: { ok: number; fallid
   intentar();
 
   return () => {
-    window.removeEventListener('online', intentar);
+    window.removeEventListener('online', alRecuperarConexion);
     window.removeEventListener('focus', intentar);
     document.removeEventListener('visibilitychange', alVolverVisible);
     clearInterval(interval);
+    if (temporizador) clearTimeout(temporizador);
   };
 }

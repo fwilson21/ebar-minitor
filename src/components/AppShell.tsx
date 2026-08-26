@@ -219,21 +219,27 @@ export function AppShell() {
           panel primero. Solo aparece mientras hay algo pendiente; con 0 pendientes desaparece
           sola. Se oculta mientras el panel de detalle está abierto (`!mostrarPanel`): los dos
           quedan "pegados arriba" al mismo tiempo (ambos con `top-0`) y se superponían — el panel
-          ya muestra lo mismo con más detalle, no hace falta ver la barra encima. */}
+          ya muestra lo mismo con más detalle, no hace falta ver la barra encima.
+          Color sólido (no el tinte clarito de antes) + letra más grande + botón real (no solo
+          subrayado) para "Sincronizar ahora" — pedido explícito del usuario: "más grande para que
+          llame la atención y se haga la sincronización" (la sincronización automática en 2do
+          plano no siempre agarra a la primera, ver [[project_offline_precarga_y_sync]] — esta
+          barra es el respaldo para que el operador la note y la dispare a mano). */}
       {pendientes > 0 && !mostrarPanel && (
-        <div className="w-full bg-gauge-warn/15 text-gauge-warn border-b border-gauge-warn/30 text-xs sm:text-sm px-4 py-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center sticky top-0 z-40">
-          <span>
-            🔄 {pendientes} visita{pendientes === 1 ? '' : 's'} por sincronizar
+        <div className="w-full bg-gauge-warn text-white text-sm sm:text-base px-4 py-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-center sticky top-0 z-40 shadow-md">
+          <span className="font-bold flex items-center gap-2">
+            <span className="text-xl leading-none">🔄</span>
+            {pendientes} visita{pendientes === 1 ? '' : 's'} por sincronizar
             {!enLinea && ' — esperando señal'}
           </span>
           <button
             onClick={manejarSincronizar}
             disabled={sincronizando || !enLinea}
-            className="underline font-semibold whitespace-nowrap disabled:opacity-60"
+            className="bg-white text-gauge-warn font-bold rounded-lg px-3 py-1.5 whitespace-nowrap disabled:opacity-50 active:scale-[0.98] transition"
           >
             {sincronizando ? 'Sincronizando…' : !enLinea ? 'Sin conexión' : 'Sincronizar ahora'}
           </button>
-          <button onClick={abrirPanel} className="underline whitespace-nowrap">
+          <button onClick={abrirPanel} className="underline decoration-2 font-semibold whitespace-nowrap">
             Ver detalle
           </button>
         </div>
