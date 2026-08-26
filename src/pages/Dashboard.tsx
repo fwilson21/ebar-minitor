@@ -83,7 +83,7 @@ export function Dashboard() {
   // Todas las EBAR relevantes para este rol (para operador, solo las asignadas — mismo filtro que
   // sinVisitar) con cuántas visitas lleva CADA UNA hoy (de cualquier operador) — a diferencia de
   // sinVisitar, no se filtran las ya visitadas: alimenta "Pendientes de visita" con semáforo
-  // rojo/tomate/verde en vez de solo listar las que faltan.
+  // rojo/amarillo/verde en vez de solo listar las que faltan.
   const [estadoVisitasHoy, setEstadoVisitasHoy] = useState<EstacionAsignadaHoy[]>([]);
   const [mostrarSinVisitar, setMostrarSinVisitar] = useState(true);
   const [sospechosas, setSospechosas] = useState<ParSospechoso[]>([]);
@@ -665,20 +665,19 @@ function BloqueVistaPreviaNoDisponible({ texto }: { texto: string }) {
 
 /** Semáforo de una EBAR según cuántas visitas lleva hoy contra la meta del día (2 en día regular,
  * 1 en fin de semana/feriado) — mismo criterio en "Tus EBAR de hoy" (operador) y "Pendientes de
- * visita" (todos los roles): rojo = 0 visitas, tomate = falta al menos 1, verde = ya cumplida. */
+ * visita" (todos los roles): rojo = 0 visitas, amarillo = falta al menos 1, verde = ya cumplida. */
 function colorSemaforoVisita(visitasHoy: number, meta: number): 'ok' | 'warn' | 'danger' {
   if (visitasHoy >= meta) return 'ok';
   if (visitasHoy > 0) return 'warn';
   return 'danger';
 }
 
-// "warn" usa el color "tomate" (naranja real) en vez de gauge-warn (ámbar oscuro que a color
-// completo se lee más rojizo que naranja, como notó el usuario comparando el borde con el
-// relleno) — border y bg comparten el mismo tono en los 3 estados, sin mezclar dos colores
-// distintos para una misma tarjeta.
+// "warn" usa el color "amarillo" (antes tomate, un naranja-rojizo que contrastaba poco contra el
+// rojo de "danger" al lado) — border y bg comparten el mismo tono en los 3 estados, sin mezclar
+// dos colores distintos para una misma tarjeta.
 const CLASE_TARJETA_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
   ok: 'bg-gauge-ok/15 border-gauge-ok',
-  warn: 'bg-tomate/15 border-tomate',
+  warn: 'bg-amarillo/15 border-amarillo',
   danger: 'bg-gauge-danger/15 border-gauge-danger',
 };
 const CLASE_TEXTO_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
@@ -692,7 +691,7 @@ const CLASE_TEXTO_SEMAFORO: Record<'ok' | 'warn' | 'danger', string> = {
  * mini-recuadro con el MISMO relleno + borde que usa la tarjeta real (CLASE_TARJETA_SEMAFORO) —
  * antes era un punto sólido de un solo tono, que no se veía igual al relleno clarito + borde más
  * fuerte de la tarjeta (el usuario lo notó: la tarjeta se ve "tomate" por dentro pero el borde se
- * ve más rojizo aparte). */
+ * ve más rojizo aparte — ya no aplica desde que "tomate" pasó a ser "amarillo"). */
 function LeyendaSemaforoVisitas({ esRegular }: { esRegular: boolean }) {
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-700 mb-3">
@@ -812,7 +811,7 @@ function BloquePendientesVisita({
               {/* grid-tarjetas-compactas (ver index.css): 2/3/4 columnas según el ancho real del
                   bloque — con suficiente espacio entran 4 tarjetas por fila. Cada tarjeta se
                   pinta entera (fondo + borde) según el semáforo: rojo sin ninguna visita hoy,
-                  tomate (ámbar) con al menos 1 pero sin llegar a la meta, verde ya cumplida. */}
+                  amarillo con al menos 1 pero sin llegar a la meta, verde ya cumplida. */}
               <div className="grid-tarjetas-compactas">
                 {estaciones.map((e) => {
                   const semaforo = colorSemaforoVisita(e.visitasHoy, meta);
