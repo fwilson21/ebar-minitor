@@ -49,6 +49,23 @@ async function sincronizarEnSegundoPlano() {
 // si ya venció.
 // ----------------------------------------------------------------------------
 
+/** Intenta leer JSON de una respuesta; si el cuerpo no es JSON de verdad (ej. una página HTML de
+ * error de algún punto intermedio de la red — portal cautivo del wifi, error del hosting, etc.,
+ * algo que puede pasar justo al recuperar señal, que es cuando dispara Background Sync) tira un
+ * error con un extracto del texto real en vez de dejar pasar el "Unexpected token '<'" críptico
+ * del navegador — así el aviso en "Visitas pendientes de sincronizar" dice algo que de verdad
+ * ayuda a diagnosticar, no solo que "no es JSON válido". */
+async function leerJSONSeguro(resp: Response, contexto: string): Promise<any> {
+  const texto = await resp.text();
+  try {
+    return texto ? JSON.parse(texto) : {};
+  } catch {
+    throw new Error(
+      `${contexto}: el servidor respondió algo que no es JSON (código ${resp.status}) — empieza con "${texto.slice(0, 60).replace(/\s+/g, ' ')}"`,
+    );
+  }
+}
+
 async function obtenerTokenValido(): Promise<string> {
   const sesion = await leerSesionEspejo();
   if (!sesion) throw new Error('No hay una sesión guardada para sincronizar en segundo plano.');
@@ -66,9 +83,10 @@ async function refrescarToken(refreshToken: string): Promise<string> {
     headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
-  const datos = await resp.json();
+  const datos = await leerJSONSeguro(resp, 'Renovar sesión para sincronizar en segundo plano');
   if (!resp.ok || !datos.access_token) {
-    throw new Error('No se pudo renovar la sesión para sincronizar en segundo plano.');
+    const motivo = datos.error_description ?? datos.error ?? `código ${resp.status}`;
+    throw new Error(`No se pudo renovar la sesión para sincronizar en segundo plano (${motivo}).`);
   }
 
   await guardarSesionEspejo({
@@ -95,8 +113,11 @@ async function llamarREST(path: string, init: RequestInit = {}): Promise<Respons
     },
   });
   if (!resp.ok) {
+    // Truncado: un error de un punto intermedio de la red puede devolver una página HTML entera
+    // en vez de un mensaje corto — sin esto, ese texto completo terminaba pegado tal cual en el
+    // aviso rojo del panel "Visitas pendientes de sincronizar".
     const texto = await resp.text().catch(() => '');
-    throw new Error(`Error ${resp.status} en ${path}: ${texto}`);
+    throw new Error(`Error ${resp.status} en ${path}: ${texto.slice(0, 200)}`);
   }
   return resp;
 }
@@ -108,7 +129,7 @@ const adaptadorFetch: AdaptadorSync = {
       headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
       body: JSON.stringify({ ...visita, cliente_uuid: clienteUuid }),
     });
-    const filas = await resp.json();
+    const filas = await leerJSONSeguro(resp, 'Guardar visita');
     return filas[0].id;
   },
 

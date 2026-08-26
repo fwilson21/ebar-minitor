@@ -211,6 +211,31 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Barra de estado de sincronización — antes solo había una burbuja chiquita pegada al
+          nombre, dentro del header de la derecha (se perdía de vista al bajar la pantalla, y en
+          celular quedaba escondida detrás del menú ☰). Ahora es una barra de ancho completo,
+          pegada arriba de todo (igual que el aviso de "Estás viendo la app como…" de abajo), fija
+          mientras se hace scroll, con acceso directo a "Sincronizar ahora" sin tener que abrir el
+          panel primero. Solo aparece mientras hay algo pendiente; con 0 pendientes desaparece
+          sola. */}
+      {pendientes > 0 && (
+        <div className="w-full bg-gauge-warn/15 text-gauge-warn border-b border-gauge-warn/30 text-xs sm:text-sm px-4 py-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center sticky top-0 z-40">
+          <span>
+            🔄 {pendientes} visita{pendientes === 1 ? '' : 's'} por sincronizar
+            {!enLinea && ' — esperando señal'}
+          </span>
+          <button
+            onClick={manejarSincronizar}
+            disabled={sincronizando || !enLinea}
+            className="underline font-semibold whitespace-nowrap disabled:opacity-60"
+          >
+            {sincronizando ? 'Sincronizando…' : !enLinea ? 'Sin conexión' : 'Sincronizar ahora'}
+          </button>
+          <button onClick={abrirPanel} className="underline whitespace-nowrap">
+            Ver detalle
+          </button>
+        </div>
+      )}
       {impersonando && (
         <div className="bg-amber-400 text-amber-950 text-xs sm:text-sm px-4 py-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center sticky top-0 z-40">
           <span>
@@ -258,14 +283,6 @@ export function AppShell() {
               <span className="text-[10px] bg-gauge-warn/15 text-gauge-warn border border-gauge-warn/30 px-2 py-0.5 rounded-full">
                 Sin conexión
               </span>
-            )}
-            {pendientes > 0 && (
-              <button
-                onClick={abrirPanel}
-                className="text-[10px] bg-gauge-warn/15 text-gauge-warn border border-gauge-warn/30 px-2 py-0.5 rounded-full hover:bg-gauge-warn/25 transition"
-              >
-                {pendientes} por sincronizar
-              </button>
             )}
           </div>
           <div className="flex items-center gap-3">
