@@ -948,16 +948,22 @@ export function VisitForm() {
               <p className="text-sm font-semibold text-gauge-ok tabular-nums">{tiempoEnSitio}</p>
             </>
           )}
-          <div className="flex flex-col items-end mt-1">
+          {/* Botones de verdad (borde+relleno clarito), no solo texto subrayado — pedido
+              explícito del usuario, con captura, para que se noten como algo tocable. */}
+          <div className="flex flex-col items-end gap-1.5 mt-2">
             <button
               type="button"
-              className="text-xs text-slate-600 hover:text-slate-900 underline"
+              className="text-xs font-semibold text-gauge-ok border border-gauge-ok/40 bg-gauge-ok/10 hover:bg-gauge-ok/20 rounded-lg px-2.5 py-1.5 transition whitespace-nowrap"
               onClick={() => pausarYSalir(() => navigate(`/estaciones/${estacionId}`))}
             >
               ⏸ Pausar y continuar luego
             </button>
             {!modoEdicion && (
-              <button type="button" className="text-xs text-gauge-danger hover:underline mt-0.5" onClick={descartarYSalir}>
+              <button
+                type="button"
+                className="text-xs font-semibold text-gauge-danger border border-gauge-danger/40 bg-gauge-danger/10 hover:bg-gauge-danger/20 rounded-lg px-2.5 py-1.5 transition whitespace-nowrap"
+                onClick={descartarYSalir}
+              >
                 🚫 Descartar y salir
               </button>
             )}
@@ -965,7 +971,7 @@ export function VisitForm() {
               <button
                 type="button"
                 disabled={eliminandoVisita}
-                className="text-xs text-gauge-danger hover:underline mt-0.5 disabled:opacity-50"
+                className="text-xs font-semibold text-gauge-danger border border-gauge-danger/40 bg-gauge-danger/10 hover:bg-gauge-danger/20 rounded-lg px-2.5 py-1.5 transition whitespace-nowrap disabled:opacity-50"
                 onClick={eliminarVisita}
               >
                 {eliminandoVisita ? 'Eliminando…' : '🗑 Eliminar visita'}
