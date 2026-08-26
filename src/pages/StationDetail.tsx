@@ -92,6 +92,20 @@ function duracionVisita(llegada: string, salida?: string | null): { texto: strin
   return { texto, corta: minutos < VISITA_CORTA_MINUTOS };
 }
 
+/** Agrupa el historial (ya filtrado) por operador, ordenado alfabéticamente por nombre — dentro
+ * de cada grupo se conserva el orden de `historial` (más reciente primero). */
+function agruparPorOperador(historial: HistorialItem[]): { operador: string; visitas: HistorialItem[] }[] {
+  const mapa = new Map<string, HistorialItem[]>();
+  for (const h of historial) {
+    const lista = mapa.get(h.operador);
+    if (lista) lista.push(h);
+    else mapa.set(h.operador, [h]);
+  }
+  return [...mapa.entries()]
+    .map(([operador, visitas]) => ({ operador, visitas }))
+    .sort((a, b) => a.operador.localeCompare(b.operador));
+}
+
 export function StationDetail() {
   const { id } = useParams<{ id: string }>();
   const { usuario, tienePermiso } = useAuth();
@@ -106,7 +120,13 @@ export function StationDetail() {
   const [estacion, setEstacion] = useState<EstacionEbar | null>(null);
   const [historial, setHistorial] = useState<HistorialItem[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [filtroMes, setFiltroMes] = useState('');
+  // Por defecto, el historial arranca mostrando solo las visitas de HOY (antes se veían mezcladas
+  // las de todos los días de una vez, hasta 30 visitas atrás). El filtro de mes arranca en el mes
+  // actual (antes vacío) y el rango de fechas arranca en hoy-hoy; el usuario amplía cualquiera de
+  // los dos para ver otros días. "Ver todo el historial" (más abajo) limpia los 4 filtros.
+  const [filtroMes, setFiltroMes] = useState(() => hoyLocal().slice(0, 7));
+  const [filtroDesde, setFiltroDesde] = useState(hoyLocal);
+  const [filtroHasta, setFiltroHasta] = useState(hoyLocal);
   const [filtroOperador, setFiltroOperador] = useState('');
   const [exportando, setExportando] = useState(false);
   const [mensajeExport, setMensajeExport] = useState<string | null>(null);
@@ -227,10 +247,23 @@ export function StationDetail() {
 
   const operadoresDisponibles = Array.from(new Set(historial.map((h) => h.operador))).sort();
   const historialFiltrado = historial.filter((h) => {
-    if (filtroMes && h.fecha_hora_llegada.slice(0, 7) !== filtroMes) return false;
+    const dia = h.fecha_hora_llegada.slice(0, 10);
+    if (filtroMes && dia.slice(0, 7) !== filtroMes) return false;
+    if (filtroDesde && dia < filtroDesde) return false;
+    if (filtroHasta && dia > filtroHasta) return false;
     if (filtroOperador && h.operador !== filtroOperador) return false;
     return true;
   });
+  // Clasificado por operador (en vez de una sola lista larga) — mismo orden cronológico de
+  // `historial` (más reciente primero) dentro de cada grupo, agrupado y ordenado por nombre.
+  const historialPorOperador = agruparPorOperador(historialFiltrado);
+
+  function limpiarFiltros() {
+    setFiltroMes('');
+    setFiltroDesde('');
+    setFiltroHasta('');
+    setFiltroOperador('');
+  }
 
   return (
     <div className="space-y-5">
@@ -330,13 +363,36 @@ export function StationDetail() {
         {mensajeExport && <p className="text-xs text-gauge-warn mb-2">{mensajeExport}</p>}
 
         {historial.length > 0 && (
-          <div className="flex gap-2 mb-3">
-            <input
-              type="month"
-              className="campo py-1.5 text-sm"
-              value={filtroMes}
-              onChange={(e) => setFiltroMes(e.target.value)}
-            />
+          <div className="flex flex-wrap gap-3 mb-3 items-end">
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              Mes
+              <input
+                type="month"
+                className="campo py-1.5 text-sm"
+                value={filtroMes}
+                onChange={(e) => setFiltroMes(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              Desde
+              <input
+                type="date"
+                className="campo py-1.5 text-sm"
+                value={filtroDesde}
+                max={filtroHasta || undefined}
+                onChange={(e) => setFiltroDesde(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              Hasta
+              <input
+                type="date"
+                className="campo py-1.5 text-sm"
+                value={filtroHasta}
+                min={filtroDesde || undefined}
+                onChange={(e) => setFiltroHasta(e.target.value)}
+              />
+            </label>
             <select
               className="campo py-1.5 text-sm"
               value={filtroOperador}
@@ -347,125 +403,137 @@ export function StationDetail() {
                 <option key={op} value={op}>{op}</option>
               ))}
             </select>
-            {(filtroMes || filtroOperador) && (
-              <button
-                type="button"
-                className="text-xs text-slate-600 hover:text-slate-800 flex-shrink-0"
-                onClick={() => { setFiltroMes(''); setFiltroOperador(''); }}
-              >
-                Limpiar
-              </button>
-            )}
+            <button
+              type="button"
+              className="text-xs text-slate-600 hover:text-slate-800 flex-shrink-0 pb-2"
+              onClick={limpiarFiltros}
+            >
+              Ver todo el historial
+            </button>
           </div>
         )}
 
         {historial.length === 0 ? (
           <p className="text-sm text-slate-500">Aún no hay visitas registradas para esta estación.</p>
         ) : historialFiltrado.length === 0 ? (
-          <p className="text-sm text-slate-500">No hay visitas que coincidan con el filtro seleccionado.</p>
+          <div className="text-sm text-slate-500">
+            <p>No hay visitas que coincidan con el filtro seleccionado.</p>
+            <button type="button" className="text-xs text-gauge-ok hover:underline mt-1" onClick={limpiarFiltros}>
+              Ver todo el historial →
+            </button>
+          </div>
         ) : (
-          <div className="space-y-2">
-            {historialFiltrado.map((h) => {
-              const puedeEditar = puedeEditarTodo || usuario?.id === h.operador_id;
-              const propsContenedor = {
-                to: puedeEditar
-                  ? `/estaciones/${estacion.id}/visitas/${h.id}/editar`
-                  : `/estaciones/${estacion.id}/visitas/${h.id}/ver`,
-              };
-              const duracion = duracionVisita(h.fecha_hora_llegada, h.fecha_hora_salida);
-              return (
-              <Link key={h.id} className="tarjeta p-3 block hover:border-gauge-ok/50 transition" {...propsContenedor}>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC', { hour12: false })}</span>
-                    {duracion && (
-                      <span className={`text-xs ${duracion.corta ? 'text-gauge-warn' : 'text-slate-500'}`}>
-                        · {duracion.texto}
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-xs text-slate-500">{h.operador}{puedeEditar ? ' · Editar →' : ' · Ver →'}</span>
+          <div className="space-y-4">
+            {historialPorOperador.map(({ operador, visitas }) => (
+              <div key={operador}>
+                <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
+                  {operador} ({visitas.length})
+                </p>
+                <div className="space-y-2">
+                  {visitas.map((h) => {
+                    const puedeEditar = puedeEditarTodo || usuario?.id === h.operador_id;
+                    const propsContenedor = {
+                      to: puedeEditar
+                        ? `/estaciones/${estacion.id}/visitas/${h.id}/editar`
+                        : `/estaciones/${estacion.id}/visitas/${h.id}/ver`,
+                    };
+                    const duracion = duracionVisita(h.fecha_hora_llegada, h.fecha_hora_salida);
+                    return (
+                      <Link key={h.id} className="tarjeta p-3 block hover:border-gauge-ok/50 transition" {...propsContenedor}>
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC', { hour12: false })}</span>
+                            {duracion && (
+                              <span className={`text-xs ${duracion.corta ? 'text-gauge-warn' : 'text-slate-500'}`}>
+                                · {duracion.texto}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-xs text-slate-500">{puedeEditar ? 'Editar →' : 'Ver →'}</span>
+                        </div>
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                          {h.bombas.filter((b) => b.estado === 'encendida').map((b) => (
+                            <span
+                              key={b.numero_bomba}
+                              className={`text-xs lectura px-2 py-1 rounded border ${
+                                b.voltaje_fuera_rango
+                                  ? 'border-gauge-danger/50 text-gauge-danger bg-gauge-danger/10'
+                                  : 'border-panel-600 text-slate-600'
+                              }`}
+                            >
+                              B{b.numero_bomba}: {b.voltaje ?? '-'}V / {b.amperaje ?? '-'}A
+                            </span>
+                          ))}
+                          {h.fotos_count > 0 && (
+                            <span className="text-xs text-slate-500 px-2 py-1">📷 {h.fotos_count}</span>
+                          )}
+                          {h.cerramiento_observaciones && (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded border border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10"
+                              title={h.cerramiento_observaciones}
+                            >
+                              🔒 Cerramiento
+                            </span>
+                          )}
+                          {h.jardineras_observaciones && (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded border border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10"
+                              title={h.jardineras_observaciones}
+                            >
+                              🌳 Jardineras y áreas verdes
+                            </span>
+                          )}
+                          {h.patios_maniobras_observaciones && (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded border border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10"
+                              title={h.patios_maniobras_observaciones}
+                            >
+                              🚧 Patios de maniobras
+                            </span>
+                          )}
+                          {h.descarga_emergencia?.tiene === false && (
+                            <span className="text-xs px-2 py-0.5 rounded border border-panel-600 text-slate-600">
+                              Sin descarga de emergencia
+                            </span>
+                          )}
+                          {h.camara_valvula_compuerta?.tiene === false && (
+                            <span className="text-xs px-2 py-0.5 rounded border border-panel-600 text-slate-600">
+                              Cámara de llegada sin compuerta
+                            </span>
+                          )}
+                        </div>
+                        {EQUIPOS_LABELS.some((eq) => {
+                          const datos = h[eq.clave] as EquipoHistorial | null | undefined;
+                          return datos && datos.estado && datos.estado !== 'operativo';
+                        }) && (
+                          <div className="flex gap-2 mt-1.5 flex-wrap">
+                            {EQUIPOS_LABELS.map((eq) => {
+                              const datos = h[eq.clave] as EquipoHistorial | null | undefined;
+                              if (!datos || !datos.estado || datos.estado === 'operativo') return null;
+                              const esFalla = datos.estado === 'en_falla';
+                              return (
+                                <span
+                                  key={eq.clave}
+                                  className={`text-xs px-2 py-0.5 rounded border ${
+                                    esFalla
+                                      ? 'border-gauge-danger/50 text-gauge-danger bg-gauge-danger/10'
+                                      : 'border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10'
+                                  }`}
+                                  title={datos.observaciones ?? undefined}
+                                >
+                                  {eq.label}: {esFalla ? 'Falla' : 'Mtto.'}
+                                  {datos.numeros_afectados?.length ? ` (N.º ${datos.numeros_afectados.join(', ')})` : ''}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </Link>
+                    );
+                  })}
                 </div>
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  {h.bombas.filter((b) => b.estado === 'encendida').map((b) => (
-                    <span
-                      key={b.numero_bomba}
-                      className={`text-xs lectura px-2 py-1 rounded border ${
-                        b.voltaje_fuera_rango
-                          ? 'border-gauge-danger/50 text-gauge-danger bg-gauge-danger/10'
-                          : 'border-panel-600 text-slate-600'
-                      }`}
-                    >
-                      B{b.numero_bomba}: {b.voltaje ?? '-'}V / {b.amperaje ?? '-'}A
-                    </span>
-                  ))}
-                  {h.fotos_count > 0 && (
-                    <span className="text-xs text-slate-500 px-2 py-1">📷 {h.fotos_count}</span>
-                  )}
-                  {h.cerramiento_observaciones && (
-                    <span
-                      className="text-xs px-2 py-0.5 rounded border border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10"
-                      title={h.cerramiento_observaciones}
-                    >
-                      🔒 Cerramiento
-                    </span>
-                  )}
-                  {h.jardineras_observaciones && (
-                    <span
-                      className="text-xs px-2 py-0.5 rounded border border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10"
-                      title={h.jardineras_observaciones}
-                    >
-                      🌳 Jardineras y áreas verdes
-                    </span>
-                  )}
-                  {h.patios_maniobras_observaciones && (
-                    <span
-                      className="text-xs px-2 py-0.5 rounded border border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10"
-                      title={h.patios_maniobras_observaciones}
-                    >
-                      🚧 Patios de maniobras
-                    </span>
-                  )}
-                  {h.descarga_emergencia?.tiene === false && (
-                    <span className="text-xs px-2 py-0.5 rounded border border-panel-600 text-slate-600">
-                      Sin descarga de emergencia
-                    </span>
-                  )}
-                  {h.camara_valvula_compuerta?.tiene === false && (
-                    <span className="text-xs px-2 py-0.5 rounded border border-panel-600 text-slate-600">
-                      Cámara de llegada sin compuerta
-                    </span>
-                  )}
-                </div>
-                {EQUIPOS_LABELS.some((eq) => {
-                  const datos = h[eq.clave] as EquipoHistorial | null | undefined;
-                  return datos && datos.estado && datos.estado !== 'operativo';
-                }) && (
-                  <div className="flex gap-2 mt-1.5 flex-wrap">
-                    {EQUIPOS_LABELS.map((eq) => {
-                      const datos = h[eq.clave] as EquipoHistorial | null | undefined;
-                      if (!datos || !datos.estado || datos.estado === 'operativo') return null;
-                      const esFalla = datos.estado === 'en_falla';
-                      return (
-                        <span
-                          key={eq.clave}
-                          className={`text-xs px-2 py-0.5 rounded border ${
-                            esFalla
-                              ? 'border-gauge-danger/50 text-gauge-danger bg-gauge-danger/10'
-                              : 'border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10'
-                          }`}
-                          title={datos.observaciones ?? undefined}
-                        >
-                          {eq.label}: {esFalla ? 'Falla' : 'Mtto.'}
-                          {datos.numeros_afectados?.length ? ` (N.º ${datos.numeros_afectados.join(', ')})` : ''}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </Link>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
@@ -68,6 +68,13 @@ export function Dashboard() {
   const esAdministrador = usuario?.rol === 'administrador';
   const puedeEditarDistribucion = esAdministrador || tienePermiso('editar_distribucion');
   const editorDistribucion = useEditorDistribucion('dashboard');
+  // El modal de detalle (abajo) se refleja en "?modal=" de la URL — así queda como una entrada
+  // real del historial del navegador: al entrar a una EBAR desde "Ver →" y volver con "← Volver"
+  // (que hace navigate(-1) en AppShell), el navegador regresa a esta URL con el modal todavía en
+  // el query y se reabre solo (ver el useEffect de "restaurar modal" más abajo). Antes el modal
+  // era solo estado de React, sin rastro en el historial, así que "Volver" saltaba directo al
+  // Dashboard sin el modal.
+  const [searchParams, setSearchParams] = useSearchParams();
   const [fecha, setFecha] = useState(HOY);
   const [resumen, setResumen] = useState<DashboardResumen | null>(null);
   const [estacionesConProblemas, setEstacionesConProblemas] = useState<EstacionEbar[]>([]);
@@ -313,6 +320,21 @@ export function Dashboard() {
   // hooks than during the previous render") apenas la pantalla pasaba por el estado "Cargando…".
   const estacionesPorId = useMemo(() => new Map(todasEstacionesInfo.map((e) => [e.id, e])), [todasEstacionesInfo]);
 
+  // El modal sigue a "?modal=" de la URL en los dos sentidos, no solo al abrirlo: si cambia por
+  // fuera (← Volver desde la ficha de una EBAR, atrás/adelante del navegador) este efecto carga o
+  // cierra el modal para que coincida. Antes solo se restauraba una vez al montar, así que el
+  // botón "atrás" real del navegador podía dejar la URL sin "modal" pero el modal seguía abierto.
+  useEffect(() => {
+    if (cargando) return;
+    const tipoParam = searchParams.get('modal');
+    if (tipoParam && tipoParam in TITULOS_METRICA) {
+      if (modalMetrica !== tipoParam) cargarDetalleMetrica(tipoParam as TipoMetrica);
+    } else if (modalMetrica !== null) {
+      setModalMetrica(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargando, searchParams]);
+
   // Digitador no tiene esta pantalla (su trabajo es Turnos/Reportes, no monitoreo) — se manda
   // directo a Turnos en vez de mostrarle un mensaje de "no disponible" en lo primero que ve al
   // entrar a la app.
@@ -392,7 +414,7 @@ export function Dashboard() {
     return contarPorEstacion(ids);
   }
 
-  async function abrirDetalleMetrica(tipo: TipoMetrica) {
+  async function cargarDetalleMetrica(tipo: TipoMetrica) {
     setModalMetrica(tipo);
     setDetalleMetrica(null);
     // Estas 2 ya están cargadas para "Pendientes de visita"/"Requieren atención" — se reutilizan
@@ -417,6 +439,30 @@ export function Dashboard() {
     } finally {
       setCargandoDetalle(false);
     }
+  }
+
+  // Click en una de las 5 tarjetas: además de cargar el detalle, deja "?modal=" en la URL (push,
+  // una entrada nueva de historial) para que "← Volver" desde la ficha de una EBAR pueda regresar
+  // acá con el modal abierto (ver el useEffect de restauración y cerrarModalMetrica).
+  function abrirDetalleMetrica(tipo: TipoMetrica) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('modal', tipo);
+      return next;
+    });
+    cargarDetalleMetrica(tipo);
+  }
+
+  function cerrarModalMetrica() {
+    setModalMetrica(null);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('modal');
+        return next;
+      },
+      { replace: true },
+    );
   }
 
   async function guardarTamanoModalMetrica(t: { ancho: number; alto: number }) {
@@ -546,7 +592,7 @@ export function Dashboard() {
           esAdmin={esAdministrador}
           tamano={tamanoModalMetrica}
           onGuardarTamano={guardarTamanoModalMetrica}
-          onCerrar={() => setModalMetrica(null)}
+          onCerrar={cerrarModalMetrica}
         />
       )}
     </div>
