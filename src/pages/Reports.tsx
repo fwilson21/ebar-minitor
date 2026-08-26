@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -262,7 +263,6 @@ export function Reports() {
         />
         <BloqueCompartir
           enviando={enviando}
-          ultimoPdf={ultimoPdf}
           manejarCompartir={manejarCompartir}
           mensaje={mensaje}
           avisoCompartirManual={avisoCompartirManual}
@@ -308,7 +308,6 @@ export function Reports() {
                 return (
                   <BloqueCompartir
                     enviando={enviando}
-                    ultimoPdf={ultimoPdf}
                     manejarCompartir={manejarCompartir}
                     mensaje={mensaje}
                     avisoCompartirManual={avisoCompartirManual}
@@ -477,8 +476,16 @@ function SelectorEstaciones({
         {resumen}
       </button>
 
-      {abierto && (
-        <>
+      {/* createPortal a document.body: en escritorio este selector vive dentro de un bloque de
+          GridEditable, que react-grid-layout posiciona con `transform` (translate) en línea —
+          cualquier ancestro con `transform` vuelve a definir el marco de referencia de los hijos
+          `position: fixed` (spec de CSS), así que sin el portal este modal (y su fondo oscuro)
+          quedaba encogido/recortado al tamaño del bloque en vez de cubrir toda la pantalla, y el
+          título "Elegir estaciones" se veía cortado. Con el portal, el modal sale de ese árbol y
+          se posiciona de verdad contra el viewport completo. */}
+      {abierto &&
+        createPortal(
+          <>
           <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setAbierto(false)} />
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[92vw] max-w-md max-h-[85vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-panel-600/40 shrink-0">
@@ -542,22 +549,21 @@ function SelectorEstaciones({
               </button>
             </div>
           </div>
-        </>
-      )}
+          </>,
+          document.body,
+        )}
     </div>
   );
 }
 
 function BloqueCompartir({
   enviando,
-  ultimoPdf,
   manejarCompartir,
   mensaje,
   avisoCompartirManual,
   ultimoNombre,
 }: {
   enviando: boolean;
-  ultimoPdf: Blob | null;
   manejarCompartir: () => void;
   mensaje: string | null;
   avisoCompartirManual: boolean;
@@ -566,7 +572,10 @@ function BloqueCompartir({
   return (
     <div className="tarjeta p-4 space-y-2 lg:h-full lg:overflow-auto">
       <p className="etiqueta mb-1">Compartir</p>
-      <button onClick={manejarCompartir} disabled={enviando || !ultimoPdf} className="boton-secundario w-full">
+      {/* Siempre clickeable (antes quedaba deshabilitado sin ninguna explicación mientras no
+          hubiera un PDF generado) — manejarCompartir ya trae su propia validación y avisa "Primero
+          genera el reporte en PDF" en `mensaje` si todavía no hay nada que enviar. */}
+      <button onClick={manejarCompartir} disabled={enviando} className="boton-secundario w-full">
         📤 Descargar y compartir
       </button>
       <p className="text-xs text-slate-500">
