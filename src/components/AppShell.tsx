@@ -9,6 +9,7 @@ import {
   sincronizarPendientes,
   type VisitaPendiente,
 } from '../lib/offline';
+import { iniciarPrecargaOffline } from '../lib/precargaOffline';
 import { guardarCambiosDelFormularioActivo, hayCambiosSinGuardar } from '../lib/formularioActivo';
 import { nombreCorto } from '../lib/nombres';
 import { estaImpersonando, volverAAdministrador } from '../lib/impersonar';
@@ -107,6 +108,11 @@ export function AppShell() {
       contarPendientes().then(setPendientes);
       if (r.ok > 0) setMensajeSync(`${r.ok} visita(s) sincronizada(s).`);
     });
+    // Baja al dispositivo TODAS las EBAR activas + sus bombas apenas hay señal (acá y cada vez
+    // que vuelve la conexión) — así cualquier estación se puede abrir sin conexión aunque nunca
+    // antes se haya abierto puntualmente con señal (ver precargaOffline.ts para el detalle del
+    // problema que resuelve).
+    const detenerPrecarga = iniciarPrecargaOffline();
     contarPendientes().then(setPendientes);
 
     const actualizarEstado = () => setEnLinea(navigator.onLine);
@@ -125,6 +131,7 @@ export function AppShell() {
 
     return () => {
       detener();
+      detenerPrecarga();
       window.removeEventListener('online', actualizarEstado);
       window.removeEventListener('offline', actualizarEstado);
       navigator.serviceWorker?.removeEventListener?.('message', alMensajeSW);

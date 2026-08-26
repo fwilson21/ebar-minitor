@@ -11,7 +11,7 @@ import { hoyLocal } from '../lib/fecha';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { generarUUID } from '../lib/uuid';
 import { distanciaMetros, useUbicacionActual } from '../lib/useUbicacion';
-import { guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
+import { claveCacheBombas, CLAVE_CACHE_ESTACIONES, guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
 import { PumpForm } from '../components/PumpForm';
 import { PhotoCapture } from '../components/PhotoCapture';
@@ -42,8 +42,6 @@ const DISTANCIA_MAXIMA_METROS = 300;
 // importar dónde estuviera el operador en realidad. 150 m es lo que el propio GPS normal reporta
 // como peor caso cerca de estructuras de concreto/metal (ver comentario en `distanciaEfectiva`).
 const MARGEN_GPS_MAXIMO_METROS = 150;
-const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
-const CLAVE_CACHE_BOMBAS_PREFIJO = 'ebar_cache_bombas:';
 
 const ESTADOS_ESTACION: { value: EstadoEstacion; label: string; claseActiva: string }[] = [
   { value: 'operativa', label: 'Operativa', claseActiva: 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' },
@@ -395,10 +393,10 @@ export function VisitForm() {
         supabase.from('bombas').select('*').eq('estacion_id', estacionId).eq('activa', true).order('numero_bomba'),
       ]);
 
-      // Sin conexión: usar la copia de esta estación (guardada al ver la lista de Estaciones) y
-      // de sus bombas (guardada la última vez que se abrió este formulario con señal) — así un
-      // operador puede seguir registrando una visita nueva en una EBAR ya conocida sin señal.
-      const claveBombas = `${CLAVE_CACHE_BOMBAS_PREFIJO}${estacionId}`;
+      // Sin conexión: usar la copia de esta estación y de sus bombas — precargadas solas para
+      // TODAS las EBAR activas apenas hay señal (ver precargaOffline.ts), sin depender de que este
+      // operador/celular haya abierto antes esta EBAR puntual con conexión.
+      const claveBombas = claveCacheBombas(estacionId!); // ya se validó arriba (if (!estacionId) return;)
       const estacionFinal = est ?? leerCacheLocal<EstacionEbar[]>(CLAVE_CACHE_ESTACIONES)?.find((e) => e.id === estacionId) ?? null;
       setEstacion(estacionFinal as EstacionEbar);
 

@@ -9,13 +9,12 @@ import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
 import { abrirBlob, descargarBlob, generarReporteVisitas } from '../lib/pdf';
 import { incrustarFotosVisitas } from '../lib/fotos';
 import { obtenerVisitasPorEstacion } from '../lib/visitasReporte';
-import { leerCacheLocal } from '../lib/cacheLocal';
+import { CLAVE_CACHE_ESTACIONES, leerCacheLocal } from '../lib/cacheLocal';
 import { hoyLocal } from '../lib/fecha';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 
 const VISITAS_EN_PDF = 30;
-const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 
 // La gestión de bombas (solo administrador) no funciona sin conexión — a diferencia de registrar
 // una visita, no hay ninguna cola offline para esto (es una acción puntual, no algo que un

@@ -5,14 +5,12 @@ import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
 import type { EstacionEbar, TipoEstacion, ZonaTipo } from '../lib/types';
 import { StationCard } from '../components/StationCard';
-import { guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
+import { CLAVE_CACHE_ESTACIONES, guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
 import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { hoyLocal } from '../lib/fecha';
-
-const CLAVE_CACHE_ESTACIONES = 'ebar_cache_estaciones';
 
 export function Stations() {
   const { usuario, tienePermiso } = useAuth();
