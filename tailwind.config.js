@@ -15,7 +15,11 @@ export default {
           ok: '#0E7A54',
           warn: '#B45309',
           danger: '#BE123C',
-          idle: '#64748B'
+          // Antes #64748B (gris-plomo, casi igual al gris de "sin elegir" — por eso los
+          // operadores no distinguían "No tiene" de un campo sin marcar). Azul real para que se
+          // note de un vistazo, sin sugerir un problema (rojo/ámbar) ni confundirse con "operativo"
+          // o "encendida" (verde).
+          idle: '#2563EB'
         },
         // Amarillo real (antes era "tomate" #FF6347, un naranja-rojizo que se confundía con el
         // rojo de "danger" al lado) — solo para el semáforo de visitas del día (Dashboard.tsx),

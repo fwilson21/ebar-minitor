@@ -72,7 +72,11 @@ export function esMismoDia(fechaISOa: string, fechaISOb: string): boolean {
 // cargado en el formulario.
 const LADO_MAXIMO_FOTO = 1600;
 
-export async function estamparFechaEnFoto(archivo: Blob, fechaISO: string): Promise<Blob> {
+export async function estamparFechaEnFoto(
+  archivo: Blob,
+  fechaISO: string,
+  corregirVolteoCamaraViva = false,
+): Promise<Blob> {
   try {
     const texto = formatearFechaHoraFoto(fechaISO);
     // `resizeWidth` le pide al navegador que decodifique la imagen YA achicada, en vez de
@@ -99,9 +103,13 @@ export async function estamparFechaEnFoto(archivo: Blob, fechaISO: string): Prom
 
     // La cámara en vivo (CamaraFoto.tsx, getUserMedia + canvas) no lleva EXIF y en algunos
     // celulares entrega el cuadro acostado (más ancho que alto) aunque el operador sostenga el
-    // celular en vertical — a pedido del usuario, toda foto se muestra vertical en el informe:
-    // si sigue quedando horizontal después de aplicar el EXIF de arriba, se rota acá.
-    const esHorizontal = anchoFoto > altoFoto;
+    // celular en vertical — este forzado corrige ESE caso puntual. Solo debe aplicarse a fotos que
+    // vinieron de la cámara en vivo (`corregirVolteoCamaraViva=true`, ver `crearFotoLocal`): las
+    // fotos de la cámara nativa del celular (`<input capture>`) SÍ traen EXIF y ya quedaron bien
+    // orientadas por `imageOrientation: 'from-image'` de arriba, incluidas las tomadas realmente en
+    // horizontal a propósito — si a esas también se les aplicara este forzado, terminarían giradas
+    // de lado en el informe (bug reportado por los operadores, 2026-08-31).
+    const esHorizontal = corregirVolteoCamaraViva && anchoFoto > altoFoto;
     const canvas = document.createElement('canvas');
     canvas.width = esHorizontal ? altoFoto : anchoFoto;
     canvas.height = esHorizontal ? anchoFoto : altoFoto;
@@ -145,13 +153,16 @@ export async function estamparFechaEnFoto(archivo: Blob, fechaISO: string): Prom
 
 /**
  * Arma un `FotoLocal` listo para agregar al estado del formulario a partir de un blob recién
- * capturado (por `CamaraFoto` o por el `<input capture>` de respaldo) — mismo patrón repetido
- * antes en PhotoCapture.tsx, EquipoSection.tsx y PumpForm.tsx, ahora centralizado acá.
+ * capturado por `CamaraFoto` (cámara en vivo) — mismo patrón repetido antes en PhotoCapture.tsx,
+ * EquipoSection.tsx y PumpForm.tsx, ahora centralizado acá. Siempre pide la corrección de volteo
+ * (ver comentario en `estamparFechaEnFoto`): esta función es exclusiva de la cámara en vivo, que
+ * es justamente la que puede necesitarla; el `<input capture>` de respaldo llama a
+ * `estamparFechaEnFoto` directo, sin este flag.
  */
 export async function crearFotoLocal(archivo: Blob, fechaISO: string): Promise<FotoLocal> {
   return {
     id: generarUUID(),
-    blob: await estamparFechaEnFoto(archivo, fechaISO),
+    blob: await estamparFechaEnFoto(archivo, fechaISO, true),
     tomada_en: fechaISO,
     estado_subida: 'pendiente',
   };
