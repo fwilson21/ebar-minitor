@@ -755,34 +755,38 @@ export function VisitForm() {
       fecha_hora_llegada: horaLlegada,
       fecha_hora_salida: modoEdicion ? fechaSalidaOriginal : new Date().toISOString(),
       estado_estacion: estadoDerivado,
-      nivel_tanque: esLineaConduccion || esFueraDeServicio ? 'medio' : (nivelTanque as NivelTanque),
+      // "Fuera de servicio" ya no oculta el resto de la hoja de visita, así que estos campos se
+      // guardan igual que en cualquier otra visita si el operador los llenó — solo nivel_tanque
+      // necesita un valor de respaldo ('medio') porque la columna no admite vacío y, a diferencia
+      // del resto, quedó opcional (ver primerCampoObligatorioFaltante) sin tener un "sin dato"
+      // propio como sí tienen los EquipoSection (estado === '').
+      nivel_tanque: esLineaConduccion ? 'medio' : nivelTanque === '' ? 'medio' : (nivelTanque as NivelTanque),
       olores_anormales: false,
       olores_descripcion: null,
       ruidos_extranos: false,
       ruidos_descripcion: null,
       cerramiento_ok: true,
-      cerramiento_observaciones: esLineaConduccion || esFueraDeServicio ? null : (cerramientoSeguridad.observaciones || null),
-      cerramiento_seguridad: esLineaConduccion || esFueraDeServicio ? null : cerramientoSeguridad,
-      jardineras_observaciones: esLineaConduccion || esFueraDeServicio ? null : (jardineras.observaciones || null),
-      jardineras: esLineaConduccion || esFueraDeServicio ? null : jardineras,
-      patios_maniobras_observaciones: esLineaConduccion || esFueraDeServicio ? null : (patiosManiobras.observaciones || null),
-      patios_maniobras: esLineaConduccion || esFueraDeServicio ? null : patiosManiobras,
+      cerramiento_observaciones: esLineaConduccion ? null : (cerramientoSeguridad.observaciones || null),
+      cerramiento_seguridad: esLineaConduccion ? null : cerramientoSeguridad,
+      jardineras_observaciones: esLineaConduccion ? null : (jardineras.observaciones || null),
+      jardineras: esLineaConduccion ? null : jardineras,
+      patios_maniobras_observaciones: esLineaConduccion ? null : (patiosManiobras.observaciones || null),
+      patios_maniobras: esLineaConduccion ? null : patiosManiobras,
       observaciones_generales: esLineaConduccion ? null : observaciones || null,
-      bombas:
-        esLineaConduccion || esFueraDeServicio
-          ? []
-          : Object.values(registrosBombas).filter((b) => bombasSeleccionadas.has(b.bomba_id)),
+      bombas: esLineaConduccion
+        ? []
+        : Object.values(registrosBombas).filter((b) => bombasSeleccionadas.has(b.bomba_id)),
       fotos: esLineaConduccion ? [] : fotos,
-      lineas_impulsion: esLineaConduccion || esFueraDeServicio ? null : lineasImpulsion,
-      guias_izado: esLineaConduccion || esFueraDeServicio ? null : guiasIzado,
-      valvulas_compuerta: esLineaConduccion || esFueraDeServicio ? null : valvulasCompuerta,
-      valvulas_check: esLineaConduccion || esFueraDeServicio ? null : valvulasCheck,
-      valvula_aire: esLineaConduccion || esFueraDeServicio ? null : valvulaAire,
-      camara_rejilla: esLineaConduccion || esFueraDeServicio ? null : camaraRejilla,
-      camara_valvula_compuerta: esLineaConduccion || esFueraDeServicio ? null : camaraValvulaCompuerta,
-      tablero_distribucion: esLineaConduccion || esFueraDeServicio ? null : tableroDistribucion,
-      variador: esLineaConduccion || esFueraDeServicio ? null : variador,
-      descarga_emergencia: esLineaConduccion || esFueraDeServicio ? null : descargaEmergencia,
+      lineas_impulsion: esLineaConduccion ? null : lineasImpulsion,
+      guias_izado: esLineaConduccion ? null : guiasIzado,
+      valvulas_compuerta: esLineaConduccion ? null : valvulasCompuerta,
+      valvulas_check: esLineaConduccion ? null : valvulasCheck,
+      valvula_aire: esLineaConduccion ? null : valvulaAire,
+      camara_rejilla: esLineaConduccion ? null : camaraRejilla,
+      camara_valvula_compuerta: esLineaConduccion ? null : camaraValvulaCompuerta,
+      tablero_distribucion: esLineaConduccion ? null : tableroDistribucion,
+      variador: esLineaConduccion ? null : variador,
+      descarga_emergencia: esLineaConduccion ? null : descargaEmergencia,
       tuberia_400_valvulas_aire: esLineaConduccion ? tuberia400ValvulasAire : null,
       tuberia_400_uniones_elastomericas: esLineaConduccion ? tuberia400Uniones : null,
       tuberia_600_valvulas_aire: esLineaConduccion ? tuberia600ValvulasAire : null,
@@ -1090,13 +1094,12 @@ export function VisitForm() {
 
                 {esFueraDeServicio && (
                   <p className="text-xs text-slate-600 bg-panel-900 border border-panel-600 rounded-lg px-3 py-2">
-                    La estación quedó marcada como <strong>Fuera de servicio</strong>: solo se
-                    registran las observaciones y las fotos del motivo. El resto de la hoja de
-                    visita (nivel de tanque, bombas, equipos) queda deshabilitado.
+                    La estación quedó marcada como <strong>Fuera de servicio</strong>: el resto de
+                    la hoja de visita (nivel de tanque, bombas, equipos) queda habilitado pero es
+                    opcional — repórtalo si aplica.
                   </p>
                 )}
 
-                {!esFueraDeServicio && (
                 <div>
                   <label className="etiqueta">Nivel de tanque de almacenamiento</label>
                   <div className="flex gap-2">
@@ -1114,7 +1117,6 @@ export function VisitForm() {
                     ))}
                   </div>
                 </div>
-                )}
 
                 <div>
                   <label className="etiqueta">Observaciones generales / novedades</label>
@@ -1133,36 +1135,30 @@ export function VisitForm() {
                 <PhotoCapture fotos={fotos} onChange={setFotos} />
               </div>
 
-              {!esFueraDeServicio && (
-                <>
-                  <EquipoSection
-                    titulo="Cerramiento y seguridad"
-                    valor={cerramientoSeguridad}
-                    onChange={setCerramientoSeguridad}
-                    sinEstado
-                    placeholderObservaciones=""
-                  />
-                  <EquipoSection
-                    titulo="Jardineras y áreas verdes"
-                    valor={jardineras}
-                    onChange={setJardineras}
-                    sinEstado
-                    placeholderObservaciones=""
-                  />
-                  <EquipoSection
-                    titulo="Patios de maniobras"
-                    valor={patiosManiobras}
-                    onChange={setPatiosManiobras}
-                    sinEstado
-                    placeholderObservaciones=""
-                  />
-                </>
-              )}
+              <EquipoSection
+                titulo="Cerramiento y seguridad"
+                valor={cerramientoSeguridad}
+                onChange={setCerramientoSeguridad}
+                sinEstado
+                placeholderObservaciones=""
+              />
+              <EquipoSection
+                titulo="Jardineras y áreas verdes"
+                valor={jardineras}
+                onChange={setJardineras}
+                sinEstado
+                placeholderObservaciones=""
+              />
+              <EquipoSection
+                titulo="Patios de maniobras"
+                valor={patiosManiobras}
+                onChange={setPatiosManiobras}
+                sinEstado
+                placeholderObservaciones=""
+              />
             </div>
           </div>
 
-          {!esFueraDeServicio && (
-          <>
           <div>
             <h2 className="text-lg font-bold uppercase tracking-wide text-slate-800 mb-2">Bombas</h2>
             <div className="space-y-3">
@@ -1301,8 +1297,6 @@ export function VisitForm() {
               />
             </div>
           </div>
-          </>
-          )}
         </>
       )}
 
