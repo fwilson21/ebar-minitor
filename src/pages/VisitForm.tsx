@@ -260,14 +260,14 @@ export function VisitForm() {
     const confirmar = window.confirm(
       '¿Salir sin guardar? Vas a perder todo lo registrado en esta visita — el tiempo transcurrido no va a quedar contado.',
     );
-    if (confirmar) descartarBorrador(() => navigate(`/estaciones/${estacionId}`));
+    if (confirmar) descartarBorrador(() => navigate(`/estaciones/${estacionId}`, { replace: true }));
   }
 
   // Solo para "Editar visita": descarta los cambios hechos en esta pantalla y vuelve a la
   // estación, sin pasar por el modal de "datos sin guardar" (el botón ya es esa confirmación).
   function salirSinGuardar() {
     guardadoRef.current = true;
-    navigate(`/estaciones/${estacionId}`);
+    navigate(`/estaciones/${estacionId}`, { replace: true });
   }
 
   // Exclusivo del administrador — útil para visitas mal cargadas o hechas solo de prueba. Borra
@@ -286,7 +286,7 @@ export function VisitForm() {
       const { error } = await supabase.from('visitas').delete().eq('id', visitaId);
       if (error) throw error;
       guardadoRef.current = true; // evita el aviso de "salir sin guardar" al navegar después de borrar
-      navigate(`/estaciones/${estacionId}`);
+      navigate(`/estaciones/${estacionId}`, { replace: true });
     } catch (err: any) {
       setMensaje(`No se pudo eliminar la visita: ${err.message ?? err}`);
       setEliminandoVisita(false);
@@ -870,7 +870,7 @@ export function VisitForm() {
       guardadoRef.current = true;
       await eliminarBorradorVisita(claveBorrador());
       setMensaje(modoEdicion ? 'Visita actualizada correctamente.' : 'Visita registrada correctamente.');
-      setTimeout(() => navigate(`/estaciones/${estacion.id}`), 800);
+      setTimeout(() => navigate(`/estaciones/${estacion.id}`, { replace: true }), 800);
     } catch (err: any) {
       // Conexión inestable a mitad de carga: igual se guarda localmente.
       try {
@@ -879,7 +879,7 @@ export function VisitForm() {
         guardadoRef.current = true;
         await eliminarBorradorVisita(claveBorrador());
         setMensaje('Sin conexión estable: los cambios se guardaron en el dispositivo y se sincronizarán automáticamente.');
-        setTimeout(() => navigate(`/estaciones/${estacion.id}`), 1500);
+        setTimeout(() => navigate(`/estaciones/${estacion.id}`, { replace: true }), 1500);
       } catch (errGuardadoLocal: any) {
         // Esto NO debe quedar en silencio: si ni siquiera el guardado local funcionó (por
         // ejemplo, ese celular/navegador no puede guardar fotos en su almacenamiento local),
@@ -953,7 +953,7 @@ export function VisitForm() {
         <button
           type="button"
           className="text-xs text-slate-600 hover:text-slate-900 underline"
-          onClick={() => navigate(`/estaciones/${estacionId}`)}
+          onClick={() => navigate(`/estaciones/${estacionId}`, { replace: true })}
         >
           ← Volver a la estación
         </button>
@@ -977,7 +977,7 @@ export function VisitForm() {
         <button
           type="button"
           className="text-xs text-slate-600 hover:text-slate-900 underline"
-          onClick={() => navigate(`/estaciones/${estacionId}`)}
+          onClick={() => navigate(`/estaciones/${estacionId}`, { replace: true })}
         >
           ← Volver a la estación
         </button>
@@ -1018,7 +1018,7 @@ export function VisitForm() {
             <button
               type="button"
               className="text-xs font-semibold text-gauge-ok border border-gauge-ok/40 bg-gauge-ok/10 hover:bg-gauge-ok/20 rounded-lg px-2.5 py-1.5 transition whitespace-nowrap"
-              onClick={() => pausarYSalir(() => navigate(`/estaciones/${estacionId}`))}
+              onClick={() => pausarYSalir(() => navigate(`/estaciones/${estacionId}`, { replace: true }))}
             >
               ⏸ Pausar y continuar luego
             </button>
@@ -1319,7 +1319,7 @@ export function VisitForm() {
       )}
 
       {pasoConfirmacion === 0 && modoEdicion && !hayCambios && (
-        <button type="button" onClick={() => navigate(`/estaciones/${estacionId}`)} className="boton-secundario w-full">
+        <button type="button" onClick={() => navigate(`/estaciones/${estacionId}`, { replace: true })} className="boton-secundario w-full">
           Salir
         </button>
       )}
