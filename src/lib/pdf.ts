@@ -118,13 +118,17 @@ function etiquetaFoto(etiqueta?: string | null): string {
   return ETIQUETA_FOTO[etiqueta] ?? 'Foto general';
 }
 
+// Antes 3 columnas de 150x150 — el usuario pidió reducir la cantidad de hojas al imprimir en A4;
+// las fotos son lo que más espacio vertical ocupa en el reporte completo (Reporte consolidado /
+// Historial de estación), así que se achican y se ponen 4 por fila (mismo tamaño que ya usa
+// Informe Semanal en filasFotosInforme, probado ahí) en vez de 3 más grandes.
 function bloqueFotos(fotos?: Array<{ url: string; etiqueta?: string | null }>): any {
   if (!fotos?.length) return null;
   return {
-    columns: fotos.slice(0, 3).map((f) => ({
+    columns: fotos.slice(0, 4).map((f) => ({
       width: '*',
       stack: [
-        { image: f.url, fit: [150, 150], alignment: 'center' },
+        { image: f.url, fit: [110, 110], alignment: 'center' },
         { text: etiquetaFoto(f.etiqueta), fontSize: 7, alignment: 'center', color: '#5B7184', margin: [0, 2, 0, 0] },
       ],
     })),
