@@ -2,7 +2,7 @@ import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { MEMBRETE_FONDO_BASE64 } from '../assets/membrete/membreteData';
-import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, type BloqueInformePdf } from './informeSemanal';
+import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, separarLabelVineta, type BloqueInformePdf } from './informeSemanal';
 
 (pdfMake as any).vfs = (pdfFonts as any).vfs;
 
@@ -813,7 +813,16 @@ function bloqueOperadorInforme(b: BloqueInformePdf): any[] {
   return [
     { text: `${b.estacion_nombre}${ubicacion}${horario}`, bold: true, fontSize: 10, margin: [0, 5, 0, 1] },
     { text: [{ text: 'Responsable: ', bold: true }, b.responsable], fontSize: 9, margin: [0, 0, 0, 3] },
-    { ul: b.vinetas.length ? b.vinetas : ['Sin observaciones registradas.'], fontSize: 9, margin: [0, 0, 0, 2] },
+    {
+      ul: b.vinetas.length
+        ? b.vinetas.map((v) => {
+            const { label, resto } = separarLabelVineta(v);
+            return label ? { text: [{ text: `${label}: `, bold: true }, resto] } : v;
+          })
+        : ['Sin observaciones registradas.'],
+      fontSize: 9,
+      margin: [0, 0, 0, 2],
+    },
     ...filasFotosInforme(b.fotos),
   ];
 }

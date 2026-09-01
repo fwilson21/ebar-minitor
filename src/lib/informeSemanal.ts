@@ -313,6 +313,18 @@ export function construirVinetasVisita(v: VisitaCruda): string[] {
   return vinetas;
 }
 
+/** Si una viñeta viene con el patrón "Etiqueta: contenido" (como las arma
+ * `construirVinetasVisita`), separa la etiqueta del resto — para resaltarla en negrita distinto
+ * del contenido, tanto en pantalla (InformeSemanal.tsx) como en el PDF. Una viñeta sin ese patrón
+ * (agregada a mano con "+ Agregar viñeta", o una vieja de antes de este cambio) devuelve `label`
+ * null y el texto entero en `resto`, sin tocarla. El límite de 60 caracteres evita partir una
+ * oración larga que por casualidad tenga un ": " en el medio. */
+export function separarLabelVineta(texto: string): { label: string | null; resto: string } {
+  const separador = texto.indexOf(': ');
+  if (separador <= 0 || separador > 60) return { label: null, resto: texto };
+  return { label: texto.slice(0, separador), resto: texto.slice(separador + 2) };
+}
+
 export interface BloqueInforme {
   estacion_id: string;
   estacion_nombre: string;

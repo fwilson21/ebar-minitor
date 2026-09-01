@@ -23,6 +23,7 @@ import {
   construirSnapshotDia,
   detectarCambioDia,
   incrustarFotosBloques,
+  separarLabelVineta,
   codigoAsistenciaSugerido,
   CODIGOS_ASISTENCIA,
   LEYENDA_CODIGOS_ASISTENCIA,
@@ -1015,9 +1016,9 @@ function BloqueEditor({
   return (
     <div className="rounded-lg border border-panel-600 p-3 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap text-sm">
-        <span className="font-medium text-slate-800">
+        <span className="text-base font-bold text-slate-900">
           🏭 {bloque.estacion_nombre}
-          {bloque.estacion_ubicacion && <span className="text-slate-500 font-normal"> — {bloque.estacion_ubicacion}</span>}
+          {bloque.estacion_ubicacion && <span className="text-sm text-slate-500 font-normal"> — {bloque.estacion_ubicacion}</span>}
         </span>
         {(bloque.hora_inicio || bloque.hora_fin) && (
           <span className="text-xs text-slate-500">
@@ -1027,7 +1028,7 @@ function BloqueEditor({
       </div>
 
       <div>
-        <label className="etiqueta">Responsable</label>
+        <label className="etiqueta text-slate-800 font-bold">Responsable</label>
         <input
           type="text"
           className="campo"
@@ -1037,30 +1038,36 @@ function BloqueEditor({
       </div>
 
       <div>
-        <label className="etiqueta">Actividad (viñetas editables, sacadas de las observaciones del operador)</label>
+        <label className="etiqueta text-slate-800 font-bold">Actividad (viñetas editables, sacadas de las observaciones del operador)</label>
         <div className="space-y-2">
-          {bloque.vinetas.map((v, i) => (
-            <div key={i} className="flex gap-2 items-start">
-              <span className="mt-3 w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0" />
-              <textarea
-                className="campo flex-1"
-                rows={2}
-                value={v}
-                onChange={(e) => {
-                  const nuevas = [...bloque.vinetas];
-                  nuevas[i] = e.target.value;
-                  onCambiar({ ...bloque, vinetas: nuevas });
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => onCambiar({ ...bloque, vinetas: bloque.vinetas.filter((_, j) => j !== i) })}
-                className="text-slate-400 hover:text-gauge-danger text-sm mt-2"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {bloque.vinetas.map((v, i) => {
+            const { label, resto } = separarLabelVineta(v);
+            return (
+              <div key={i} className="flex gap-2 items-start">
+                <span className="mt-3 w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0" />
+                <div className="flex-1">
+                  {label && <p className="text-xs font-bold text-gauge-idle mb-1">{label}</p>}
+                  <textarea
+                    className="campo w-full"
+                    rows={2}
+                    value={resto}
+                    onChange={(e) => {
+                      const nuevas = [...bloque.vinetas];
+                      nuevas[i] = label ? `${label}: ${e.target.value}` : e.target.value;
+                      onCambiar({ ...bloque, vinetas: nuevas });
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onCambiar({ ...bloque, vinetas: bloque.vinetas.filter((_, j) => j !== i) })}
+                  className="text-slate-400 hover:text-gauge-danger text-sm mt-2"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
         </div>
         <button
           type="button"
