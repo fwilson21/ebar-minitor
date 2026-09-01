@@ -432,15 +432,10 @@ export function StationDetail() {
                 <div className="space-y-2">
                   {visitas.map((h) => {
                     const puedeEditar = puedeEditarTodo || usuario?.id === h.operador_id;
-                    const propsContenedor = {
-                      to: puedeEditar
-                        ? `/estaciones/${estacion.id}/visitas/${h.id}/editar`
-                        : `/estaciones/${estacion.id}/visitas/${h.id}/ver`,
-                    };
                     const duracion = duracionVisita(h.fecha_hora_llegada, h.fecha_hora_salida);
                     return (
-                      <Link key={h.id} className="tarjeta p-3 block hover:border-gauge-ok/50 transition" {...propsContenedor}>
-                        <div className="flex items-center justify-between">
+                      <div key={h.id} className="tarjeta p-3">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
                           <span className="flex items-center gap-2">
                             <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC', { hour12: false })}</span>
                             {duracion && (
@@ -449,7 +444,22 @@ export function StationDetail() {
                               </span>
                             )}
                           </span>
-                          <span className="text-xs text-slate-500">{puedeEditar ? 'Editar →' : 'Ver →'}</span>
+                          <span className="flex items-center gap-1.5">
+                            <Link
+                              to={`/estaciones/${estacion.id}/visitas/${h.id}/ver`}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-full border border-gauge-idle/50 text-gauge-idle bg-gauge-idle/10 hover:bg-gauge-idle/20 transition"
+                            >
+                              👁 Ver
+                            </Link>
+                            {puedeEditar && (
+                              <Link
+                                to={`/estaciones/${estacion.id}/visitas/${h.id}/editar`}
+                                className="text-xs font-semibold px-2.5 py-1 rounded-full border border-gauge-ok/50 text-gauge-ok bg-gauge-ok/10 hover:bg-gauge-ok/20 transition"
+                              >
+                                ✏️ Editar
+                              </Link>
+                            )}
+                          </span>
                         </div>
                         <div className="flex gap-2 mt-2 flex-wrap">
                           {h.bombas.filter((b) => b.estado === 'encendida').map((b) => (
@@ -528,7 +538,7 @@ export function StationDetail() {
                             })}
                           </div>
                         )}
-                      </Link>
+                      </div>
                     );
                   })}
                 </div>
