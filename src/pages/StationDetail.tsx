@@ -231,7 +231,13 @@ export function StationDetail() {
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
       const titulo = `Historial de estación\n${estacion.nombre}`;
-      const blob = await generarReporteVisitas(titulo, visitas);
+      const blob = await generarReporteVisitas(titulo, visitas, {
+        numero: '',
+        para: { nombre: 'Ing. Freddy Vásconez', cargo: 'JEFE DE SERVICIOS DE ALCANTARILLADO' },
+        de: { nombre: usuario?.nombre_completo ?? '', cargo: usuario?.cargo ?? '' },
+        asunto: `Historial de estación — ${estacion.nombre}`,
+        fecha: hoyLocal(),
+      });
       const nombre = `historial_${estacion.codigo}_${hoyLocal()}.pdf`;
       descargarBlob(blob, nombre);
       abrirBlob(blob);

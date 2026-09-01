@@ -161,6 +161,62 @@ function encabezado(titulo: string): any {
   };
 }
 
+const MESES_LARGO = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/** "El Coca, 6 de agosto de 2026" — formato de la fila "Fecha:" del encabezado tipo memo. */
+function formatFechaMemo(fechaIso: string | null): string {
+  if (!fechaIso) return '-';
+  const [y, m, d] = fechaIso.split('-').map(Number);
+  return `El Coca, ${d} de ${MESES_LARGO[m - 1]} de ${y}`;
+}
+
+export interface DatosEncabezadoMemo {
+  numero: string;
+  para: { nombre: string; cargo: string };
+  de: { nombre: string; cargo: string };
+  asunto: string;
+  /** YYYY-MM-DD — se formatea acá mismo como "El Coca, D de mes de AAAA". */
+  fecha: string | null;
+}
+
+/** Encabezado tipo memo institucional (formato GADMFO: "INFORME No. ..." + tabla PARA/DE/ASUNTO/
+ * FECHA) — pedido explícito del usuario con una captura de referencia, usado tanto en el Informe
+ * Semanal como en el Reporte consolidado/de estación/diario e Historial de estación (todos los que
+ * arma generarReporteVisitas). Va después de encabezado() (el membrete institucional). */
+function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
+  const filaEtiqueta = (texto: string) => ({ text: texto, bold: true, fillColor: '#DCE4E9', margin: [4, 3, 4, 3] });
+  const filaValor = (contenido: any) => ({ ...contenido, fillColor: '#FFFFFF', margin: [6, 3, 6, 3] });
+  return {
+    stack: [
+      // Solo Informe Semanal tiene un N.º de informe propio (formato GADMFO); los reportes de
+      // visitas (Reporte consolidado/de estación/diario, Historial de estación) no tienen ese
+      // concepto — con `numero` vacío, esta línea no se muestra.
+      ...(datos.numero ? [{ text: `INFORME No. ${datos.numero}`, bold: true, fontSize: 11, alignment: 'center', margin: [0, 0, 0, 8] }] : []),
+      {
+        table: {
+          widths: [60, '*'],
+          body: [
+            [filaEtiqueta('PARA:'), filaValor({ stack: [{ text: datos.para.nombre || '-', bold: true }, { text: (datos.para.cargo || '').toUpperCase(), bold: true }] })],
+            [filaEtiqueta('DE:'), filaValor({ stack: [{ text: datos.de.nombre || '-', bold: true }, { text: (datos.de.cargo || '').toUpperCase(), bold: true }] })],
+            [filaEtiqueta('ASUNTO:'), filaValor({ text: datos.asunto || '-' })],
+            [filaEtiqueta('FECHA:'), filaValor({ text: formatFechaMemo(datos.fecha) })],
+          ],
+        },
+        layout: {
+          hLineWidth: () => 0.75,
+          vLineWidth: () => 0.75,
+          hLineColor: () => '#B9C6CE',
+          vLineColor: () => '#B9C6CE',
+        },
+      },
+    ],
+    margin: [0, 0, 0, 16],
+  };
+}
+
 /** Bloque en formato párrafo: título del elemento en negrita y una línea por dato (Estado, Observaciones, etc).
  * Márgenes achicados a pedido del usuario (menos hojas al imprimir en A4). El título usa un color
  * propio (no el negro/gris del resto del texto) y letra más grande — pedido explícito para que se
@@ -447,6 +503,7 @@ const ESTILOS = {
 export function generarReporteVisitas(
   titulo: string,
   visitas: VisitaParaReporte[],
+  memo: DatosEncabezadoMemo,
 ): Promise<Blob> {
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
@@ -489,6 +546,7 @@ export function generarReporteVisitas(
     }),
     content: [
       encabezado(titulo),
+      bloqueEncabezadoMemo(memo),
       ...visitas.flatMap((v) => [
         ...bloqueVisita(v),
         bloqueFirma(v.operador_nombre, 'Firma del operador', v.firma_url),
@@ -854,6 +912,9 @@ export interface DatosInformeSemanal {
   firmaFecha: string | null;
   firmaNombre: string;
   firmaCargo: string;
+  paraNombre: string;
+  paraCargo: string;
+  asunto: string;
   numeroInforme: string;
   semanaDesde: string;
   semanaHasta: string;
@@ -1014,7 +1075,7 @@ export function generarInformeSemanal(datos: DatosInformeSemanal): Promise<Blob>
       ],
     }),
     content: [
-      encabezado(`INFORME SEMANAL N.º ${datos.numeroInforme}`),
+      encabezado('INFORME SEMANAL'),
       {
         text: `Del ${formatFechaDMY(datos.semanaDesde)} al ${formatFechaDMY(datos.semanaHasta)}`,
         alignment: 'center',
@@ -1022,6 +1083,13 @@ export function generarInformeSemanal(datos: DatosInformeSemanal): Promise<Blob>
         color: '#5B7184',
         margin: [0, -10, 0, 14],
       },
+      bloqueEncabezadoMemo({
+        numero: datos.numeroInforme,
+        para: { nombre: datos.paraNombre, cargo: datos.paraCargo },
+        de: { nombre: datos.firmaNombre, cargo: datos.firmaCargo },
+        asunto: datos.asunto,
+        fecha: datos.firmaFecha,
+      }),
       { text: 'ANTECEDENTES', style: 'subtitulo', margin: [0, 0, 0, 4] },
       { text: datos.antecedentes || '-', fontSize: 9, margin: [0, 0, 0, 14] },
       { text: 'DESARROLLO DE LA SEMANA', style: 'subtitulo', margin: [0, 0, 0, 2] },

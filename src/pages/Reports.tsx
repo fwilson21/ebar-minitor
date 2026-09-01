@@ -52,6 +52,22 @@ export function Reports() {
   // la instrucción de qué hacer, no un renglón de texto plano más.
   const [avisoCompartirManual, setAvisoCompartirManual] = useState(false);
 
+  // Encabezado tipo memo del PDF (formato GADMFO: PARA/DE/ASUNTO/FECHA) — pedido del usuario.
+  // "Para" arranca con un valor fijo (a quién se le suele dirigir este reporte); "De" arranca con
+  // quien esté generando el reporte ahora mismo; los 3 quedan editables antes de generar.
+  const [paraNombre, setParaNombre] = useState('Ing. Freddy Vásconez');
+  const [paraCargo, setParaCargo] = useState('JEFE DE SERVICIOS DE ALCANTARILLADO');
+  const [deNombre, setDeNombre] = useState('');
+  const [deCargo, setDeCargo] = useState('');
+  const [asunto, setAsunto] = useState('');
+  const [asuntoTocado, setAsuntoTocado] = useState(false);
+
+  useEffect(() => {
+    if (!usuario) return;
+    setDeNombre((prev) => prev || usuario.nombre_completo);
+    setDeCargo((prev) => prev || usuario.cargo || '');
+  }, [usuario]);
+
   useEffect(() => {
     if (!esAdmin) return;
     // Solo rol operador: el resto del personal (supervisor, administrador, digitador) no
@@ -104,6 +120,20 @@ export function Reports() {
     fechaInicioEfectiva === fechaFinEfectiva
       ? formatFechaCorta(fechaInicioEfectiva)
       : `${formatFechaCorta(fechaInicioEfectiva)} al ${formatFechaCorta(fechaFinEfectiva)}`;
+
+  // Título base del reporte (sin sufijo de operador/estación) — se usa tanto para armar el título
+  // real del PDF (manejarGenerar) como para sugerir el "Asunto" del encabezado tipo memo acá abajo.
+  const tituloBase =
+    tipo === 'diario_operador' ? 'Reporte diario' : tipo === 'consolidado_fecha' ? 'Reporte consolidado' : 'Reporte de estación';
+  const asuntoSugerido = `${tituloBase} — ${rangoLabel}`;
+
+  // El Asunto se sugiere solo según el tipo/rango de fechas elegidos, mientras la analista no haya
+  // escrito el suyo a mano — apenas lo toca, deja de autocompletarse (mismo criterio que
+  // "asuntoTocado" abajo).
+  useEffect(() => {
+    if (!asuntoTocado) setAsunto(asuntoSugerido);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asuntoSugerido]);
 
   async function obtenerVisitas(): Promise<VisitaParaReporte[]> {
     // Selección explícita de cero estaciones (se destildaron todas a mano, sin volver a marcar
@@ -158,7 +188,13 @@ export function Reports() {
           ? `Reporte consolidado${sufijoOperador}${sufijoEstacion}`
           : `Reporte de estación${sufijoEstacion}${sufijoOperador}`;
 
-      const blob = await generarReporteVisitas(`${titulo}\n${rangoLabel}`, visitas);
+      const blob = await generarReporteVisitas(`${titulo}\n${rangoLabel}`, visitas, {
+        numero: '',
+        para: { nombre: paraNombre, cargo: paraCargo },
+        de: { nombre: deNombre, cargo: deCargo },
+        asunto,
+        fecha: hoyLocal(),
+      });
       const nombreFechas =
         fechaInicioEfectiva === fechaFinEfectiva ? fechaInicioEfectiva : `${fechaInicioEfectiva}_a_${fechaFinEfectiva}`;
       const ahora = new Date();
@@ -269,6 +305,17 @@ export function Reports() {
           setFechaInicio={setFechaInicio}
           fechaFin={fechaFin}
           setFechaFin={setFechaFin}
+          paraNombre={paraNombre}
+          setParaNombre={setParaNombre}
+          paraCargo={paraCargo}
+          setParaCargo={setParaCargo}
+          deNombre={deNombre}
+          setDeNombre={setDeNombre}
+          deCargo={deCargo}
+          setDeCargo={setDeCargo}
+          asunto={asunto}
+          setAsunto={setAsunto}
+          setAsuntoTocado={setAsuntoTocado}
           generando={generando}
           manejarGenerar={manejarGenerar}
         />
@@ -311,6 +358,17 @@ export function Reports() {
                     setFechaInicio={setFechaInicio}
                     fechaFin={fechaFin}
                     setFechaFin={setFechaFin}
+                    paraNombre={paraNombre}
+                    setParaNombre={setParaNombre}
+                    paraCargo={paraCargo}
+                    setParaCargo={setParaCargo}
+                    deNombre={deNombre}
+                    setDeNombre={setDeNombre}
+                    deCargo={deCargo}
+                    setDeCargo={setDeCargo}
+                    asunto={asunto}
+                    setAsunto={setAsunto}
+                    setAsuntoTocado={setAsuntoTocado}
                     generando={generando}
                     manejarGenerar={manejarGenerar}
                   />
@@ -351,6 +409,17 @@ function BloqueFiltrosGenerar({
   setFechaInicio,
   fechaFin,
   setFechaFin,
+  paraNombre,
+  setParaNombre,
+  paraCargo,
+  setParaCargo,
+  deNombre,
+  setDeNombre,
+  deCargo,
+  setDeCargo,
+  asunto,
+  setAsunto,
+  setAsuntoTocado,
   generando,
   manejarGenerar,
 }: {
@@ -368,6 +437,17 @@ function BloqueFiltrosGenerar({
   setFechaInicio: (v: string) => void;
   fechaFin: string;
   setFechaFin: (v: string) => void;
+  paraNombre: string;
+  setParaNombre: (v: string) => void;
+  paraCargo: string;
+  setParaCargo: (v: string) => void;
+  deNombre: string;
+  setDeNombre: (v: string) => void;
+  deCargo: string;
+  setDeCargo: (v: string) => void;
+  asunto: string;
+  setAsunto: (v: string) => void;
+  setAsuntoTocado: (v: boolean) => void;
   generando: boolean;
   manejarGenerar: () => void;
 }) {
@@ -422,6 +502,46 @@ function BloqueFiltrosGenerar({
           <input type="date" className="campo" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
         </div>
       )}
+
+      {/* Encabezado tipo memo del PDF (formato GADMFO) — ya viene precargado con valores por
+          defecto razonables; se abre solo si hace falta ajustar algo antes de generar. */}
+      <details className="tarjeta p-3">
+        <summary className="cursor-pointer text-sm font-medium text-slate-700">Encabezado del PDF (Para / De / Asunto)</summary>
+        <div className="space-y-3 mt-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="etiqueta">Para (nombre)</label>
+              <input type="text" className="campo" value={paraNombre} onChange={(e) => setParaNombre(e.target.value)} />
+            </div>
+            <div>
+              <label className="etiqueta">Para (cargo)</label>
+              <input type="text" className="campo" value={paraCargo} onChange={(e) => setParaCargo(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="etiqueta">De (nombre)</label>
+              <input type="text" className="campo" value={deNombre} onChange={(e) => setDeNombre(e.target.value)} />
+            </div>
+            <div>
+              <label className="etiqueta">De (cargo)</label>
+              <input type="text" className="campo" value={deCargo} onChange={(e) => setDeCargo(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="etiqueta">Asunto</label>
+            <textarea
+              className="campo"
+              rows={2}
+              value={asunto}
+              onChange={(e) => {
+                setAsunto(e.target.value);
+                setAsuntoTocado(true);
+              }}
+            />
+          </div>
+        </div>
+      </details>
 
       <button
         onClick={manejarGenerar}

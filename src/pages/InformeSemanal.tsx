@@ -40,7 +40,15 @@ const ANTECEDENTES_PLANTILLA =
   'Belleza y Nuevo Paraíso cuenta con infraestructura de impulsión dirigida a plantas de ' +
   'tratamiento con pretratamiento, tanques Imhoff y humedales artificiales.';
 
-type CampoInformeClave = 'conclusiones' | 'recomendaciones' | 'firma_fecha' | 'firma_nombre' | 'numero_informe';
+type CampoInformeClave =
+  | 'conclusiones'
+  | 'recomendaciones'
+  | 'firma_fecha'
+  | 'firma_nombre'
+  | 'numero_informe'
+  | 'para_nombre'
+  | 'para_cargo'
+  | 'asunto';
 interface CampoFaltante {
   etiqueta: string;
   anchorId: string;
@@ -57,6 +65,9 @@ interface InformeRow {
   firma_fecha: string | null;
   firma_nombre: string;
   firma_cargo: string;
+  para_nombre: string;
+  para_cargo: string;
+  asunto: string;
   asistencia: Record<string, Record<string, string>>;
   numero_informe: string | null;
   generado_en: string | null;
@@ -155,15 +166,15 @@ export function InformeSemanal() {
 
       let informeFinal = informeRow as InformeRow | null;
       if (!informeFinal) {
-        // Primera vez que se abre esta semana: conclusiones/recomendaciones se copian de la
-        // semana pasada (si existe) como punto de partida editable, antecedentes arranca con la
-        // plantilla fija.
+        // Primera vez que se abre esta semana: conclusiones/recomendaciones/para/asunto se copian
+        // de la semana pasada (si existe) como punto de partida editable, antecedentes arranca con
+        // la plantilla fija.
         const semanaAnterior = new Date(`${semanaDesde}T12:00:00`);
         semanaAnterior.setDate(semanaAnterior.getDate() - 7);
         const desdeAnterior = semanaAnterior.toISOString().slice(0, 10);
         const { data: anterior } = await supabase
           .from('informes_semanales')
-          .select('conclusiones, recomendaciones')
+          .select('conclusiones, recomendaciones, para_nombre, para_cargo, asunto')
           .eq('semana_desde', desdeAnterior)
           .maybeSingle();
         const { data: creado, error } = await supabase
@@ -175,6 +186,9 @@ export function InformeSemanal() {
               antecedentes: ANTECEDENTES_PLANTILLA,
               conclusiones: anterior?.conclusiones ?? '',
               recomendaciones: anterior?.recomendaciones ?? '',
+              para_nombre: anterior?.para_nombre ?? '',
+              para_cargo: anterior?.para_cargo ?? '',
+              asunto: anterior?.asunto ?? '',
               creado_por: usuario!.id,
             },
             { onConflict: 'semana_desde' },
@@ -341,12 +355,15 @@ export function InformeSemanal() {
   // Campos de texto que la analista normalmente completa antes de un informe "de verdad" —
   // vacíos, el informe igual se puede descargar (con el aviso de abajo y "Descargar de todas
   // formas"), pero por defecto se avisa en vez de dejarlos pasar en silencio. Orden: de arriba
-  // hacia abajo tal cual aparecen en la pantalla (Conclusiones → Recomendaciones → Firma → N.º de
-  // informe) — así el primero de la lista es siempre el primero que hay que resolver, no el orden
-  // en que se les ocurrió chequearlos.
+  // hacia abajo tal cual aparecen en la pantalla (Para → Asunto → Conclusiones → Recomendaciones →
+  // Firma → N.º de informe) — así el primero de la lista es siempre el primero que hay que
+  // resolver, no el orden en que se les ocurrió chequearlos.
   function camposFaltantes(): CampoFaltante[] {
     if (!informe) return [];
     const faltan: CampoFaltante[] = [];
+    if (!informe.para_nombre.trim()) faltan.push({ etiqueta: 'Para (nombre)', anchorId: 'tarjeta-para', campo: 'para_nombre' });
+    if (!informe.para_cargo.trim()) faltan.push({ etiqueta: 'Para (cargo)', anchorId: 'tarjeta-para', campo: 'para_cargo' });
+    if (!informe.asunto.trim()) faltan.push({ etiqueta: 'Asunto', anchorId: 'campo-asunto', campo: 'asunto' });
     if (!informe.conclusiones.trim()) faltan.push({ etiqueta: 'Conclusiones', anchorId: 'campo-conclusiones', campo: 'conclusiones' });
     if (!informe.recomendaciones.trim()) faltan.push({ etiqueta: 'Recomendaciones', anchorId: 'campo-recomendaciones', campo: 'recomendaciones' });
     if (!informe.firma_fecha) faltan.push({ etiqueta: 'Fecha de emisión', anchorId: 'tarjeta-firma', campo: 'firma_fecha' });
@@ -367,6 +384,9 @@ export function InformeSemanal() {
       case 'firma_fecha': return !informe.firma_fecha;
       case 'firma_nombre': return !informe.firma_nombre.trim();
       case 'numero_informe': return !(informe.numero_informe ?? '').trim();
+      case 'para_nombre': return !informe.para_nombre.trim();
+      case 'para_cargo': return !informe.para_cargo.trim();
+      case 'asunto': return !informe.asunto.trim();
     }
   }
   const claseError = 'border-gauge-danger ring-1 ring-gauge-danger/40 bg-gauge-danger/10';
@@ -452,6 +472,9 @@ export function InformeSemanal() {
         firmaFecha: informe.firma_fecha,
         firmaNombre: informe.firma_nombre,
         firmaCargo: informe.firma_cargo,
+        paraNombre: informe.para_nombre,
+        paraCargo: informe.para_cargo,
+        asunto: informe.asunto,
         numeroInforme: numero,
         semanaDesde: diasAprobados[0],
         semanaHasta: diasAprobados[diasAprobados.length - 1],
@@ -673,6 +696,46 @@ export function InformeSemanal() {
             </p>
           </>
         )}
+      </div>
+
+      {/* Encabezado del informe (formato memo GADMFO: Para/Asunto — De y Fecha ya salen de Firma) */}
+      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-700 mt-6">Encabezado del informe</h2>
+      <div id="tarjeta-para" className="tarjeta p-4 grid grid-cols-2 gap-3">
+        <div>
+          <label className="etiqueta">Para (nombre)</label>
+          <input
+            type="text"
+            className={`campo ${campoTieneError('para_nombre') ? claseError : ''}`}
+            placeholder="Ing. Nombre Apellido"
+            value={informe.para_nombre}
+            onChange={(e) => setInforme({ ...informe, para_nombre: e.target.value })}
+            onBlur={(e) => guardarCampoInforme('para_nombre', e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="etiqueta">Para (cargo)</label>
+          <input
+            type="text"
+            className={`campo ${campoTieneError('para_cargo') ? claseError : ''}`}
+            placeholder="DIRECTOR DE AGUA POTABLE Y ALCANTARILLADO"
+            value={informe.para_cargo}
+            onChange={(e) => setInforme({ ...informe, para_cargo: e.target.value })}
+            onBlur={(e) => guardarCampoInforme('para_cargo', e.target.value)}
+          />
+        </div>
+      </div>
+      <div id="campo-asunto" className="tarjeta p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="etiqueta mb-0">Asunto</label>
+          <span className="text-[10px] text-slate-500 bg-panel-700 px-2 py-1 rounded-full">↺ Copiado de la semana pasada</span>
+        </div>
+        <textarea
+          className={`campo ${campoTieneError('asunto') ? claseError : ''}`}
+          rows={2}
+          value={informe.asunto}
+          onChange={(e) => setInforme({ ...informe, asunto: e.target.value })}
+          onBlur={(e) => guardarCampoInforme('asunto', e.target.value)}
+        />
       </div>
 
       {/* Conclusiones y recomendaciones */}
