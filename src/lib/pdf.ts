@@ -208,9 +208,9 @@ function parrafoTieneConEstado(label: string, equipo?: EquipoReporte | null): an
   return parrafoEquipo(label, equipo);
 }
 
-/** Línea horizontal fina para separar visualmente cada subcategoría en el PDF (cerramiento,
- * jardineras, patios de maniobras — ver bloqueVisita). Los equipos/bombas ya no la usan: ahora
- * cada uno queda en su propia caja con borde (ver cajaCategoria), que ya los separa. */
+/** Línea horizontal fina para separar visualmente cada día en el Informe Semanal (bloqueDiaInforme).
+ * En el Reporte consolidado ya no se usa: ahí cada categoría queda en su propia caja con borde
+ * (ver cajaCategoria), que ya las separa. */
 function lineaDivisoria(): any {
   return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#E2E8F0' }], margin: [0, 2, 0, 2] };
 }
@@ -385,25 +385,23 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
       ? empacarCajas(cajasBombas)
       : { text: 'Sin registro de bombas en esta visita.', italics: true, fontSize: 9, color: '#5B7184', margin: [0, 0, 0, 3] },
     bloqueEquipos(v),
-    v.cerramiento_observaciones
-      ? { text: [{ text: 'Cerramiento y seguridad: ', bold: true }, v.cerramiento_observaciones], margin: [0, 0, 0, 2] }
-      : null,
-    bloqueFotos(fotosDeSeccion(v.fotos, 'cerramiento_seguridad')),
-    lineaDivisoria(),
-    v.jardineras_observaciones
-      ? { text: [{ text: 'Jardineras y áreas verdes: ', bold: true }, v.jardineras_observaciones], margin: [0, 0, 0, 2] }
-      : null,
-    bloqueFotos(fotosDeSeccion(v.fotos, 'jardineras')),
-    lineaDivisoria(),
-    v.patios_maniobras_observaciones
-      ? { text: [{ text: 'Patios de maniobras: ', bold: true }, v.patios_maniobras_observaciones], margin: [0, 0, 0, 2] }
-      : null,
-    bloqueFotos(fotosDeSeccion(v.fotos, 'patios_maniobras')),
-    lineaDivisoria(),
-    v.observaciones_generales
-      ? { text: [{ text: 'Observaciones generales: ', bold: true }, v.observaciones_generales], margin: [0, 0, 0, 2] }
-      : null,
-    bloqueFotos(fotosDeSeccion(v.fotos, null)),
+    ...empacarCajas(
+      (
+        [
+          { label: 'Cerramiento y seguridad', texto: v.cerramiento_observaciones, clave: 'cerramiento_seguridad' },
+          { label: 'Jardineras y áreas verdes', texto: v.jardineras_observaciones, clave: 'jardineras' },
+          { label: 'Patios de maniobras', texto: v.patios_maniobras_observaciones, clave: 'patios_maniobras' },
+          { label: 'Observaciones generales', texto: v.observaciones_generales, clave: null },
+        ] as Array<{ label: string; texto?: string | null; clave: string | null }>
+      )
+        .filter((it) => it.texto)
+        .map((it) => {
+          const fotos = fotosDeSeccion(v.fotos, it.clave);
+          const ancho = anchoCategoria(fotos.length);
+          const parrafo = { text: [{ text: `${it.label}: `, bold: true, color: COLOR_TITULO_CATEGORIA }, it.texto], margin: [0, 0, 0, 2] };
+          return { ancho, contenido: cajaCategoria([parrafo, bloqueFotos(fotos)], ancho) };
+        }),
+    ),
     { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 2, 0, 6] },
   ].filter(Boolean);
 }
