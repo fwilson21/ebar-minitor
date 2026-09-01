@@ -369,7 +369,7 @@ export function InformeSemanal() {
       case 'numero_informe': return !(informe.numero_informe ?? '').trim();
     }
   }
-  const claseError = 'border-gauge-danger ring-1 ring-gauge-danger/40';
+  const claseError = 'border-gauge-danger ring-1 ring-gauge-danger/40 bg-gauge-danger/10';
 
   // Antes de descargar: primero el aviso de días sin aprobar que ya existía (se revisa primero,
   // como siempre) y recién si ese ya está resuelto (o se saltó con "Descargar de todas formas"),
