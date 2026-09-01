@@ -48,8 +48,10 @@ type AsignacionBajoMinimo = {
 type TipoMetrica = 'visitas' | 'sin_visitar' | 'equipos_alerta' | 'problemas' | 'voltaje';
 /** Fila del detalle de una métrica: la estación + cuántas veces contribuyó al número de la
  * tarjeta (ej. 2 visitas en la misma EBAR) — 1 cuando la métrica ya es "una fila por estación"
- * de por sí (sin_visitar, problemas). */
-type FilaDetalleMetrica = EstacionSimple & { count: number };
+ * de por sí (sin_visitar, problemas). `operador_id`/`operador_nombre` solo vienen completos en
+ * "visitas" (única métrica que se agrupa por operador en vez de zona+tipo — ver
+ * `agruparPorOperador`); en las otras 4 quedan undefined y no se usan. */
+type FilaDetalleMetrica = EstacionSimple & { count: number; operador_id?: string; operador_nombre?: string };
 
 const TITULOS_METRICA: Record<TipoMetrica, string> = {
   visitas: 'Visitas registradas',
@@ -360,17 +362,32 @@ export function Dashboard() {
     return filas;
   }
 
-  // "Visitas registradas": reutiliza el mismo rango de fecha que el resto del Dashboard — una
-  // fila por estación, con cuántas visitas tuvo hoy (puede ser más de 1).
+  // "Visitas registradas": reutiliza el mismo rango de fecha que el resto del Dashboard — a
+  // diferencia de las otras 4 métricas (una fila por estación vía contarPorEstacion), acá se
+  // agrupa por operador+estación (el usuario pidió ver esta lista clasificada por operador, no
+  // por zona/tipo) — si 2 operadores distintos visitaron la misma EBAR hoy, salen como 2 filas
+  // separadas, una en cada grupo de operador, cada una con su propio conteo.
   async function construirDetalleVisitas(): Promise<FilaDetalleMetrica[]> {
     let query = supabase
       .from('visitas')
-      .select('estacion_id')
+      .select('estacion_id, operador_id, usuarios ( nombre_completo )')
       .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
       .lte('fecha_hora_llegada', `${fecha}T23:59:59`);
     if (usuario?.rol === 'operador') query = query.eq('operador_id', usuario.id);
     const { data } = await query;
-    return contarPorEstacion(((data ?? []) as { estacion_id: string }[]).map((v) => v.estacion_id));
+    const conteo = new Map<string, { estacion_id: string; operador_id: string; operador_nombre: string; count: number }>();
+    for (const v of (data ?? []) as any[]) {
+      const clave = `${v.operador_id}::${v.estacion_id}`;
+      const actual = conteo.get(clave);
+      if (actual) actual.count++;
+      else conteo.set(clave, { estacion_id: v.estacion_id, operador_id: v.operador_id, operador_nombre: v.usuarios?.nombre_completo ?? '-', count: 1 });
+    }
+    const filas: FilaDetalleMetrica[] = [];
+    for (const { estacion_id, operador_id, operador_nombre, count } of conteo.values()) {
+      const estacion = estacionesPorId.get(estacion_id);
+      if (estacion) filas.push({ ...estacion, count, operador_id, operador_nombre });
+    }
+    return filas;
   }
 
   // "Equipos con falla o por mantener": mismo criterio que rpc_dashboard_resumen
@@ -587,6 +604,7 @@ export function Dashboard() {
         <ModalListaEstaciones
           titulo={TITULOS_METRICA[modalMetrica]}
           subtitulo={tituloFecha}
+          tipoMetrica={modalMetrica}
           filas={detalleMetrica}
           cargando={cargandoDetalle}
           esAdmin={esAdministrador}
@@ -960,12 +978,46 @@ function Metrica({
   );
 }
 
+/** Una fila de ModalListaEstaciones (mismo aspecto sea cual sea el agrupado — por zona+tipo o por
+ * operador) — enlace directo a la ficha de la estación, con el conteo de veces que apareció. */
+function FilaEstacionDetalle({ estacion: e }: { estacion: FilaDetalleMetrica }) {
+  return (
+    <Link to={`/estaciones/${e.id}`} className="tarjeta p-3 flex items-center justify-between gap-2 hover:border-gauge-ok/50 transition">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
+        <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {e.count > 1 && <span className="text-xs text-slate-500">×{e.count}</span>}
+        <span className="text-xs text-gauge-ok">Ver →</span>
+      </div>
+    </Link>
+  );
+}
+
+/** Una fila por operador con las EBAR que visitó (ordenadas por nombre), ordenados por nombre de
+ * operador — usado solo por "Visitas registradas" (ver comentario en ModalListaEstaciones). */
+function agruparPorOperador(filas: FilaDetalleMetrica[]): { operador_id: string; operador_nombre: string; estaciones: FilaDetalleMetrica[] }[] {
+  const mapa = new Map<string, { operador_id: string; operador_nombre: string; estaciones: FilaDetalleMetrica[] }>();
+  for (const f of filas) {
+    const id = f.operador_id ?? '-';
+    if (!mapa.has(id)) mapa.set(id, { operador_id: id, operador_nombre: f.operador_nombre ?? '-', estaciones: [] });
+    mapa.get(id)!.estaciones.push(f);
+  }
+  return [...mapa.values()]
+    .map((g) => ({ ...g, estaciones: [...g.estaciones].sort((a, b) => a.nombre.localeCompare(b.nombre)) }))
+    .sort((a, b) => a.operador_nombre.localeCompare(b.operador_nombre));
+}
+
 /** Se abre al tocar cualquiera de las 5 tarjetas de "Inicio" — lista las EBAR que componen ese
- * número, agrupadas por zona+tipo (mismo criterio y estilo que el resto de la app), cada una
- * como enlace directo a su ficha. Redimensionable por el administrador (ver ManijaRedimension). */
+ * número. "Visitas registradas" se agrupa por operador (pedido explícito del usuario, para ver de
+ * un vistazo qué hizo cada quien); las otras 4 siguen agrupadas por zona+tipo (mismo criterio y
+ * estilo que el resto de la app) — cada estación como enlace directo a su ficha. Redimensionable
+ * por el administrador (ver ManijaRedimension). */
 function ModalListaEstaciones({
   titulo,
   subtitulo,
+  tipoMetrica,
   filas,
   cargando,
   esAdmin,
@@ -975,6 +1027,7 @@ function ModalListaEstaciones({
 }: {
   titulo: string;
   subtitulo: string;
+  tipoMetrica: TipoMetrica | null;
   filas: FilaDetalleMetrica[] | null;
   cargando: boolean;
   esAdmin: boolean;
@@ -983,7 +1036,9 @@ function ModalListaEstaciones({
   onCerrar: () => void;
 }) {
   const [tam, setTam] = useState(tamano);
-  const grupos = useMemo(() => agruparPorZonaYTipo(filas ?? []), [filas]);
+  const agruparPorOperadorAqui = tipoMetrica === 'visitas';
+  const gruposOperador = useMemo(() => (agruparPorOperadorAqui ? agruparPorOperador(filas ?? []) : []), [filas, agruparPorOperadorAqui]);
+  const gruposZona = useMemo(() => (agruparPorOperadorAqui ? [] : agruparPorZonaYTipo(filas ?? [])), [filas, agruparPorOperadorAqui]);
 
   return (
     <>
@@ -1007,29 +1062,31 @@ function ModalListaEstaciones({
             <p className="text-sm text-slate-600">Cargando…</p>
           ) : !filas || filas.length === 0 ? (
             <p className="text-sm text-slate-500">No hay ninguna EBAR con esta condición en esta fecha.</p>
+          ) : agruparPorOperadorAqui ? (
+            <div className="space-y-4">
+              {gruposOperador.map(({ operador_id, operador_nombre, estaciones }) => (
+                <div key={operador_id}>
+                  <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
+                    {operador_nombre} ({estaciones.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {estaciones.map((e) => (
+                      <FilaEstacionDetalle key={e.id} estacion={e} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="space-y-4">
-              {grupos.map(({ zona, tipo, estaciones }) => (
+              {gruposZona.map(({ zona, tipo, estaciones }) => (
                 <div key={`${zona}-${tipo}`}>
                   <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
                     {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo} ({estaciones.length})
                   </p>
                   <div className="space-y-1.5">
                     {estaciones.map((e) => (
-                      <Link
-                        key={e.id}
-                        to={`/estaciones/${e.id}`}
-                        className="tarjeta p-3 flex items-center justify-between gap-2 hover:border-gauge-ok/50 transition"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
-                          <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {e.count > 1 && <span className="text-xs text-slate-500">×{e.count}</span>}
-                          <span className="text-xs text-gauge-ok">Ver →</span>
-                        </div>
-                      </Link>
+                      <FilaEstacionDetalle key={e.id} estacion={e} />
                     ))}
                   </div>
                 </div>

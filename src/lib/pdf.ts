@@ -306,7 +306,9 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
   return [
     cabecera,
     { text: 'Registro de bombas', style: 'subtitulo', margin: [0, 4, 0, 4] },
-    bombasBloques,
+    v.bombas.length > 0
+      ? bombasBloques
+      : { text: 'Sin registro de bombas en esta visita.', italics: true, fontSize: 9, color: '#5B7184', margin: [0, 0, 0, 6] },
     bloqueEquipos(v),
     v.cerramiento_observaciones
       ? { text: [{ text: 'Cerramiento y seguridad: ', bold: true }, v.cerramiento_observaciones], margin: [0, 0, 0, 4] }
