@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { urlMiniaturaDrive } from '../lib/fotos';
 import { FotoLightbox } from '../components/FotoLightbox';
@@ -224,10 +224,6 @@ export function VisitaDetalle() {
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-4">
-      <Link to={`/estaciones/${estacionId}`} className="text-sm text-gauge-ok hover:underline">
-        ← Volver
-      </Link>
-
       <div className="tarjeta p-4 space-y-1">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Detalle de visita</p>
         <h1 className="titulo-pantalla">{estacion?.nombre}</h1>
