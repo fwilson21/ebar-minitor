@@ -7,7 +7,7 @@ import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
-import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
+import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, codigoYNombre } from '../lib/agruparEstaciones';
 
 function dentroDelRango(fecha: string, desde: string, hasta: string): boolean {
   return fecha >= desde && fecha <= hasta;
@@ -179,7 +179,7 @@ export function Asignaciones() {
 
   function nombreEstacion(estacionId: string): string {
     const e = estaciones.find((x) => x.id === estacionId);
-    return e ? `${e.codigo} — ${e.nombre}` : estacionId;
+    return e ? codigoYNombre(e) : estacionId;
   }
 
   function codigoEstacion(estacionId: string): string {

@@ -14,6 +14,12 @@ export const ETIQUETA_TIPO: Record<string, string> = {
   linea_conduccion: 'Línea de conducción',
 };
 
+/** "EBAR-009 — Nombre propio" si son distintos; si coinciden (la mayoría de las EBAR tienen
+ * nombre = código a propósito, ver migración 0041), solo el nombre una vez, sin repetirlo. */
+export function codigoYNombre(estacion: { codigo: string; nombre: string }): string {
+  return estacion.codigo === estacion.nombre ? estacion.nombre : `${estacion.codigo} — ${estacion.nombre}`;
+}
+
 /** Calles si la estación las tiene registradas; si no, su parroquia — para mostrar la ubicación
  * justo después del nombre/código de la EBAR (pantallas y PDF). Las estaciones rurales no siempre
  * tienen una dirección de calles y se identifican por su parroquia en su lugar. */

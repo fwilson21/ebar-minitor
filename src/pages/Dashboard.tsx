@@ -1009,7 +1009,11 @@ function FilaEstacionDetalle({ estacion: e }: { estacion: FilaDetalleMetrica }) 
     <Link to={`/estaciones/${e.id}`} className="tarjeta p-3 flex items-center justify-between gap-2 hover:border-gauge-ok/50 transition">
       <div className="min-w-0">
         <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
-        <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
+        {/* Muchas EBAR tienen nombre = código a propósito (ver migración 0041) — repetirlo acá no
+            agrega nada, solo se muestra cuando de verdad son distintos (ej. LC-001). */}
+        {e.codigo !== e.nombre && (
+          <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
+        )}
         {ubicacion && <p className="text-xs text-slate-500 truncate">{ubicacion}</p>}
       </div>
       <div className="flex flex-col items-end gap-1 flex-shrink-0">

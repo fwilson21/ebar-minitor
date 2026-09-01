@@ -3,6 +3,7 @@ import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { MEMBRETE_FONDO_BASE64 } from '../assets/membrete/membreteData';
 import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, separarLabelVineta, type BloqueInformePdf } from './informeSemanal';
+import { codigoYNombre } from './agruparEstaciones';
 
 (pdfMake as any).vfs = (pdfFonts as any).vfs;
 
@@ -246,7 +247,7 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
   const esLineaConduccion = v.estacion_tipo === 'linea_conduccion';
 
   const filaTitulo = [
-    { text: `${v.estacion_codigo} — ${v.estacion_nombre}`, style: 'estacionTitulo', colSpan: 2 },
+    { text: codigoYNombre({ codigo: v.estacion_codigo, nombre: v.estacion_nombre }), style: 'estacionTitulo', colSpan: 2 },
     {},
   ];
   const filaUbicacion = v.estacion_ubicacion ? [['Ubicación', v.estacion_ubicacion]] : [];

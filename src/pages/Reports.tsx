@@ -7,6 +7,7 @@ import { abrirBlob, descargarBlob, generarReporteVisitas, type VisitaParaReporte
 import { incrustarFotosVisitas } from '../lib/fotos';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
 import type { EstacionEbar, Usuario } from '../lib/types';
+import { codigoYNombre } from '../lib/agruparEstaciones';
 import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
@@ -146,7 +147,7 @@ export function Reports() {
       const sufijoOperador = esAdmin && operadorId ? ` — ${operadorNombre}` : '';
       const sufijoEstacion =
         estacionesElegidas.length === 1
-          ? ` — ${estacionesElegidas[0].codigo} ${estacionesElegidas[0].nombre}`
+          ? ` — ${codigoYNombre(estacionesElegidas[0])}`
           : estacionesElegidas.length > 1
             ? ` — ${estacionesElegidas.length} estaciones`
             : '';
@@ -570,7 +571,7 @@ function SelectorEstaciones({
                             checked={modoTodas || seleccionadas!.has(e.id)}
                             onChange={() => alternarEstacion(e.id)}
                           />
-                          {e.codigo} — {e.nombre}
+                          {codigoYNombre(e)}
                         </label>
                       ))}
                     </div>
