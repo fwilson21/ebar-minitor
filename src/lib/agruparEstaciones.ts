@@ -14,6 +14,13 @@ export const ETIQUETA_TIPO: Record<string, string> = {
   linea_conduccion: 'Línea de conducción',
 };
 
+/** Calles si la estación las tiene registradas; si no, su parroquia — para mostrar la ubicación
+ * justo después del nombre/código de la EBAR (pantallas y PDF). Las estaciones rurales no siempre
+ * tienen una dirección de calles y se identifican por su parroquia en su lugar. */
+export function direccionOParroquia(estacion: { direccion?: string | null; parroquia?: string | null }): string | null {
+  return estacion.direccion?.trim() || estacion.parroquia?.trim() || null;
+}
+
 function comparar(a: { zona: string; tipo: string }, b: { zona: string; tipo: string }): number {
   return (ORDEN_ZONA[a.zona] ?? 9) - (ORDEN_ZONA[b.zona] ?? 9) || (ORDEN_TIPO[a.tipo] ?? 9) - (ORDEN_TIPO[b.tipo] ?? 9);
 }

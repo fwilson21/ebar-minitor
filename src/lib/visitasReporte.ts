@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { urlMiniaturaDrive } from './fotos';
+import { direccionOParroquia } from './agruparEstaciones';
 import type { VisitaParaReporte } from './pdf';
 
 export const SELECT_VISITA_REPORTE = `id, fecha_hora_llegada, fecha_hora_salida, estado_estacion, nivel_tanque,
@@ -8,7 +9,7 @@ export const SELECT_VISITA_REPORTE = `id, fecha_hora_llegada, fecha_hora_salida,
    camara_rejilla, camara_valvula_compuerta, tablero_distribucion, variador, descarga_emergencia,
    tuberia_400_valvulas_aire, tuberia_400_uniones_elastomericas,
    tuberia_600_valvulas_aire, tuberia_600_uniones_elastomericas,
-   estaciones_ebar ( nombre, codigo, zona, tipo ),
+   estaciones_ebar ( nombre, codigo, zona, tipo, direccion, parroquia ),
    usuarios ( nombre_completo, firma_url ),
    registros_bombas ( numero_bomba, estado, voltaje, amperaje, horas_operacion_acumuladas, observaciones, voltaje_fuera_rango ),
    fotos ( url_publica, drive_file_id, descripcion )`;
@@ -17,6 +18,7 @@ export function mapearVisitaFila(v: any): VisitaParaReporte {
   return {
     estacion_nombre: v.estaciones_ebar?.nombre ?? '-',
     estacion_codigo: v.estaciones_ebar?.codigo ?? '-',
+    estacion_ubicacion: direccionOParroquia(v.estaciones_ebar ?? {}),
     estacion_tipo: v.estaciones_ebar?.tipo ?? 'ebar',
     zona: v.estaciones_ebar?.zona ?? '-',
     fecha_hora_llegada: v.fecha_hora_llegada,

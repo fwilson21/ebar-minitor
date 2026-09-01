@@ -261,6 +261,7 @@ function FormularioNuevaEstacion() {
   const [zona, setZona] = useState<ZonaTipo>('urbana');
   const [tipo, setTipo] = useState<TipoEstacion>('ebar');
   const [direccion, setDireccion] = useState('');
+  const [parroquia, setParroquia] = useState('');
   const [latitud, setLatitud] = useState('');
   const [longitud, setLongitud] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -278,6 +279,7 @@ function FormularioNuevaEstacion() {
         zona,
         tipo,
         direccion: direccion.trim() || null,
+        parroquia: parroquia.trim() || null,
         latitud: latitud ? Number(latitud) : null,
         longitud: longitud ? Number(longitud) : null,
         descripcion: descripcion.trim() || null,
@@ -291,6 +293,7 @@ function FormularioNuevaEstacion() {
       setCodigo('');
       setNombre('');
       setDireccion('');
+      setParroquia('');
       setLatitud('');
       setLongitud('');
       setDescripcion('');
@@ -343,8 +346,13 @@ function FormularioNuevaEstacion() {
       </div>
 
       <div>
-        <label className="etiqueta">Dirección (opcional)</label>
+        <label className="etiqueta">Dirección / calles (opcional)</label>
         <input className="campo" value={direccion} onChange={(e) => setDireccion(e.target.value)} />
+      </div>
+
+      <div>
+        <label className="etiqueta">Parroquia (opcional — se usa si no hay calles)</label>
+        <input className="campo" value={parroquia} onChange={(e) => setParroquia(e.target.value)} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">

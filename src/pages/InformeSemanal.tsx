@@ -1015,7 +1015,10 @@ function BloqueEditor({
   return (
     <div className="rounded-lg border border-panel-600 p-3 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap text-sm">
-        <span className="font-medium text-slate-800">🏭 {bloque.estacion_nombre}</span>
+        <span className="font-medium text-slate-800">
+          🏭 {bloque.estacion_nombre}
+          {bloque.estacion_ubicacion && <span className="text-slate-500 font-normal"> — {bloque.estacion_ubicacion}</span>}
+        </span>
         {(bloque.hora_inicio || bloque.hora_fin) && (
           <span className="text-xs text-slate-500">
             {bloque.hora_inicio ?? '—'} – {bloque.hora_fin ?? '—'}

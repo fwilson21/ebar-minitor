@@ -16,6 +16,7 @@ export interface EquipoReporte {
 export interface VisitaParaReporte {
   estacion_nombre: string;
   estacion_codigo: string;
+  estacion_ubicacion?: string | null;
   estacion_tipo?: string;
   zona: string;
   fecha_hora_llegada: string;
@@ -244,12 +245,16 @@ function bloqueTuberias(v: VisitaParaReporte): any {
 function bloqueVisita(v: VisitaParaReporte): any[] {
   const esLineaConduccion = v.estacion_tipo === 'linea_conduccion';
 
+  const filaTitulo = [
+    { text: `${v.estacion_codigo} — ${v.estacion_nombre}`, style: 'estacionTitulo', colSpan: 2 },
+    {},
+  ];
+  const filaUbicacion = v.estacion_ubicacion ? [['Ubicación', v.estacion_ubicacion]] : [];
+
   const encabezadoTabla = esLineaConduccion
     ? [
-        [
-          { text: `${v.estacion_codigo} — ${v.estacion_nombre}`, style: 'estacionTitulo', colSpan: 2 },
-          {},
-        ],
+        filaTitulo,
+        ...filaUbicacion,
         ['Zona', v.zona],
         ['Llegada', formatFechaHora(v.fecha_hora_llegada)],
         ['Salida', v.fecha_hora_salida ? formatFechaHora(v.fecha_hora_salida) : '-'],
@@ -257,10 +262,8 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
         ['Estado general', ESTADO_LABEL[v.estado_estacion] ?? v.estado_estacion],
       ]
     : [
-        [
-          { text: `${v.estacion_codigo} — ${v.estacion_nombre}`, style: 'estacionTitulo', colSpan: 2 },
-          {},
-        ],
+        filaTitulo,
+        ...filaUbicacion,
         ['Zona', v.zona],
         ['Llegada', formatFechaHora(v.fecha_hora_llegada)],
         ['Salida', v.fecha_hora_salida ? formatFechaHora(v.fecha_hora_salida) : '-'],
@@ -806,8 +809,9 @@ function filasFotosInforme(fotos: { url: string; descripcion: string | null }[])
 
 function bloqueOperadorInforme(b: BloqueInformePdf): any[] {
   const horario = b.hora_inicio || b.hora_fin ? ` (${b.hora_inicio ?? '—'} – ${b.hora_fin ?? '—'})` : '';
+  const ubicacion = b.estacion_ubicacion ? ` — ${b.estacion_ubicacion}` : '';
   return [
-    { text: `${b.estacion_nombre}${horario}`, bold: true, fontSize: 10, margin: [0, 5, 0, 1] },
+    { text: `${b.estacion_nombre}${ubicacion}${horario}`, bold: true, fontSize: 10, margin: [0, 5, 0, 1] },
     { text: [{ text: 'Responsable: ', bold: true }, b.responsable], fontSize: 9, margin: [0, 0, 0, 3] },
     { ul: b.vinetas.length ? b.vinetas : ['Sin observaciones registradas.'], fontSize: 9, margin: [0, 0, 0, 2] },
     ...filasFotosInforme(b.fotos),

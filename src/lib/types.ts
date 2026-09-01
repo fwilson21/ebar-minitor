@@ -45,6 +45,8 @@ export interface EstacionEbar {
   nombre: string;
   zona: ZonaTipo;
   direccion?: string | null;
+  /** Parroquia — se muestra como ubicación cuando la estación no tiene calles registradas en `direccion` (típico de las EBAR rurales). */
+  parroquia?: string | null;
   latitud?: number | null;
   longitud?: number | null;
   descripcion?: string | null;

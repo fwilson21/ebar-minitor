@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
 import type { Bomba, EstacionEbar } from '../lib/types';
+import { direccionOParroquia } from '../lib/agruparEstaciones';
 import { EstadoBadge } from '../components/EstadoBadge';
 import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
 import { abrirBlob, descargarBlob, generarReporteVisitas } from '../lib/pdf';
@@ -274,7 +275,7 @@ export function StationDetail() {
           </div>
           <EstadoBadge estado={estacion.estado_actual} />
         </div>
-        <p className="text-sm text-slate-600 mt-2">{estacion.direccion}</p>
+        <p className="text-sm text-slate-600 mt-2">{direccionOParroquia(estacion)}</p>
         {estacion.descripcion && <p className="text-sm text-slate-500 mt-1">{estacion.descripcion}</p>}
         {estacion.latitud && estacion.longitud && (
           <a

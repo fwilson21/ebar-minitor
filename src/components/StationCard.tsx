@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { EstacionEbar } from '../lib/types';
+import { direccionOParroquia } from '../lib/agruparEstaciones';
 import { EstadoBadge } from './EstadoBadge';
 
 function tiempoRelativo(iso: string): string {
@@ -30,7 +31,7 @@ export function StationCard({ estacion, ultimaVisita }: { estacion: EstacionEbar
       </div>
       <div className="flex-1 min-w-0">
         <h3 className="font-semibold text-slate-900 truncate">{estacion.nombre}</h3>
-        <p className="text-sm text-slate-600 truncate">{estacion.direccion ?? 'Sin dirección registrada'}</p>
+        <p className="text-sm text-slate-600 truncate">{direccionOParroquia(estacion) ?? 'Sin ubicación registrada'}</p>
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-2">
             <EstadoBadge estado={estacion.estado_actual} />
