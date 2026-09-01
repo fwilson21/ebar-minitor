@@ -158,11 +158,15 @@ function encabezado(titulo: string): any {
 }
 
 /** Bloque en formato párrafo: título del elemento en negrita y una línea por dato (Estado, Observaciones, etc).
- * Márgenes achicados a pedido del usuario (menos hojas al imprimir en A4). */
+ * Márgenes achicados a pedido del usuario (menos hojas al imprimir en A4). El título usa un color
+ * propio (no el negro/gris del resto del texto) y letra más grande — pedido explícito para que se
+ * note de un vistazo a qué categoría corresponde cada bloque, sobre todo ahora que varias caben en
+ * la misma fila (ver cajaCategoria/empacarCajas). */
+const COLOR_TITULO_CATEGORIA = '#1D4ED8';
 function parrafoElemento(titulo: string, lineas: any[]): any {
   return {
     stack: [
-      { text: titulo, bold: true, fontSize: 9.5, margin: [0, 0, 0, 2] },
+      { text: titulo, bold: true, fontSize: 10.5, color: COLOR_TITULO_CATEGORIA, margin: [0, 0, 0, 2] },
       ...lineas.map((linea) => ({ text: linea, margin: [0, 0, 0, 0.5] })),
     ],
     margin: [0, 1, 0, 2],
@@ -204,9 +208,72 @@ function parrafoTieneConEstado(label: string, equipo?: EquipoReporte | null): an
   return parrafoEquipo(label, equipo);
 }
 
-/** Línea horizontal fina para separar visualmente cada subcategoría en el PDF. */
+/** Línea horizontal fina para separar visualmente cada subcategoría en el PDF (cerramiento,
+ * jardineras, patios de maniobras — ver bloqueVisita). Los equipos/bombas ya no la usan: ahora
+ * cada uno queda en su propia caja con borde (ver cajaCategoria), que ya los separa. */
 function lineaDivisoria(): any {
   return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#E2E8F0' }], margin: [0, 2, 0, 2] };
+}
+
+const ANCHO_CONTENIDO = 515;
+const GAP_CAJAS = 8;
+
+/** Envuelve una categoría (párrafo + sus fotos) en una caja con borde fino — para que varias
+ * categorías compactas (pocas fotos) puedan compartir la misma fila sin mezclarse visualmente
+ * (pedido explícito del usuario, con captura de "Válvulas de compuerta/check/de aire" con 1 foto
+ * cada una, apiladas ocupando 3 hojas de espacio de sobra). El truco de la tabla de 1x1 es la
+ * forma estándar de pdfmake para ponerle borde a contenido cualquiera (no hay un "div con borde"
+ * directo). */
+function cajaCategoria(contenido: any[], ancho: number): any {
+  return {
+    width: ancho,
+    table: { widths: ['*'], body: [[{ stack: contenido.filter(Boolean), margin: [6, 5, 6, 5] }]] },
+    layout: {
+      hLineWidth: () => 0.75,
+      vLineWidth: () => 0.75,
+      hLineColor: () => '#D8E0E6',
+      vLineColor: () => '#D8E0E6',
+      paddingLeft: () => 0,
+      paddingRight: () => 0,
+      paddingTop: () => 0,
+      paddingBottom: () => 0,
+    },
+  };
+}
+
+/** Ancho de la caja según cuántas fotos tiene la categoría: con 3 o más ocupa toda la fila para
+ * ella sola (se ve igual que antes); con 0-2 queda angosta, lista para compartir fila con otras
+ * categorías compactas via empacarCajas(). */
+function anchoCategoria(numFotos: number): number {
+  if (numFotos >= 3) return ANCHO_CONTENIDO;
+  if (numFotos === 2) return 260;
+  if (numFotos === 1) return 150;
+  return 160;
+}
+
+/** Acomoda una lista de cajas en filas —va agregando cajas a la fila actual mientras entren en el
+ * ancho de la página, y arranca una fila nueva apenas la próxima ya no entra. Así 2 o 3 categorías
+ * con pocas fotos comparten la misma línea en vez de ocupar una fila completa cada una. */
+function empacarCajas(cajas: { ancho: number; contenido: any }[]): any[] {
+  const filas: { ancho: number; contenido: any }[][] = [];
+  let filaActual: { ancho: number; contenido: any }[] = [];
+  let anchoFila = 0;
+  for (const caja of cajas) {
+    const espacioNecesario = caja.ancho + (filaActual.length > 0 ? GAP_CAJAS : 0);
+    if (filaActual.length > 0 && anchoFila + espacioNecesario > ANCHO_CONTENIDO) {
+      filas.push(filaActual);
+      filaActual = [];
+      anchoFila = 0;
+    }
+    filaActual.push(caja);
+    anchoFila += caja.ancho + (filaActual.length > 1 ? GAP_CAJAS : 0);
+  }
+  if (filaActual.length > 0) filas.push(filaActual);
+  return filas.map((fila) => ({
+    columns: fila.map((c) => c.contenido),
+    columnGap: GAP_CAJAS,
+    margin: [0, 0, 0, 6],
+  }));
 }
 
 function bloqueEquipos(v: VisitaParaReporte): any {
@@ -223,14 +290,13 @@ function bloqueEquipos(v: VisitaParaReporte): any {
     { clave: 'descarga_emergencia', parrafo: parrafoTiene('Descarga de emergencia', v.descarga_emergencia) },
   ];
 
-  return [
-    { text: 'Estado de equipos', style: 'subtitulo', margin: [0, 2, 0, 2] },
-    ...items.flatMap(({ clave, parrafo }) => [
-      parrafo,
-      bloqueFotos(fotosDeSeccion(v.fotos, clave)),
-      lineaDivisoria(),
-    ]),
-  ].filter(Boolean);
+  const cajas = items.map(({ clave, parrafo }) => {
+    const fotos = fotosDeSeccion(v.fotos, clave);
+    const ancho = anchoCategoria(fotos.length);
+    return { ancho, contenido: cajaCategoria([parrafo, bloqueFotos(fotos)], ancho) };
+  });
+
+  return [{ text: 'Estado de equipos', style: 'subtitulo', margin: [0, 2, 0, 4] }, ...empacarCajas(cajas)];
 }
 
 function bloqueTuberias(v: VisitaParaReporte): any {
@@ -241,14 +307,13 @@ function bloqueTuberias(v: VisitaParaReporte): any {
     { clave: 'tuberia_600_uniones_elastomericas', parrafo: parrafoEquipo('600mm — Uniones elastoméricas', v.tuberia_600_uniones_elastomericas) },
   ];
 
-  return [
-    { text: 'Tuberías de impulsión', style: 'subtitulo', margin: [0, 2, 0, 2] },
-    ...items.flatMap(({ clave, parrafo }) => [
-      parrafo,
-      bloqueFotos(fotosDeSeccion(v.fotos, clave)),
-      lineaDivisoria(),
-    ]),
-  ].filter(Boolean);
+  const cajas = items.map(({ clave, parrafo }) => {
+    const fotos = fotosDeSeccion(v.fotos, clave);
+    const ancho = anchoCategoria(fotos.length);
+    return { ancho, contenido: cajaCategoria([parrafo, bloqueFotos(fotos)], ancho) };
+  });
+
+  return [{ text: 'Tuberías de impulsión', style: 'subtitulo', margin: [0, 2, 0, 4] }, ...empacarCajas(cajas)];
 }
 
 function bloqueVisita(v: VisitaParaReporte): any[] {
@@ -295,8 +360,10 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
     ].filter(Boolean);
   }
 
-  const bombasBloques = v.bombas.flatMap((b) => [
-    parrafoElemento(`Bomba ${b.numero_bomba}`, [
+  const cajasBombas = v.bombas.map((b) => {
+    const fotos = fotosDeSeccion(v.fotos, `bomba_${b.numero_bomba}`);
+    const ancho = anchoCategoria(fotos.length);
+    const parrafo = parrafoElemento(`Bomba ${b.numero_bomba}`, [
       [{ text: 'Estado: ', bold: true }, ESTADO_BOMBA_LABEL[b.estado] ?? b.estado],
       [
         { text: 'Voltaje: ', bold: true },
@@ -307,16 +374,15 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
       [{ text: 'Amperaje: ', bold: true }, `${b.amperaje ?? '-'} A`],
       [{ text: 'Horas acumuladas: ', bold: true }, `${b.horas_operacion_acumuladas ?? '-'}`],
       [{ text: 'Observaciones: ', bold: true }, b.observaciones || '-'],
-    ]),
-    bloqueFotos(fotosDeSeccion(v.fotos, `bomba_${b.numero_bomba}`)),
-    lineaDivisoria(),
-  ]);
+    ]);
+    return { ancho, contenido: cajaCategoria([parrafo, bloqueFotos(fotos)], ancho) };
+  });
 
   return [
     cabecera,
-    { text: 'Registro de bombas', style: 'subtitulo', margin: [0, 2, 0, 2] },
+    { text: 'Registro de bombas', style: 'subtitulo', margin: [0, 2, 0, 4] },
     v.bombas.length > 0
-      ? bombasBloques
+      ? empacarCajas(cajasBombas)
       : { text: 'Sin registro de bombas en esta visita.', italics: true, fontSize: 9, color: '#5B7184', margin: [0, 0, 0, 3] },
     bloqueEquipos(v),
     v.cerramiento_observaciones
