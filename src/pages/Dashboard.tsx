@@ -48,10 +48,18 @@ type AsignacionBajoMinimo = {
 type TipoMetrica = 'visitas' | 'sin_visitar' | 'equipos_alerta' | 'problemas' | 'voltaje';
 /** Fila del detalle de una métrica: la estación + cuántas veces contribuyó al número de la
  * tarjeta (ej. 2 visitas en la misma EBAR) — 1 cuando la métrica ya es "una fila por estación"
- * de por sí (sin_visitar, problemas). `operador_id`/`operador_nombre` solo vienen completos en
- * "visitas" (única métrica que se agrupa por operador en vez de zona+tipo — ver
- * `agruparPorOperador`); en las otras 4 quedan undefined y no se usan. */
-type FilaDetalleMetrica = EstacionSimple & { count: number; operador_id?: string; operador_nombre?: string };
+ * de por sí (sin_visitar, problemas). `operador_id`/`operador_nombre`/`llegada`/`salida` solo
+ * vienen completos en "visitas" (única métrica que se agrupa por operador en vez de zona+tipo —
+ * ver `agruparPorOperador`); en las otras 4 quedan undefined y no se usan. Con más de una visita
+ * (count > 1), `llegada` es la más temprana y `salida` la más tardía de ese operador en esa EBAR
+ * ese día — un resumen del rango, no de una visita puntual. */
+type FilaDetalleMetrica = EstacionSimple & {
+  count: number;
+  operador_id?: string;
+  operador_nombre?: string;
+  llegada?: string;
+  salida?: string | null;
+};
 
 const TITULOS_METRICA: Record<TipoMetrica, string> = {
   visitas: 'Visitas registradas',
@@ -370,22 +378,37 @@ export function Dashboard() {
   async function construirDetalleVisitas(): Promise<FilaDetalleMetrica[]> {
     let query = supabase
       .from('visitas')
-      .select('estacion_id, operador_id, usuarios ( nombre_completo )')
+      .select('estacion_id, operador_id, fecha_hora_llegada, fecha_hora_salida, usuarios ( nombre_completo )')
       .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
       .lte('fecha_hora_llegada', `${fecha}T23:59:59`);
     if (usuario?.rol === 'operador') query = query.eq('operador_id', usuario.id);
     const { data } = await query;
-    const conteo = new Map<string, { estacion_id: string; operador_id: string; operador_nombre: string; count: number }>();
+    const conteo = new Map<
+      string,
+      { estacion_id: string; operador_id: string; operador_nombre: string; count: number; llegada: string; salida: string | null }
+    >();
     for (const v of (data ?? []) as any[]) {
       const clave = `${v.operador_id}::${v.estacion_id}`;
       const actual = conteo.get(clave);
-      if (actual) actual.count++;
-      else conteo.set(clave, { estacion_id: v.estacion_id, operador_id: v.operador_id, operador_nombre: v.usuarios?.nombre_completo ?? '-', count: 1 });
+      if (actual) {
+        actual.count++;
+        if (v.fecha_hora_llegada < actual.llegada) actual.llegada = v.fecha_hora_llegada;
+        if (v.fecha_hora_salida && (!actual.salida || v.fecha_hora_salida > actual.salida)) actual.salida = v.fecha_hora_salida;
+      } else {
+        conteo.set(clave, {
+          estacion_id: v.estacion_id,
+          operador_id: v.operador_id,
+          operador_nombre: v.usuarios?.nombre_completo ?? '-',
+          count: 1,
+          llegada: v.fecha_hora_llegada,
+          salida: v.fecha_hora_salida ?? null,
+        });
+      }
     }
     const filas: FilaDetalleMetrica[] = [];
-    for (const { estacion_id, operador_id, operador_nombre, count } of conteo.values()) {
+    for (const { estacion_id, operador_id, operador_nombre, count, llegada, salida } of conteo.values()) {
       const estacion = estacionesPorId.get(estacion_id);
-      if (estacion) filas.push({ ...estacion, count, operador_id, operador_nombre });
+      if (estacion) filas.push({ ...estacion, count, operador_id, operador_nombre, llegada, salida });
     }
     return filas;
   }
@@ -989,9 +1012,22 @@ function FilaEstacionDetalle({ estacion: e }: { estacion: FilaDetalleMetrica }) 
         <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
         {ubicacion && <p className="text-xs text-slate-500 truncate">{ubicacion}</p>}
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {e.count > 1 && <span className="text-xs text-slate-500">×{e.count}</span>}
-        <span className="text-xs text-gauge-ok">Ver →</span>
+      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+        {e.llegada && (
+          <p className="text-[11px] text-slate-500 leading-tight text-right">
+            Llegada {formatFechaCorta(e.llegada)}
+            {e.salida && (
+              <>
+                <br />
+                Salida {formatFechaCorta(e.salida)}
+              </>
+            )}
+          </p>
+        )}
+        <div className="flex items-center gap-2">
+          {e.count > 1 && <span className="text-xs text-slate-500">×{e.count}</span>}
+          <span className="text-xs text-gauge-ok">Ver →</span>
+        </div>
       </div>
     </Link>
   );
