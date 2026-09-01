@@ -133,7 +133,7 @@ function bloqueFotos(fotos?: Array<{ url: string; etiqueta?: string | null }>): 
       ],
     })),
     columnGap: 8,
-    margin: [0, 4, 0, 8],
+    margin: [0, 2, 0, 4],
   };
 }
 
@@ -154,14 +154,15 @@ function encabezado(titulo: string): any {
   };
 }
 
-/** Bloque en formato párrafo: título del elemento en negrita y una línea por dato (Estado, Observaciones, etc). */
+/** Bloque en formato párrafo: título del elemento en negrita y una línea por dato (Estado, Observaciones, etc).
+ * Márgenes achicados a pedido del usuario (menos hojas al imprimir en A4). */
 function parrafoElemento(titulo: string, lineas: any[]): any {
   return {
     stack: [
-      { text: titulo, bold: true, fontSize: 10, margin: [0, 0, 0, 3] },
-      ...lineas.map((linea) => ({ text: linea, margin: [0, 0, 0, 1] })),
+      { text: titulo, bold: true, fontSize: 9.5, margin: [0, 0, 0, 2] },
+      ...lineas.map((linea) => ({ text: linea, margin: [0, 0, 0, 0.5] })),
     ],
-    margin: [0, 2, 0, 4],
+    margin: [0, 1, 0, 2],
   };
 }
 
@@ -202,7 +203,7 @@ function parrafoTieneConEstado(label: string, equipo?: EquipoReporte | null): an
 
 /** Línea horizontal fina para separar visualmente cada subcategoría en el PDF. */
 function lineaDivisoria(): any {
-  return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#E2E8F0' }], margin: [0, 4, 0, 4] };
+  return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#E2E8F0' }], margin: [0, 2, 0, 2] };
 }
 
 function bloqueEquipos(v: VisitaParaReporte): any {
@@ -220,7 +221,7 @@ function bloqueEquipos(v: VisitaParaReporte): any {
   ];
 
   return [
-    { text: 'Estado de equipos', style: 'subtitulo', margin: [0, 4, 0, 4] },
+    { text: 'Estado de equipos', style: 'subtitulo', margin: [0, 2, 0, 2] },
     ...items.flatMap(({ clave, parrafo }) => [
       parrafo,
       bloqueFotos(fotosDeSeccion(v.fotos, clave)),
@@ -238,7 +239,7 @@ function bloqueTuberias(v: VisitaParaReporte): any {
   ];
 
   return [
-    { text: 'Tuberías de impulsión', style: 'subtitulo', margin: [0, 4, 0, 4] },
+    { text: 'Tuberías de impulsión', style: 'subtitulo', margin: [0, 2, 0, 2] },
     ...items.flatMap(({ clave, parrafo }) => [
       parrafo,
       bloqueFotos(fotosDeSeccion(v.fotos, clave)),
@@ -280,14 +281,14 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
   const cabecera = {
     table: { widths: ['*', '*'], body: encabezadoTabla },
     layout: 'lightHorizontalLines',
-    margin: [0, 0, 0, 8],
+    margin: [0, 0, 0, 4],
   };
 
   if (esLineaConduccion) {
     return [
       cabecera,
       bloqueTuberias(v),
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 4, 0, 12] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 2, 0, 6] },
     ].filter(Boolean);
   }
 
@@ -310,31 +311,31 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
 
   return [
     cabecera,
-    { text: 'Registro de bombas', style: 'subtitulo', margin: [0, 4, 0, 4] },
+    { text: 'Registro de bombas', style: 'subtitulo', margin: [0, 2, 0, 2] },
     v.bombas.length > 0
       ? bombasBloques
-      : { text: 'Sin registro de bombas en esta visita.', italics: true, fontSize: 9, color: '#5B7184', margin: [0, 0, 0, 6] },
+      : { text: 'Sin registro de bombas en esta visita.', italics: true, fontSize: 9, color: '#5B7184', margin: [0, 0, 0, 3] },
     bloqueEquipos(v),
     v.cerramiento_observaciones
-      ? { text: [{ text: 'Cerramiento y seguridad: ', bold: true }, v.cerramiento_observaciones], margin: [0, 0, 0, 4] }
+      ? { text: [{ text: 'Cerramiento y seguridad: ', bold: true }, v.cerramiento_observaciones], margin: [0, 0, 0, 2] }
       : null,
     bloqueFotos(fotosDeSeccion(v.fotos, 'cerramiento_seguridad')),
     lineaDivisoria(),
     v.jardineras_observaciones
-      ? { text: [{ text: 'Jardineras y áreas verdes: ', bold: true }, v.jardineras_observaciones], margin: [0, 0, 0, 4] }
+      ? { text: [{ text: 'Jardineras y áreas verdes: ', bold: true }, v.jardineras_observaciones], margin: [0, 0, 0, 2] }
       : null,
     bloqueFotos(fotosDeSeccion(v.fotos, 'jardineras')),
     lineaDivisoria(),
     v.patios_maniobras_observaciones
-      ? { text: [{ text: 'Patios de maniobras: ', bold: true }, v.patios_maniobras_observaciones], margin: [0, 0, 0, 4] }
+      ? { text: [{ text: 'Patios de maniobras: ', bold: true }, v.patios_maniobras_observaciones], margin: [0, 0, 0, 2] }
       : null,
     bloqueFotos(fotosDeSeccion(v.fotos, 'patios_maniobras')),
     lineaDivisoria(),
     v.observaciones_generales
-      ? { text: [{ text: 'Observaciones generales: ', bold: true }, v.observaciones_generales], margin: [0, 0, 0, 4] }
+      ? { text: [{ text: 'Observaciones generales: ', bold: true }, v.observaciones_generales], margin: [0, 0, 0, 2] }
       : null,
     bloqueFotos(fotosDeSeccion(v.fotos, null)),
-    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 4, 0, 12] },
+    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 2, 0, 6] },
   ].filter(Boolean);
 }
 
@@ -421,7 +422,8 @@ export function generarReporteVisitas(
       ]),
     ],
     styles: ESTILOS,
-    defaultStyle: { fontSize: 9, color: '#16303F' },
+    // 8 en vez de 9 — junto con los márgenes achicados de arriba, menos hojas al imprimir.
+    defaultStyle: { fontSize: 8, color: '#16303F' },
   };
 
   return new Promise((resolve) => {
