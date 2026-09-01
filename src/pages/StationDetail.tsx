@@ -230,8 +230,7 @@ export function StationDetail() {
         return;
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
-      const titulo = `Historial de estación\n${estacion.nombre}`;
-      const blob = await generarReporteVisitas(titulo, visitas, {
+      const blob = await generarReporteVisitas(visitas, {
         numero: '',
         para: { nombre: 'Ing. Freddy Vásconez', cargo: 'JEFE DE SERVICIOS DE ALCANTARILLADO' },
         de: { nombre: usuario?.nombre_completo ?? '', cargo: usuario?.cargo ?? '' },

@@ -149,13 +149,16 @@ function fotosDeSeccion(fotos: Array<{ url: string; etiqueta?: string | null }> 
   return (fotos ?? []).filter((f) => (f.etiqueta ?? null) === clave);
 }
 
-function encabezado(titulo: string): any {
+// `titulo` es opcional: generarReporteVisitas ya no lo usa (esa línea quedaba redundante con el
+// "Asunto" del encabezado tipo memo — ver bloqueEncabezadoMemo) — generarInformeSemanal y
+// generarReporteTurnos sí lo siguen pasando.
+function encabezado(titulo?: string): any {
   return {
     stack: [
       { text: 'GOBIERNO AUTÓNOMO DESCENTRALIZADO MUNICIPAL FRANCISCO DE ORELLANA', style: 'institucionalTitulo', alignment: 'center' },
       { text: 'DIRECCIÓN DE AGUA POTABLE Y ALCANTARILLADO', style: 'institucionalSub', alignment: 'center' },
       { text: 'JEFATURA DE SERVICIOS DE ALCANTARILLADO', style: 'institucionalSub', alignment: 'center' },
-      { text: titulo, style: 'tituloReporte', alignment: 'center', margin: [0, 8, 0, 0] },
+      ...(titulo ? [{ text: titulo, style: 'tituloReporte', alignment: 'center', margin: [0, 8, 0, 0] }] : []),
     ],
     margin: [0, 0, 0, 16],
   };
@@ -501,7 +504,6 @@ const ESTILOS = {
 };
 
 export function generarReporteVisitas(
-  titulo: string,
   visitas: VisitaParaReporte[],
   memo: DatosEncabezadoMemo,
 ): Promise<Blob> {
@@ -545,7 +547,7 @@ export function generarReporteVisitas(
       ],
     }),
     content: [
-      encabezado(titulo),
+      encabezado(),
       bloqueEncabezadoMemo(memo),
       ...visitas.flatMap((v) => [
         ...bloqueVisita(v),

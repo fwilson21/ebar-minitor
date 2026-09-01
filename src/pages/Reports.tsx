@@ -52,6 +52,11 @@ export function Reports() {
   // la instrucción de qué hacer, no un renglón de texto plano más.
   const [avisoCompartirManual, setAvisoCompartirManual] = useState(false);
 
+  // "INFORME No." del encabezado tipo memo — a diferencia de Informe Semanal, este reporte no
+  // tiene una numeración propia guardada en la base; queda a mano, vacío por defecto (si se deja
+  // vacío, esa línea no sale en el PDF — ver bloqueEncabezadoMemo).
+  const [numeroInforme, setNumeroInforme] = useState('');
+
   // Encabezado tipo memo del PDF (formato GADMFO: PARA/DE/ASUNTO/FECHA) — pedido del usuario.
   // "Para" arranca con un valor fijo (a quién se le suele dirigir este reporte); "De" arranca con
   // quien esté generando el reporte ahora mismo; los 3 quedan editables antes de generar.
@@ -174,22 +179,8 @@ export function Reports() {
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
 
-      const sufijoOperador = esAdmin && operadorId ? ` — ${operadorNombre}` : '';
-      const sufijoEstacion =
-        estacionesElegidas.length === 1
-          ? ` — ${codigoYNombre(estacionesElegidas[0])}`
-          : estacionesElegidas.length > 1
-            ? ` — ${estacionesElegidas.length} estaciones`
-            : '';
-      const titulo =
-        tipo === 'diario_operador'
-          ? `Reporte diario — ${operadorNombre}${sufijoEstacion}`
-          : tipo === 'consolidado_fecha'
-          ? `Reporte consolidado${sufijoOperador}${sufijoEstacion}`
-          : `Reporte de estación${sufijoEstacion}${sufijoOperador}`;
-
-      const blob = await generarReporteVisitas(`${titulo}\n${rangoLabel}`, visitas, {
-        numero: '',
+      const blob = await generarReporteVisitas(visitas, {
+        numero: numeroInforme,
         para: { nombre: paraNombre, cargo: paraCargo },
         de: { nombre: deNombre, cargo: deCargo },
         asunto,
@@ -305,6 +296,8 @@ export function Reports() {
           setFechaInicio={setFechaInicio}
           fechaFin={fechaFin}
           setFechaFin={setFechaFin}
+          numeroInforme={numeroInforme}
+          setNumeroInforme={setNumeroInforme}
           paraNombre={paraNombre}
           setParaNombre={setParaNombre}
           paraCargo={paraCargo}
@@ -358,6 +351,8 @@ export function Reports() {
                     setFechaInicio={setFechaInicio}
                     fechaFin={fechaFin}
                     setFechaFin={setFechaFin}
+                    numeroInforme={numeroInforme}
+                    setNumeroInforme={setNumeroInforme}
                     paraNombre={paraNombre}
                     setParaNombre={setParaNombre}
                     paraCargo={paraCargo}
@@ -409,6 +404,8 @@ function BloqueFiltrosGenerar({
   setFechaInicio,
   fechaFin,
   setFechaFin,
+  numeroInforme,
+  setNumeroInforme,
   paraNombre,
   setParaNombre,
   paraCargo,
@@ -437,6 +434,8 @@ function BloqueFiltrosGenerar({
   setFechaInicio: (v: string) => void;
   fechaFin: string;
   setFechaFin: (v: string) => void;
+  numeroInforme: string;
+  setNumeroInforme: (v: string) => void;
   paraNombre: string;
   setParaNombre: (v: string) => void;
   paraCargo: string;
@@ -502,6 +501,17 @@ function BloqueFiltrosGenerar({
           <input type="date" className="campo" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
         </div>
       )}
+
+      <div>
+        <label className="etiqueta">N.º de informe (opcional)</label>
+        <input
+          type="text"
+          className="campo"
+          placeholder="ej. 020-GADMFO-DAPA-2026"
+          value={numeroInforme}
+          onChange={(e) => setNumeroInforme(e.target.value)}
+        />
+      </div>
 
       {/* Encabezado tipo memo del PDF (formato GADMFO) — ya viene precargado con valores por
           defecto razonables; se abre solo si hace falta ajustar algo antes de generar. */}
