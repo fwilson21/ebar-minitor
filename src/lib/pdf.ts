@@ -122,11 +122,14 @@ function etiquetaFoto(etiqueta?: string | null): string {
 // las fotos son lo que más espacio vertical ocupa en el reporte completo (Reporte consolidado /
 // Historial de estación), así que se achican y se ponen 4 por fila (mismo tamaño que ya usa
 // Informe Semanal en filasFotosInforme, probado ahí) en vez de 3 más grandes.
+// Ancho FIJO (no '*'): con columnas flexibles, 1 o 2 fotos se estiraban para ocupar todo el ancho
+// de la fila (fotos gigantes, separadas entre sí) — con ancho fijo quedan agrupadas a la izquierda,
+// del mismo tamaño haya 1, 2, 3 o 4, y el resto de la fila simplemente queda en blanco.
 function bloqueFotos(fotos?: Array<{ url: string; etiqueta?: string | null }>): any {
   if (!fotos?.length) return null;
   return {
     columns: fotos.slice(0, 4).map((f) => ({
-      width: '*',
+      width: 120,
       stack: [
         { image: f.url, fit: [110, 110], alignment: 'center' },
         { text: etiquetaFoto(f.etiqueta), fontSize: 7, alignment: 'center', color: '#5B7184', margin: [0, 2, 0, 0] },
