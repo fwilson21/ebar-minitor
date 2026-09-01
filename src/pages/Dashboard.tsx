@@ -11,7 +11,7 @@ import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
-import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
+import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, direccionOParroquia } from '../lib/agruparEstaciones';
 import { hoyLocal } from '../lib/fecha';
 import { ManijaRedimension } from '../components/ManijaRedimension';
 import { obtenerTamanoModal, guardarTamanoModal } from '../lib/tamanoModal';
@@ -33,7 +33,7 @@ const COLUMNAS_EQUIPOS_ALERTA = [
   'tuberia_600_valvulas_aire', 'tuberia_600_uniones_elastomericas',
 ] as const;
 
-type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona' | 'tipo'>;
+type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona' | 'tipo' | 'direccion' | 'parroquia'>;
 type EstacionAsignadaHoy = EstacionSimple & { visitasHoy: number };
 type AsignacionBajoMinimo = {
   operador_id: string;
@@ -122,7 +122,7 @@ export function Dashboard() {
           p_operador_id: usuario?.rol === 'operador' ? usuario.id : null,
         }),
         supabase.from('estaciones_ebar').select('*').neq('estado_actual', 'operativa').eq('activa', true),
-        supabase.from('estaciones_ebar').select('id, nombre, codigo, zona, tipo').eq('activa', true).order('nombre'),
+        supabase.from('estaciones_ebar').select('id, nombre, codigo, zona, tipo, direccion, parroquia').eq('activa', true).order('nombre'),
         supabase.from('visitas').select('estacion_id, operador_id')
           .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
           .lte('fecha_hora_llegada', `${fecha}T23:59:59`),
@@ -981,11 +981,13 @@ function Metrica({
 /** Una fila de ModalListaEstaciones (mismo aspecto sea cual sea el agrupado — por zona+tipo o por
  * operador) — enlace directo a la ficha de la estación, con el conteo de veces que apareció. */
 function FilaEstacionDetalle({ estacion: e }: { estacion: FilaDetalleMetrica }) {
+  const ubicacion = direccionOParroquia(e);
   return (
     <Link to={`/estaciones/${e.id}`} className="tarjeta p-3 flex items-center justify-between gap-2 hover:border-gauge-ok/50 transition">
       <div className="min-w-0">
         <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
         <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
+        {ubicacion && <p className="text-xs text-slate-500 truncate">{ubicacion}</p>}
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
         {e.count > 1 && <span className="text-xs text-slate-500">×{e.count}</span>}
