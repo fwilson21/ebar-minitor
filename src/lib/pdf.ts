@@ -125,13 +125,17 @@ function etiquetaFoto(etiqueta?: string | null): string {
 // Ancho FIJO (no '*'): con columnas flexibles, 1 o 2 fotos se estiraban para ocupar todo el ancho
 // de la fila (fotos gigantes, separadas entre sí) — con ancho fijo quedan agrupadas a la izquierda,
 // del mismo tamaño haya 1, 2, 3 o 4, y el resto de la fila simplemente queda en blanco.
+// 108/100 (antes 120/110): achicadas un poco más para que 2 categorías de 2 fotos cada una entren
+// juntas en la misma línea (ver anchoCategoria) — pedido del usuario con captura mostrando
+// "Cerramiento y seguridad" y "Jardineras y áreas verdes" (2 fotos cada una) en líneas separadas
+// pudiendo compartir una sola.
 function bloqueFotos(fotos?: Array<{ url: string; etiqueta?: string | null }>): any {
   if (!fotos?.length) return null;
   return {
     columns: fotos.slice(0, 4).map((f) => ({
-      width: 120,
+      width: 108,
       stack: [
-        { image: f.url, fit: [110, 110], alignment: 'center' },
+        { image: f.url, fit: [100, 100], alignment: 'center' },
         { text: etiquetaFoto(f.etiqueta), fontSize: 7, alignment: 'center', color: '#5B7184', margin: [0, 2, 0, 0] },
       ],
     })),
@@ -246,7 +250,10 @@ function cajaCategoria(contenido: any[], ancho: number): any {
  * categorías compactas via empacarCajas(). */
 function anchoCategoria(numFotos: number): number {
   if (numFotos >= 3) return ANCHO_CONTENIDO;
-  if (numFotos === 2) return 260;
+  // 236 = 2×108 (columnas de bloqueFotos) + 8 (separación entre las 2 fotos) + 12 (relleno
+  // interno de la caja) — el mínimo real para que quepan 2 fotos sin desbordar la caja. Con este
+  // ancho, 2 categorías de 2 fotos entran juntas en la misma línea (236×2 + 8 = 480 ≤ 515).
+  if (numFotos === 2) return 236;
   if (numFotos === 1) return 150;
   return 160;
 }
