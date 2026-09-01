@@ -40,6 +40,13 @@ const ANTECEDENTES_PLANTILLA =
   'Belleza y Nuevo Paraíso cuenta con infraestructura de impulsión dirigida a plantas de ' +
   'tratamiento con pretratamiento, tanques Imhoff y humedales artificiales.';
 
+type CampoInformeClave = 'conclusiones' | 'recomendaciones' | 'firma_fecha' | 'firma_nombre' | 'numero_informe';
+interface CampoFaltante {
+  etiqueta: string;
+  anchorId: string;
+  campo: CampoInformeClave;
+}
+
 interface InformeRow {
   id: string;
   semana_desde: string;
@@ -97,9 +104,12 @@ export function InformeSemanal() {
   // Aparte del anterior: campos de texto que la analista normalmente completa (fecha de emisión,
   // nombre, N.º de informe, conclusiones, recomendaciones) que están vacíos — mismo patrón de
   // aviso con lista concreta y "Descargar de todas formas", pero como cuadro propio y separado.
-  const [avisoCamposFaltantes, setAvisoCamposFaltantes] = useState<{ etiqueta: string; anchorId: string }[] | null>(
-    null,
-  );
+  const [avisoCamposFaltantes, setAvisoCamposFaltantes] = useState<CampoFaltante[] | null>(null);
+  // Independiente del modal de arriba (que se cierra para poder ver la pantalla de atrás): mientras
+  // esto esté activo, cada campo vacío de la lista se resalta en rojo en el propio formulario (no
+  // solo se scrollea) — se apaga con "Cancelar"/"Descargar de todas formas", o solo cuando ya no
+  // queda ningún campo vacío (vuelve a chequear al tocar "Descargar").
+  const [avisoCamposFaltantesActivo, setAvisoCamposFaltantesActivo] = useState(false);
   // Aviso propio de "Descargar", separado de `mensaje` (que se usa para el resto de la pantalla) —
   // este botón queda hasta abajo de una pantalla larga, así que su aviso tiene que aparecer pegado
   // al botón, no arriba del todo donde no se ve (ver memoria del proyecto sobre mensajes junto al
@@ -330,17 +340,36 @@ export function InformeSemanal() {
 
   // Campos de texto que la analista normalmente completa antes de un informe "de verdad" —
   // vacíos, el informe igual se puede descargar (con el aviso de abajo y "Descargar de todas
-  // formas"), pero por defecto se avisa en vez de dejarlos pasar en silencio.
-  function camposFaltantes(): { etiqueta: string; anchorId: string }[] {
+  // formas"), pero por defecto se avisa en vez de dejarlos pasar en silencio. Orden: de arriba
+  // hacia abajo tal cual aparecen en la pantalla (Conclusiones → Recomendaciones → Firma → N.º de
+  // informe) — así el primero de la lista es siempre el primero que hay que resolver, no el orden
+  // en que se les ocurrió chequearlos.
+  function camposFaltantes(): CampoFaltante[] {
     if (!informe) return [];
-    const faltan: { etiqueta: string; anchorId: string }[] = [];
-    if (!informe.firma_fecha) faltan.push({ etiqueta: 'Fecha de emisión', anchorId: 'tarjeta-firma' });
-    if (!informe.firma_nombre.trim()) faltan.push({ etiqueta: 'Nombre', anchorId: 'tarjeta-firma' });
-    if (!(informe.numero_informe ?? '').trim()) faltan.push({ etiqueta: 'N.º de informe', anchorId: 'campo-numero-informe' });
-    if (!informe.conclusiones.trim()) faltan.push({ etiqueta: 'Conclusiones', anchorId: 'campo-conclusiones' });
-    if (!informe.recomendaciones.trim()) faltan.push({ etiqueta: 'Recomendaciones', anchorId: 'campo-recomendaciones' });
+    const faltan: CampoFaltante[] = [];
+    if (!informe.conclusiones.trim()) faltan.push({ etiqueta: 'Conclusiones', anchorId: 'campo-conclusiones', campo: 'conclusiones' });
+    if (!informe.recomendaciones.trim()) faltan.push({ etiqueta: 'Recomendaciones', anchorId: 'campo-recomendaciones', campo: 'recomendaciones' });
+    if (!informe.firma_fecha) faltan.push({ etiqueta: 'Fecha de emisión', anchorId: 'tarjeta-firma', campo: 'firma_fecha' });
+    if (!informe.firma_nombre.trim()) faltan.push({ etiqueta: 'Nombre', anchorId: 'tarjeta-firma', campo: 'firma_nombre' });
+    if (!(informe.numero_informe ?? '').trim()) faltan.push({ etiqueta: 'N.º de informe', anchorId: 'campo-numero-informe', campo: 'numero_informe' });
     return faltan;
   }
+
+  // Con el aviso de campos faltantes activo, un campo puntual se resalta en rojo mientras siga
+  // vacío de verdad (chequea el valor actual, no la lista congelada del momento en que se disparó
+  // el aviso) — así el borde rojo desaparece solo apenas la analista escribe algo, sin tener que
+  // volver a tocar "Descargar" para que se note.
+  function campoTieneError(campo: CampoInformeClave): boolean {
+    if (!avisoCamposFaltantesActivo || !informe) return false;
+    switch (campo) {
+      case 'conclusiones': return !informe.conclusiones.trim();
+      case 'recomendaciones': return !informe.recomendaciones.trim();
+      case 'firma_fecha': return !informe.firma_fecha;
+      case 'firma_nombre': return !informe.firma_nombre.trim();
+      case 'numero_informe': return !(informe.numero_informe ?? '').trim();
+    }
+  }
+  const claseError = 'border-gauge-danger ring-1 ring-gauge-danger/40';
 
   // Antes de descargar: primero el aviso de días sin aprobar que ya existía (se revisa primero,
   // como siempre) y recién si ese ya está resuelto (o se saltó con "Descargar de todas formas"),
@@ -358,8 +387,10 @@ export function InformeSemanal() {
     const camposVacios = camposFaltantes();
     if (camposVacios.length > 0) {
       setAvisoCamposFaltantes(camposVacios);
+      setAvisoCamposFaltantesActivo(true);
       return;
     }
+    setAvisoCamposFaltantesActivo(false);
     generarYDescargar();
   }
 
@@ -652,7 +683,7 @@ export function InformeSemanal() {
           <span className="text-[10px] text-slate-500 bg-panel-700 px-2 py-1 rounded-full">↺ Copiado de la semana pasada</span>
         </div>
         <textarea
-          className="campo"
+          className={`campo ${campoTieneError('conclusiones') ? claseError : ''}`}
           rows={3}
           value={informe.conclusiones}
           onChange={(e) => setInforme({ ...informe, conclusiones: e.target.value })}
@@ -665,7 +696,7 @@ export function InformeSemanal() {
           <span className="text-[10px] text-slate-500 bg-panel-700 px-2 py-1 rounded-full">↺ Copiado de la semana pasada</span>
         </div>
         <textarea
-          className="campo"
+          className={`campo ${campoTieneError('recomendaciones') ? claseError : ''}`}
           rows={3}
           value={informe.recomendaciones}
           onChange={(e) => setInforme({ ...informe, recomendaciones: e.target.value })}
@@ -680,7 +711,7 @@ export function InformeSemanal() {
           <label className="etiqueta">Fecha de emisión</label>
           <input
             type="date"
-            className="campo"
+            className={`campo ${campoTieneError('firma_fecha') ? claseError : ''}`}
             value={informe.firma_fecha ?? ''}
             onChange={(e) => setInforme({ ...informe, firma_fecha: e.target.value })}
             onBlur={(e) => guardarCampoInforme('firma_fecha', e.target.value)}
@@ -690,7 +721,7 @@ export function InformeSemanal() {
           <label className="etiqueta">Nombre</label>
           <input
             type="text"
-            className="campo"
+            className={`campo ${campoTieneError('firma_nombre') ? claseError : ''}`}
             value={informe.firma_nombre}
             onChange={(e) => setInforme({ ...informe, firma_nombre: e.target.value })}
             onBlur={(e) => guardarCampoInforme('firma_nombre', e.target.value)}
@@ -737,7 +768,7 @@ export function InformeSemanal() {
           <label className="etiqueta">N.º de informe</label>
           <input
             type="text"
-            className="campo font-mono"
+            className={`campo font-mono ${campoTieneError('numero_informe') ? claseError : ''}`}
             placeholder="autosugerido"
             value={informe.numero_informe ?? ''}
             onChange={(e) => setInforme({ ...informe, numero_informe: e.target.value })}
@@ -799,10 +830,16 @@ export function InformeSemanal() {
 
       {avisoCamposFaltantes && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setAvisoCamposFaltantes(null)} />
+          <div
+            className="fixed inset-0 bg-black/50 z-20"
+            onClick={() => {
+              setAvisoCamposFaltantes(null);
+              setAvisoCamposFaltantesActivo(false);
+            }}
+          />
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[90vw] max-w-md p-4 space-y-3">
             <h2 className="font-semibold text-sm text-gauge-warn">⚠️ Faltan algunos datos del informe</h2>
-            <p className="text-xs text-slate-600">Estos campos todavía están vacíos:</p>
+            <p className="text-xs text-slate-600">Estos campos todavía están vacíos (van a quedar resaltados en rojo hasta que los completes):</p>
             <ul className="text-xs text-slate-700 list-disc list-inside space-y-0.5">
               {avisoCamposFaltantes.map((c) => (
                 <li key={c.etiqueta}>{c.etiqueta}</li>
@@ -816,13 +853,21 @@ export function InformeSemanal() {
                 type="button"
                 onClick={() => {
                   setAvisoCamposFaltantes(null);
+                  setAvisoCamposFaltantesActivo(false);
                   generarYDescargar();
                 }}
                 className="boton-secundario"
               >
                 Descargar de todas formas
               </button>
-              <button type="button" onClick={() => setAvisoCamposFaltantes(null)} className="text-xs text-slate-500 hover:text-slate-900 underline">
+              <button
+                type="button"
+                onClick={() => {
+                  setAvisoCamposFaltantes(null);
+                  setAvisoCamposFaltantesActivo(false);
+                }}
+                className="text-xs text-slate-500 hover:text-slate-900 underline"
+              >
                 Cancelar
               </button>
             </div>
