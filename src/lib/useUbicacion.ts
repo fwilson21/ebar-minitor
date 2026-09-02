@@ -40,6 +40,13 @@ export function useUbicacionActual(activo: boolean): EstadoUbicacion {
   return estado;
 }
 
+/** "350 m" / "1.2 km" / "12 km" — para mostrar a qué distancia ubicó el GPS al operador. */
+export function formatearDistancia(metros: number): string {
+  if (metros < 1000) return `${Math.round(metros)} m`;
+  const km = metros / 1000;
+  return `${km < 10 ? km.toFixed(1) : Math.round(km)} km`;
+}
+
 export function distanciaMetros(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
   const toRad = (deg: number) => (deg * Math.PI) / 180;

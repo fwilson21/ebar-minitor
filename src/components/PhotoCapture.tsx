@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import type { FotoLocal } from '../lib/types';
-import { crearFotoLocal, eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
-import { generarUUID } from '../lib/uuid';
+import { crearFotoLocal, eliminarFotoGuardada } from '../lib/fotos';
 import { useObjectUrls } from '../lib/useObjectUrls';
 import { FotoLightbox } from './FotoLightbox';
 import { CamaraFoto } from './CamaraFoto';
@@ -12,36 +11,18 @@ interface Props {
 }
 
 /**
- * Captura fotos con la cámara en vivo dentro de la propia app (ver CamaraFoto.tsx) — mucho más
- * liviana en memoria que la app de Cámara nativa del celular, que en algunos celulares de poca
- * RAM cerraba la pestaña de golpe. Si el navegador no soporta esto o el operador niega el
- * permiso, cae de vuelta al input nativo de archivo con `capture="environment"` (el de siempre,
- * que en navegadores móviles abre la cámara trasera del sistema). Las fotos quedan como Blob en
- * memoria/IndexedDB hasta que `offline.ts` las sube a Google Drive a través de la Edge Function
- * `upload-to-drive`.
+ * Captura fotos SOLO con la cámara en vivo dentro de la propia app (ver CamaraFoto.tsx) — más
+ * liviana en memoria que la app de Cámara nativa, y sobre todo: no deja adjuntar una foto vieja
+ * de la galería (el `<input capture>` de antes sí dejaba, en iPhone siempre). Las fotos de las
+ * visitas tienen que ser del momento. Quedan como Blob en memoria/IndexedDB hasta que
+ * `offline.ts` las sube a Google Drive a través de la Edge Function `upload-to-drive`.
  */
 export function PhotoCapture({ fotos, onChange }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
   const [camaraAbierta, setCamaraAbierta] = useState(false);
   const fotosRef = useRef(fotos);
   fotosRef.current = fotos;
   const urls = useObjectUrls(fotos);
-
-  async function manejarSeleccion(e: React.ChangeEvent<HTMLInputElement>) {
-    const archivos = Array.from(e.target.files ?? []);
-    e.target.value = '';
-    const ahora = new Date().toISOString();
-    const nuevas: FotoLocal[] = await Promise.all(
-      archivos.map(async (file) => ({
-        id: generarUUID(),
-        blob: await estamparFechaEnFoto(file, ahora),
-        tomada_en: ahora,
-        estado_subida: 'pendiente' as const,
-      })),
-    );
-    onChange([...fotos, ...nuevas]);
-  }
 
   // Cada captura de CamaraFoto llega una por una (mientras el operador sigue disparando con la
   // cámara todavía abierta) — se agrega de a una al estado en vez de esperar a "Listo" para no
@@ -71,27 +52,10 @@ export function PhotoCapture({ fotos, onChange }: Props) {
         <button type="button" className="boton-secundario text-sm py-1.5 px-3" onClick={() => setCamaraAbierta(true)}>
           📷 Tomar foto
         </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          multiple
-          className="hidden"
-          onChange={manejarSeleccion}
-        />
       </div>
 
       {camaraAbierta && (
-        <CamaraFoto
-          maxFotos={Infinity}
-          onCapturar={agregarFotoDesdeCamara}
-          onCerrar={() => setCamaraAbierta(false)}
-          onError={() => {
-            setCamaraAbierta(false);
-            inputRef.current?.click();
-          }}
-        />
+        <CamaraFoto maxFotos={Infinity} onCapturar={agregarFotoDesdeCamara} onCerrar={() => setCamaraAbierta(false)} />
       )}
 
       {fotos.length === 0 ? (

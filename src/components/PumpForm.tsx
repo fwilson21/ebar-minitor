@@ -1,9 +1,8 @@
 import { useRef, useState } from 'react';
 import type { Bomba, EstadoBomba, FotoLocal, RegistroBombaInput } from '../lib/types';
 import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
-import { crearFotoLocal, eliminarFotoGuardada, estamparFechaEnFoto } from '../lib/fotos';
+import { crearFotoLocal, eliminarFotoGuardada } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
-import { generarUUID } from '../lib/uuid';
 import { useObjectUrls } from '../lib/useObjectUrls';
 import { FotoLightbox } from './FotoLightbox';
 import { BotonDictado } from './BotonDictado';
@@ -33,7 +32,6 @@ interface Props {
 }
 
 export function PumpForm({ bomba, valor, onChange }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
   const [camaraAbierta, setCamaraAbierta] = useState(false);
   // Ver el comentario en EquipoSection.tsx: cupo fijado al abrir, no recalculado en vivo.
@@ -48,21 +46,6 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
 
   function set<K extends keyof RegistroBombaInput>(key: K, v: RegistroBombaInput[K]) {
     onChange({ ...valor, [key]: v });
-  }
-
-  async function manejarFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const archivos = Array.from(e.target.files ?? []).slice(0, MAX_FOTOS - valor.fotos.length);
-    e.target.value = '';
-    const ahora = new Date().toISOString();
-    const nuevas: FotoLocal[] = await Promise.all(
-      archivos.map(async (file) => ({
-        id: generarUUID(),
-        blob: await estamparFechaEnFoto(file, ahora),
-        tomada_en: ahora,
-        estado_subida: 'pendiente' as const,
-      })),
-    );
-    onChange({ ...valor, fotos: [...valor.fotos, ...nuevas] });
   }
 
   // Ver el mismo comentario en PhotoCapture.tsx: cada captura de CamaraFoto llega una por una.
@@ -194,14 +177,6 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
                 📷 Tomar foto
               </button>
             )}
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={manejarFoto}
-            />
           </div>
 
           {camaraAbierta && (
@@ -209,10 +184,6 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
               maxFotos={cupoCamara}
               onCapturar={agregarFotoDesdeCamara}
               onCerrar={() => setCamaraAbierta(false)}
-              onError={() => {
-                setCamaraAbierta(false);
-                inputRef.current?.click();
-              }}
             />
           )}
           {valor.fotos.length > 0 && (

@@ -4,6 +4,7 @@ import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { MEMBRETE_FONDO_BASE64 } from '../assets/membrete/membreteData';
 import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, separarLabelVineta, type BloqueInformePdf } from './informeSemanal';
 import { codigoYNombre } from './agruparEstaciones';
+import { formatearDistancia } from './useUbicacion';
 
 (pdfMake as any).vfs = (pdfFonts as any).vfs;
 
@@ -26,6 +27,7 @@ export interface VisitaParaReporte {
   estado_estacion: string;
   nivel_tanque: string;
   ubicacion_no_confirmada?: boolean;
+  ubicacion_distancia_m?: number | null;
   cerramiento_observaciones?: string | null;
   jardineras_observaciones?: string | null;
   patios_maniobras_observaciones?: string | null;
@@ -394,7 +396,14 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
   const filaGpsSinConfirmar = v.ubicacion_no_confirmada
     ? [[
         { text: 'Ubicación GPS', bold: true },
-        { text: '⚠ SIN CONFIRMAR — el operador confirmó a mano su presencia', color: '#B45309' },
+        {
+          text:
+            '⚠ SIN CONFIRMAR — el operador confirmó a mano su presencia' +
+            (typeof v.ubicacion_distancia_m === 'number'
+              ? ` (el GPS lo ubicó a ${formatearDistancia(v.ubicacion_distancia_m)})`
+              : ' (el GPS no dio posición)'),
+          color: '#B45309',
+        },
       ]]
     : [];
 

@@ -5,30 +5,32 @@ interface Props {
   maxFotos: number;
   onCapturar: (blob: Blob) => void;
   onCerrar: () => void;
-  /** El navegador no soporta cámara en vivo, o el operador negó el permiso: quien llama debe
-   * caer de vuelta al `<input capture>` de siempre. */
-  onError: () => void;
 }
 
 /**
  * Cámara en vivo DENTRO de la propia app (getUserMedia + canvas), en vez de abrir la app de
  * Cámara nativa del celular con `<input capture>`.
  *
- * Por qué: en un Xiaomi de 4GB de RAM con HyperOS, la app se cerraba de golpe con la cámara
- * NATIVA todavía abierta (Android mataba la pestaña de fondo por presión de memoria de la propia
- * app de Cámara — HDR, IA de escena, foto a resolución completa del sensor — antes de que
- * nuestro código llegara siquiera a correr; ver memoria del proyecto "bug guardado celular",
- * causas 1-5, todas agotadas antes de llegar a esto). `getUserMedia` en cambio usa la
- * canalización de VIDEO de la cámara (la misma que una videollamada), pensada de entrada para
- * pesar poco — nunca se dispara el modo de foto fija a resolución completa del sensor.
+ * Por qué getUserMedia y no `<input capture>`:
+ *  1. En un Xiaomi de 4GB de RAM con HyperOS, la app se cerraba de golpe con la cámara NATIVA
+ *     todavía abierta (Android mataba la pestaña de fondo por presión de memoria de la propia
+ *     app de Cámara). `getUserMedia` usa la canalización de VIDEO (la de una videollamada),
+ *     pensada de entrada para pesar poco.
+ *  2. **`<input capture>` deja elegir de la GALERÍA en varios celulares (iPhone siempre).** La
+ *     cámara en vivo no: solo captura lo que ve el sensor en ese momento — no hay forma de
+ *     adjuntar una foto vieja. Las fotos de las visitas tienen que ser del momento y del lugar.
  *
- * Se le pide un tamaño moderado (`width`/`height: ideal`) directo al stream, así que ni siquiera
- * hace falta achicar después: el frame que se captura ya viene chico.
+ * Si la cámara no abre (permiso denegado, hardware ocupado, navegador sin soporte), se muestra
+ * un aviso para reintentar — **ya no hay respaldo a `<input file>`**, justo para no reabrir la
+ * puerta a la galería.
  */
-export function CamaraFoto({ maxFotos, onCapturar, onCerrar, onError }: Props) {
+export function CamaraFoto({ maxFotos, onCapturar, onCerrar }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [listo, setListo] = useState(false);
+  const [error, setError] = useState(false);
+  // Sube con cada "Reintentar" para volver a correr el efecto que pide la cámara.
+  const [intento, setIntento] = useState(0);
   const [tomadas, setTomadas] = useState(0);
   // Aviso "✓ Foto guardada" que aparece pegado a cada disparo — antes de esto solo cambiaba el
   // número entre paréntesis en "Listo", que pasaba desapercibido; el operador no tenía ninguna
@@ -38,8 +40,10 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar, onError }: Props) {
 
   useEffect(() => {
     let cancelado = false;
+    setError(false);
+    setListo(false);
     if (!navigator.mediaDevices?.getUserMedia) {
-      onError();
+      setError(true);
       return;
     }
     navigator.mediaDevices
@@ -57,7 +61,7 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar, onError }: Props) {
         setListo(true);
       })
       .catch(() => {
-        if (!cancelado) onError();
+        if (!cancelado) setError(true);
       });
     return () => {
       cancelado = true;
@@ -65,8 +69,7 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar, onError }: Props) {
       streamRef.current = null;
       if (timeoutAvisoRef.current) window.clearTimeout(timeoutAvisoRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [intento]);
 
   function disparar() {
     const video = videoRef.current;
@@ -101,6 +104,31 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar, onError }: Props) {
   }
 
   const limiteAlcanzado = tomadas >= maxFotos;
+
+  if (error) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <p className="text-4xl">📷</p>
+        <p className="text-white text-sm max-w-xs">
+          No se pudo abrir la cámara. Toca <strong>Reintentar</strong> y permite el acceso a la
+          cámara cuando el navegador lo pida. Si ya lo permitiste, revisa que ninguna otra app la
+          esté usando.
+        </p>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => setIntento((n) => n + 1)}
+            className="bg-white text-slate-900 font-semibold rounded-lg px-4 py-2 text-sm"
+          >
+            Reintentar
+          </button>
+          <button type="button" onClick={onCerrar} className="text-white text-sm px-4 py-2">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">

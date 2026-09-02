@@ -3,7 +3,7 @@ import { urlMiniaturaDrive } from './fotos';
 import { direccionOParroquia } from './agruparEstaciones';
 import type { VisitaParaReporte } from './pdf';
 
-export const SELECT_VISITA_REPORTE = `id, fecha_hora_llegada, fecha_hora_salida, estado_estacion, nivel_tanque, ubicacion_no_confirmada,
+export const SELECT_VISITA_REPORTE = `id, fecha_hora_llegada, fecha_hora_salida, estado_estacion, nivel_tanque, ubicacion_no_confirmada, ubicacion_distancia_m,
    cerramiento_observaciones, jardineras_observaciones, patios_maniobras_observaciones, observaciones_generales,
    lineas_impulsion, guias_izado, valvulas_compuerta, valvulas_check, valvula_aire,
    camara_rejilla, camara_valvula_compuerta, tablero_distribucion, variador, descarga_emergencia,
@@ -28,6 +28,7 @@ export function mapearVisitaFila(v: any): VisitaParaReporte {
     estado_estacion: v.estado_estacion,
     nivel_tanque: v.nivel_tanque,
     ubicacion_no_confirmada: v.ubicacion_no_confirmada ?? false,
+    ubicacion_distancia_m: typeof v.ubicacion_distancia_m === 'number' ? v.ubicacion_distancia_m : null,
     cerramiento_observaciones: v.cerramiento_observaciones,
     jardineras_observaciones: v.jardineras_observaciones,
     patios_maniobras_observaciones: v.patios_maniobras_observaciones,

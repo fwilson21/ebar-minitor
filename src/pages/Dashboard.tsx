@@ -13,6 +13,7 @@ import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, direccionOParroquia } from '../lib/agruparEstaciones';
 import { hoyLocal } from '../lib/fecha';
+import { formatearDistancia } from '../lib/useUbicacion';
 import { ManijaRedimension } from '../components/ManijaRedimension';
 import { obtenerTamanoModal, guardarTamanoModal } from '../lib/tamanoModal';
 
@@ -50,6 +51,7 @@ type VisitaSinUbicacion = {
   estacion_codigo: string;
   operador_nombre: string;
   fecha_hora_llegada: string;
+  distancia_m: number | null;
 };
 
 /** Una de las 5 tarjetas de "Inicio" — al tocarla se abre ModalListaEstaciones con el detalle. */
@@ -243,7 +245,9 @@ export function Dashboard() {
         const hace21Dias = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
         const { data: sinUbicacion } = await supabase
           .from('visitas')
-          .select('id, estacion_id, fecha_hora_llegada, usuarios ( nombre_completo ), estaciones_ebar ( nombre, codigo )')
+          .select(
+            'id, estacion_id, fecha_hora_llegada, ubicacion_distancia_m, usuarios ( nombre_completo ), estaciones_ebar ( nombre, codigo )',
+          )
           .eq('ubicacion_no_confirmada', true)
           .gte('fecha_hora_llegada', hace21Dias)
           .order('fecha_hora_llegada', { ascending: false });
@@ -255,6 +259,7 @@ export function Dashboard() {
             estacion_codigo: v.estaciones_ebar?.codigo ?? '-',
             operador_nombre: v.usuarios?.nombre_completo ?? '-',
             fecha_hora_llegada: v.fecha_hora_llegada,
+            distancia_m: typeof v.ubicacion_distancia_m === 'number' ? v.ubicacion_distancia_m : null,
           })),
         );
       } else {
@@ -1001,7 +1006,11 @@ function BloqueUbicacionSinConfirmar({ visitas }: { visitas: VisitaSinUbicacion[
                 {v.estacion_codigo !== v.estacion_nombre ? `${v.estacion_codigo} — ` : ''}
                 {v.estacion_nombre}
               </p>
-              <p className="text-xs text-slate-500">{formatFechaCorta(v.fecha_hora_llegada)}</p>
+              <p className="text-xs text-slate-500">
+                {formatFechaCorta(v.fecha_hora_llegada)}
+                {' · '}
+                {v.distancia_m != null ? `GPS a ${formatearDistancia(v.distancia_m)}` : 'sin señal GPS'}
+              </p>
             </div>
             <span className="text-xs text-gauge-warn flex-shrink-0">Revisar →</span>
           </Link>
