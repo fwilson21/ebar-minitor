@@ -29,6 +29,13 @@ export default defineConfig({
   // se revirtió por error junto con otra cosa.)
   define: {
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'development'),
+    // Sello de versión del build: el momento exacto (Date.now(), en ms) en que se compiló esta
+    // copia de la app. Cada despliegue en Vercel genera uno nuevo y más alto. Lo usa el "candado
+    // de versión" (src/lib/versionApp.ts + GuardaVersion.tsx): si el administrador exige una
+    // versión mínima, todo cliente cuyo __BUILD_TIME__ sea menor queda bloqueado con la pantalla
+    // "Actualiza la app" hasta que baje la nueva. En `npm run dev` es la hora de arranque del
+    // servidor, sin efecto práctico.
+    __BUILD_TIME__: JSON.stringify(Date.now()),
   },
   plugins: [
     react(),

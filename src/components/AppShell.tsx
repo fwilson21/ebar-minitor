@@ -14,6 +14,7 @@ import { guardarCambiosDelFormularioActivo, hayCambiosSinGuardar } from '../lib/
 import { nombreCorto } from '../lib/nombres';
 import { estaImpersonando, volverAAdministrador } from '../lib/impersonar';
 import { ROL_LABEL } from '../lib/roles';
+import { PieVersion } from './PieVersion';
 
 // Digitador solo tiene Reportes y Turnos — nada de estaciones/monitoreo, que no es su trabajo.
 const NAV_INICIO = { to: '/', label: 'Inicio', icon: '📊' };
@@ -330,6 +331,8 @@ export function AppShell() {
               desmontar y volver a montar la pantalla activa para que recargue sus propios datos
               con la sesión nueva — si no, quedaría mostrando datos de la identidad anterior. */}
           <Outlet key={usuario?.id} />
+
+          <PieVersion />
         </main>
       </div>
       </div>
