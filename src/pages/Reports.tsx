@@ -86,17 +86,32 @@ export function Reports() {
       .then(({ data }) => setOperadores((data as Usuario[]) ?? []));
   }, [esAdmin]);
 
-  // El selector de Estación solo debe ofrecer las EBAR que tienen al menos una visita registrada
-  // — una lista con las 29 EBAR de la empresa, muchas sin ningún reporte, solo hacía más difícil
-  // encontrar la que sí importa (y elegir una sin reportes termina en "No hay visitas registradas
-  // para los filtros seleccionados"). Si hay un operador puntual elegido (uno mismo si no es
-  // admin; el elegido en "Operador" si es admin), se acota a sus reportes; con "Todos los
-  // operadores" se acota igual, pero contra los reportes de cualquiera (no se muestran todas sin
-  // filtrar).
+  const operadorNombre =
+    operadores.find((o) => o.id === operadorId)?.nombre_completo ?? usuario?.nombre_completo ?? '';
+  const estacionesElegidas = estacionIds ? estaciones.filter((e) => estacionIds.has(e.id)) : [];
+
+  const esRango = tipo === 'consolidado_fecha' || tipo === 'individual_estacion';
+  const fechaInicioEfectiva = fechaInicio;
+  const fechaFinEfectiva = esRango ? fechaFin : fechaInicio;
+  const rangoLabel =
+    fechaInicioEfectiva === fechaFinEfectiva
+      ? formatFechaCorta(fechaInicioEfectiva)
+      : `${formatFechaCorta(fechaInicioEfectiva)} al ${formatFechaCorta(fechaFinEfectiva)}`;
+
+  // El selector de Estación solo ofrece las EBAR visitadas DENTRO del rango de fechas elegido (y
+  // por el operador puntual elegido, si hay uno) — así, al mover las fechas, la lista se acota a
+  // lo que de verdad hay para reportar en ese período. Antes mostraba cualquier EBAR con al menos
+  // una visita alguna vez; una lista con las 29 EBAR de la empresa, muchas sin nada en ese rango,
+  // solo hacía más difícil encontrar la que importa. Con "Todos los operadores" se acota igual,
+  // pero contra las visitas de cualquiera.
   useEffect(() => {
     const operadorEfectivo = esAdmin ? operadorId : usuario?.id;
     async function cargarEstaciones() {
-      let query = supabase.from('visitas').select('estacion_id');
+      let query = supabase
+        .from('visitas')
+        .select('estacion_id')
+        .gte('fecha_hora_llegada', `${fechaInicioEfectiva}T00:00:00`)
+        .lte('fecha_hora_llegada', `${fechaFinEfectiva}T23:59:59`);
       if (operadorEfectivo) query = query.eq('operador_id', operadorEfectivo);
       const { data: visitasRelevantes } = await query;
       const idsConReportes = [...new Set((visitasRelevantes ?? []).map((v: any) => v.estacion_id as string))];
@@ -112,29 +127,34 @@ export function Reports() {
       setEstaciones((data as EstacionEbar[]) ?? []);
     }
     cargarEstaciones();
-  }, [esAdmin, operadorId, usuario?.id]);
+  }, [esAdmin, operadorId, usuario?.id, fechaInicioEfectiva, fechaFinEfectiva]);
 
-  const operadorNombre =
-    operadores.find((o) => o.id === operadorId)?.nombre_completo ?? usuario?.nombre_completo ?? '';
-  const estacionesElegidas = estacionIds ? estaciones.filter((e) => estacionIds.has(e.id)) : [];
-
-  const esRango = tipo === 'consolidado_fecha' || tipo === 'individual_estacion';
-  const fechaInicioEfectiva = fechaInicio;
-  const fechaFinEfectiva = esRango ? fechaFin : fechaInicio;
-  const rangoLabel =
-    fechaInicioEfectiva === fechaFinEfectiva
-      ? formatFechaCorta(fechaInicioEfectiva)
-      : `${formatFechaCorta(fechaInicioEfectiva)} al ${formatFechaCorta(fechaFinEfectiva)}`;
+  // Al acotarse la lista de estaciones (cambió el rango de fechas o el operador), se quitan de la
+  // selección a mano las EBAR que ya no están disponibles — para que ni el "Asunto" ni el filtro
+  // del reporte arrastren una estación que no aplica. "Todas las estaciones" (null) se mantiene.
+  useEffect(() => {
+    setEstacionIds((prev) => {
+      if (prev === null) return null;
+      const disponibles = new Set(estaciones.map((e) => e.id));
+      const filtrado = new Set([...prev].filter((id) => disponibles.has(id)));
+      return filtrado.size === prev.size ? prev : filtrado;
+    });
+  }, [estaciones]);
 
   // Título base del reporte (sin sufijo de operador/estación) — se usa tanto para armar el título
   // real del PDF (manejarGenerar) como para sugerir el "Asunto" del encabezado tipo memo acá abajo.
   const tituloBase =
     tipo === 'diario_operador' ? 'Reporte diario' : tipo === 'consolidado_fecha' ? 'Reporte consolidado' : 'Reporte de estación';
-  const asuntoSugerido = `${tituloBase} — ${rangoLabel}`;
+  // El "Asunto" sugerido incluye el nombre de las EBAR elegidas a mano en el campo Estación
+  // (pedido del usuario). Con "Todas las estaciones" (estacionIds === null) no se listan — no
+  // aporta nada al asunto.
+  const nombresEstacionesElegidas = estacionesElegidas.map((e) => e.nombre).join(', ');
+  const asuntoSugerido = nombresEstacionesElegidas
+    ? `${tituloBase} — ${nombresEstacionesElegidas} — ${rangoLabel}`
+    : `${tituloBase} — ${rangoLabel}`;
 
-  // El Asunto se sugiere solo según el tipo/rango de fechas elegidos, mientras la analista no haya
-  // escrito el suyo a mano — apenas lo toca, deja de autocompletarse (mismo criterio que
-  // "asuntoTocado" abajo).
+  // El Asunto se sugiere solo según el tipo/rango de fechas y las estaciones elegidas, mientras
+  // nadie haya escrito el suyo a mano — apenas lo tocan, deja de autocompletarse.
   useEffect(() => {
     if (!asuntoTocado) setAsunto(asuntoSugerido);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -475,15 +495,6 @@ function BloqueFiltrosGenerar({
         </div>
       )}
 
-      {estaciones.length > 0 && (
-        <SelectorEstaciones
-          estaciones={estaciones}
-          seleccionadas={estacionIds}
-          onCambiar={setEstacionIds}
-          obligatorio={tipo === 'individual_estacion'}
-        />
-      )}
-
       {esRango ? (
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -502,6 +513,23 @@ function BloqueFiltrosGenerar({
         </div>
       )}
 
+      {estaciones.length > 0 ? (
+        <SelectorEstaciones
+          estaciones={estaciones}
+          seleccionadas={estacionIds}
+          onCambiar={setEstacionIds}
+          obligatorio={tipo === 'individual_estacion'}
+        />
+      ) : (
+        <div>
+          <label className="etiqueta">Estación</label>
+          <p className="text-xs text-slate-500">
+            No hay estaciones con visitas en ese rango de fechas
+            {esAdmin && operadorId ? ' para el operador elegido' : ''}.
+          </p>
+        </div>
+      )}
+
       <div>
         <label className="etiqueta">N.º de informe (opcional)</label>
         <input
@@ -513,10 +541,10 @@ function BloqueFiltrosGenerar({
         />
       </div>
 
-      {/* Encabezado tipo memo del PDF (formato GADMFO) — ya viene precargado con valores por
-          defecto razonables; se abre solo si hace falta ajustar algo antes de generar. */}
-      <details className="tarjeta p-3">
-        <summary className="cursor-pointer text-sm font-medium text-slate-700">Encabezado del PDF (Para / De / Asunto)</summary>
+      {/* Encabezado tipo memo del PDF (formato GADMFO) — siempre visible (pedido del usuario); ya
+          viene precargado con valores por defecto razonables. */}
+      <div className="tarjeta p-3">
+        <p className="text-sm font-medium text-slate-700">Encabezado del PDF (Para / De / Asunto)</p>
         <div className="space-y-3 mt-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -551,7 +579,7 @@ function BloqueFiltrosGenerar({
             />
           </div>
         </div>
-      </details>
+      </div>
 
       <button
         onClick={manejarGenerar}
