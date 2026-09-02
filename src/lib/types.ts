@@ -75,6 +75,7 @@ export interface PlanillaHorasExtras {
   revisado_cargo: string;
   aprobado_nombre: string;
   aprobado_cargo: string;
+  observaciones?: string | null;
   creado_por?: string | null;
   created_at?: string;
   updated_at?: string;

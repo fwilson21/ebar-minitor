@@ -728,6 +728,8 @@ function EditorPlanilla({
 
   const [descripcionDefault, setDescripcionDefault] = useState('');
   const [memorandoDefault, setMemorandoDefault] = useState('');
+  // Observaciones libres de la planilla (opcional). En el PDF van debajo de la nota del almuerzo.
+  const [observaciones, setObservaciones] = useState(planilla?.observaciones ?? '');
 
   // Una planilla nueva arranca con 5 líneas en blanco por defecto (para digitar a mano si hace
   // falta); al traer los días de turno del calendario, esas líneas se van llenando con las fechas
@@ -1168,6 +1170,7 @@ function EditorPlanilla({
         revisado_cargo: editarRevisado ? revisadoCargo.trim() : configuracion.revisado_cargo,
         aprobado_nombre: editarAprobado ? aprobadoNombre.trim() : configuracion.aprobado_nombre,
         aprobado_cargo: editarAprobado ? aprobadoCargo.trim() : configuracion.aprobado_cargo,
+        observaciones: observaciones.trim() || null,
       };
 
       let planillaId = planilla?.id;
@@ -1277,6 +1280,7 @@ function EditorPlanilla({
           revisadoCargo: editarRevisado ? revisadoCargo.trim() : configuracion.revisado_cargo,
           aprobadoNombre: editarAprobado ? aprobadoNombre.trim() : configuracion.aprobado_nombre,
           aprobadoCargo: editarAprobado ? aprobadoCargo.trim() : configuracion.aprobado_cargo,
+          observaciones: observaciones.trim() || null,
         },
         filasReporte,
         formatHoras(totalHorasExtra),
@@ -1441,6 +1445,8 @@ function EditorPlanilla({
     setDescripcionDefault,
     memorandoDefault,
     setMemorandoDefault,
+    observaciones,
+    setObservaciones,
     traerDiasDeCalendario,
     trayendoDias,
     mensaje,
@@ -1855,6 +1861,8 @@ interface BloqueInformeMemorandoProps {
   setDescripcionDefault: Dispatch<SetStateAction<string>>;
   memorandoDefault: string;
   setMemorandoDefault: Dispatch<SetStateAction<string>>;
+  observaciones: string;
+  setObservaciones: Dispatch<SetStateAction<string>>;
   traerDiasDeCalendario: () => void;
   trayendoDias: boolean;
   mensaje: string | null;
@@ -1867,6 +1875,8 @@ function BloqueInformeMemorando({
   setDescripcionDefault,
   memorandoDefault,
   setMemorandoDefault,
+  observaciones,
+  setObservaciones,
   traerDiasDeCalendario,
   trayendoDias,
   mensaje,
@@ -1900,6 +1910,17 @@ function BloqueInformeMemorando({
         {trayendoDias ? 'Trayendo…' : '📅 Traer días del calendario de turnos'}
       </button>
       {mensaje && <p className="text-xs text-gauge-danger">{mensaje}</p>}
+
+      <div>
+        <label className="etiqueta">Observaciones (opcional)</label>
+        <textarea
+          className="campo min-h-[72px] resize-y"
+          rows={3}
+          placeholder="Se escribe a mano si la planilla tiene alguna observación. En el PDF sale debajo de la nota del almuerzo."
+          value={observaciones}
+          onChange={(e) => setObservaciones(e.target.value)}
+        />
+      </div>
     </div>
     </fieldset>
   );

@@ -731,6 +731,7 @@ export interface DatosPlanillaReporte {
   revisadoCargo: string;
   aprobadoNombre: string;
   aprobadoCargo: string;
+  observaciones?: string | null;
 }
 
 function formatFechaDMY(fechaIso: string): string {
@@ -858,7 +859,14 @@ export function generarReportePlanillaHorasExtras(
       filasOrdenadas.length === 0
         ? { text: 'No hay días cargados en este período.', italics: true, margin: [0, 0, 0, 16] }
         : tablaDias,
-      { text: 'Nota: en todos los casos se descuenta 1 hora de almuerzo al medio día.', fontSize: 7.5, italics: true, margin: [0, 0, 0, 24] },
+      { text: 'Nota: en todos los casos se descuenta 1 hora de almuerzo al medio día.', fontSize: 7.5, italics: true, margin: [0, 0, 0, datos.observaciones?.trim() ? 4 : 24] },
+      ...(datos.observaciones?.trim()
+        ? [{
+            text: [{ text: 'Observaciones: ', bold: true }, datos.observaciones.trim()],
+            fontSize: 7.5,
+            margin: [0, 0, 0, 24] as [number, number, number, number],
+          }]
+        : []),
       {
         columns: [
           firmaSimple(datos.revisadoNombre, 'REVISADO POR', datos.revisadoCargo),
