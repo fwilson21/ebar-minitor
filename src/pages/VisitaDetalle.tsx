@@ -45,6 +45,7 @@ interface DetalleVisita {
   fecha_hora_salida: string | null;
   estado_estacion: string;
   nivel_tanque: string;
+  ubicacion_no_confirmada?: boolean;
   observaciones_generales: string | null;
   cerramiento_observaciones: string | null;
   jardineras_observaciones: string | null;
@@ -232,6 +233,12 @@ export function VisitaDetalle() {
           Llegada: {llegada.toLocaleString('es-EC', { hour12: false })}
           {salida && <> · Salida: {salida.toLocaleString('es-EC', { hour12: false })}</>}
         </p>
+        {visita.ubicacion_no_confirmada && (
+          <p className="mt-2 rounded-lg border border-gauge-warn/50 bg-gauge-warn/10 px-3 py-2 text-sm text-gauge-warn">
+            📍 El GPS no confirmó la ubicación del operador en esta visita. El operador confirmó a
+            mano su presencia — revisar.
+          </p>
+        )}
       </div>
 
       {!esLineaConduccion && (

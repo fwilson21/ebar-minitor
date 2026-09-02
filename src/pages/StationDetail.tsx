@@ -43,6 +43,7 @@ interface HistorialItem {
   nivel_tanque: string;
   operador: string;
   operador_id: string;
+  ubicacion_no_confirmada?: boolean;
   bombas: { numero_bomba: number; estado: string; voltaje: number | null; amperaje: number | null; voltaje_fuera_rango: boolean }[];
   fotos_count: number;
   cerramiento_observaciones?: string | null;
@@ -444,11 +445,16 @@ export function StationDetail() {
                     return (
                       <div key={h.id} className="tarjeta p-3">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="flex items-center gap-2">
+                          <span className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC', { hour12: false })}</span>
                             {duracion && (
                               <span className={`text-xs ${duracion.corta ? 'text-gauge-warn' : 'text-slate-500'}`}>
                                 · {duracion.texto}
+                              </span>
+                            )}
+                            {h.ubicacion_no_confirmada && (
+                              <span className="text-xs px-2 py-0.5 rounded-full border border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10">
+                                📍 Ubicación sin confirmar por GPS
                               </span>
                             )}
                           </span>
@@ -583,6 +589,10 @@ function UltimaVisitaResumen({ visita }: { visita: HistorialItem }) {
         </p>
         <span className="text-xs text-slate-500">{visita.operador}</span>
       </div>
+
+      {visita.ubicacion_no_confirmada && (
+        <p className="text-[11px] text-gauge-warn">📍 Ubicación sin confirmar por GPS — revisar</p>
+      )}
 
       {(equiposConAlerta.length > 0 || alertasVoltaje > 0) ? (
         <div className="flex gap-1.5 flex-wrap">

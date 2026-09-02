@@ -133,6 +133,13 @@ export function VisitForm() {
   const [cerramientoSeguridad, setCerramientoSeguridad] = useState<RegistroEquipo>(crearEquipo);
   const [jardineras, setJardineras] = useState<RegistroEquipo>(crearEquipo);
   const [patiosManiobras, setPatiosManiobras] = useState<RegistroEquipo>(crearEquipo);
+  // GPS: si al registrar una visita NUEVA el chip no logra ninguna lectura (no que confirme que el
+  // operador está lejos), se le pide confirmar a mano que está en la estación en vez de bloquearlo.
+  // Si confirma, `ubicacionConfirmadaManual` pasa a true y la visita se guarda marcada
+  // (`ubicacion_no_confirmada`) para que el supervisor la revise. En modo edición se conserva la
+  // marca que ya tenía la visita (`ubicacionNoConfirmadaOriginal`).
+  const [ubicacionConfirmadaManual, setUbicacionConfirmadaManual] = useState(false);
+  const [ubicacionNoConfirmadaOriginal, setUbicacionNoConfirmadaOriginal] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [eliminandoVisita, setEliminandoVisita] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
@@ -203,6 +210,7 @@ export function VisitForm() {
       camaraRejilla, camaraValvulaCompuerta, tableroDistribucion, variador, descargaEmergencia,
       tuberia400ValvulasAire, tuberia400Uniones, tuberia600ValvulasAire, tuberia600Uniones,
       cerramientoSeguridad, jardineras, patiosManiobras,
+      ubicacionConfirmadaManual,
     };
   }
 
@@ -232,6 +240,7 @@ export function VisitForm() {
     setCerramientoSeguridad(datos.cerramientoSeguridad);
     setJardineras(datos.jardineras);
     setPatiosManiobras(datos.patiosManiobras);
+    if (datos.ubicacionConfirmadaManual) setUbicacionConfirmadaManual(true);
   }
 
   async function pausarYSalir(salir: () => void) {
@@ -480,6 +489,7 @@ export function VisitForm() {
           setEstadoEstacion(visita.estado_estacion);
           setNivelTanque(visita.nivel_tanque);
           setObservaciones(visita.observaciones_generales ?? '');
+          setUbicacionNoConfirmadaOriginal(Boolean(visita.ubicacion_no_confirmada));
 
           const todasLasFotos = (visita.fotos as any[]) ?? [];
           const fotosPorSeccion = (nombre: string | null): FotoLocal[] =>
@@ -761,6 +771,9 @@ export function VisitForm() {
       // del resto, quedó opcional (ver primerCampoObligatorioFaltante) sin tener un "sin dato"
       // propio como sí tienen los EquipoSection (estado === '').
       nivel_tanque: esLineaConduccion ? 'medio' : nivelTanque === '' ? 'medio' : (nivelTanque as NivelTanque),
+      // Al crear: true si el operador confirmó a mano su presencia porque el GPS no lo ubicó.
+      // Al editar: se conserva la marca original (el chequeo de GPS no corre en edición).
+      ubicacion_no_confirmada: modoEdicion ? ubicacionNoConfirmadaOriginal : ubicacionConfirmadaManual,
       olores_anormales: false,
       olores_descripcion: null,
       ruidos_extranos: false,
@@ -826,6 +839,7 @@ export function VisitForm() {
         fecha_hora_salida: payload.fecha_hora_salida,
         estado_estacion: payload.estado_estacion,
         nivel_tanque: payload.nivel_tanque,
+        ubicacion_no_confirmada: payload.ubicacion_no_confirmada,
         olores_anormales: payload.olores_anormales,
         olores_descripcion: payload.olores_descripcion,
         ruidos_extranos: payload.ruidos_extranos,
@@ -925,9 +939,16 @@ export function VisitForm() {
   // Mientras el GPS todavía no da su primera lectura no se bloquea (se trata como una carga
   // normal, sin mostrar el aviso) — así se evita el falso "no estás en el sitio" mientras el
   // celular sigue ubicándose, sobre todo en EBAR sin señal de datos donde tarda más.
-  const bloqueadoPorUbicacion =
-    requiereUbicacion &&
-    (ubicacion.tipo === 'error' || (ubicacion.tipo === 'ok' && distanciaEfectiva! > DISTANCIA_MAXIMA_METROS));
+  //
+  // Dos casos distintos:
+  //  - gpsConfirmaLejos: el GPS SÍ ubicó al operador y está fuera del radio → bloqueo duro, sin
+  //    forma de pasar (mensaje genérico, no revela que se verifica por GPS).
+  //  - gpsSinLectura: el GPS no logró NINGUNA ubicación (apagado, permiso denegado, o timeout
+  //    dentro de la cámara de concreto) → no se puede saber dónde está. En vez de bloquear, se le
+  //    pide confirmar a mano; si confirma, la visita se guarda marcada para revisión.
+  const gpsConfirmaLejos =
+    requiereUbicacion && ubicacion.tipo === 'ok' && distanciaEfectiva! > DISTANCIA_MAXIMA_METROS;
+  const gpsSinLectura = requiereUbicacion && ubicacion.tipo === 'error';
   const ubicandoAun = requiereUbicacion && ubicacion.tipo === 'buscando';
 
   if (cargandoDatos || ubicandoAun) return <p className="text-slate-600">Cargando…</p>;
@@ -965,10 +986,40 @@ export function VisitForm() {
     );
   }
 
-  if (bloqueadoPorUbicacion) {
-    // Un solo mensaje genérico para los 3 casos (GPS apagado, permiso denegado, fuera de rango)
-    // a propósito: no debe distinguir la causa ni mostrar distancias/coordenadas, para no darle
-    // al operador ninguna pista de que se está verificando su ubicación por GPS.
+  if (gpsSinLectura && !ubicacionConfirmadaManual) {
+    return (
+      <div className="tarjeta p-6 border-2 border-gauge-warn/60 bg-gauge-warn/10 text-center space-y-4">
+        <p className="text-4xl">📍</p>
+        <h1 className="text-lg font-bold uppercase tracking-wide text-slate-800">
+          No pudimos confirmar tu ubicación
+        </h1>
+        <p className="text-sm text-slate-700">
+          El GPS no logró ubicarte (pasa seguido dentro de las cámaras de concreto). Para continuar,
+          confirma que estás físicamente en <strong>{estacion.nombre}</strong>.
+        </p>
+        <p className="text-xs text-slate-500">Esta visita quedará marcada para revisión de tu supervisor.</p>
+        <div className="flex flex-col gap-2">
+          <button type="button" onClick={() => setUbicacionConfirmadaManual(true)} className="boton-primario w-full">
+            Sí, estoy en la estación — continuar
+          </button>
+          <button
+            type="button"
+            className="text-xs text-slate-600 hover:text-slate-900 underline"
+            onClick={() => navigate(-1)}
+          >
+            No — volver
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (gpsConfirmaLejos && !ubicacionConfirmadaManual) {
+    // Mensaje genérico a propósito: no revela que se verifica por GPS ni muestra distancias, para
+    // no darle pistas a quien quiera hacer trampa. Este caso (el GPS confirma que está lejos) no
+    // tiene forma de pasar — a diferencia de "el GPS no pudo ubicarlo" (arriba). Si el operador ya
+    // pasó por la confirmación manual (el GPS no tenía lectura y recién ahora dio una, quizás mala
+    // por el rebote contra el metal), no se lo vuelve a bloquear: la visita ya quedó marcada.
     return (
       <div className="tarjeta p-6 border-2 border-gauge-danger/60 bg-gauge-danger/10 text-center space-y-3">
         <p className="text-4xl">🚫</p>
@@ -1050,6 +1101,13 @@ export function VisitForm() {
       </div>
 
       {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} sinBloques />}
+
+      {!modoEdicion && ubicacionConfirmadaManual && (
+        <div className="rounded-lg border border-gauge-warn/50 bg-gauge-warn/10 px-3 py-2 text-xs text-slate-700">
+          📍 El GPS no pudo confirmar tu ubicación. Confirmaste a mano que estás en la estación —
+          esta visita quedará marcada para revisión de tu supervisor.
+        </div>
+      )}
 
       {esLineaConduccion ? (
         <>

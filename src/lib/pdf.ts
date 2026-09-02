@@ -25,6 +25,7 @@ export interface VisitaParaReporte {
   operador_nombre: string;
   estado_estacion: string;
   nivel_tanque: string;
+  ubicacion_no_confirmada?: boolean;
   cerramiento_observaciones?: string | null;
   jardineras_observaciones?: string | null;
   patios_maniobras_observaciones?: string | null;
@@ -390,6 +391,12 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
     {},
   ];
   const filaUbicacion = v.estacion_ubicacion ? [['Ubicación', v.estacion_ubicacion]] : [];
+  const filaGpsSinConfirmar = v.ubicacion_no_confirmada
+    ? [[
+        { text: 'Ubicación GPS', bold: true },
+        { text: '⚠ SIN CONFIRMAR — el operador confirmó a mano su presencia', color: '#B45309' },
+      ]]
+    : [];
 
   const encabezadoTabla = esLineaConduccion
     ? [
@@ -399,6 +406,7 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
         ['Llegada', formatFechaHora(v.fecha_hora_llegada)],
         ['Salida', v.fecha_hora_salida ? formatFechaHora(v.fecha_hora_salida) : '-'],
         ['Operador', v.operador_nombre],
+        ...filaGpsSinConfirmar,
         ['Estado general', ESTADO_LABEL[v.estado_estacion] ?? v.estado_estacion],
       ]
     : [
@@ -408,6 +416,7 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
         ['Llegada', formatFechaHora(v.fecha_hora_llegada)],
         ['Salida', v.fecha_hora_salida ? formatFechaHora(v.fecha_hora_salida) : '-'],
         ['Operador', v.operador_nombre],
+        ...filaGpsSinConfirmar,
         ['Estado de la estación', ESTADO_LABEL[v.estado_estacion] ?? v.estado_estacion],
         ['Nivel de tanque', v.nivel_tanque],
       ];

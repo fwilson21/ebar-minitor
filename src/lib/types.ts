@@ -146,6 +146,8 @@ export interface VisitaInput {
   fecha_hora_salida?: string | null;
   estado_estacion: EstadoEstacion;
   nivel_tanque: NivelTanque;
+  /** true si el operador confirmó a mano su presencia porque el GPS no lo pudo ubicar. */
+  ubicacion_no_confirmada?: boolean;
   olores_anormales: boolean;
   olores_descripcion?: string | null;
   ruidos_extranos: boolean;
