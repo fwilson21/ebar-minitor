@@ -18,7 +18,8 @@ export function Stations() {
   // Ambas delegables por permiso (ver /permisos) además del administrador real — antes eran
   // esAdmin a secas.
   const puedeCrearEstaciones = esAdmin || tienePermiso('crear_estaciones');
-  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
+  // "Editar distribución" es exclusiva del administrador real (ver migración 0053).
+  const puedeEditarDistribucion = esAdmin;
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);
   const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>({});
   const [filtroZona, setFiltroZona] = useState<ZonaTipo | 'todas'>('todas');

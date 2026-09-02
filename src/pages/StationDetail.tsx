@@ -117,7 +117,8 @@ export function StationDetail() {
   const puedeGestionarBombas = !soloLectura && (esAdmin || tienePermiso('gestionar_bombas'));
   // "Editar distribución" acá es solo el control de ancho de esta pantalla (sinBloques en
   // BarraDistribucion, mismo patrón que VisitForm.tsx) — no una grilla de bloques movibles.
-  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
+  // Exclusiva del administrador real (ver migración 0053).
+  const puedeEditarDistribucion = esAdmin;
   const editorDistribucion = useEditorDistribucion('estacion_detalle');
   const [estacion, setEstacion] = useState<EstacionEbar | null>(null);
   const [historial, setHistorial] = useState<HistorialItem[]>([]);

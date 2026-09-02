@@ -688,13 +688,14 @@ function EditorPlanilla({
   onCerrar: () => void;
   onGuardado: () => Promise<void>;
   /** Este modal también lo abre el digitador (crea/edita planillas) — "Editar distribución"
-   * sigue siendo del administrador real o de quien tenga el permiso 'editar_distribucion',
-   * igual que en el resto de las pantallas. */
+   * sigue siendo exclusiva del administrador real (ver migración 0053), igual que en el resto
+   * de las pantallas. */
   esAdmin: boolean;
 }) {
   const editorDistribucion = useEditorDistribucion('modal_nueva_planilla');
-  const { anchoPropioDePantalla, tienePermiso } = useAuth();
-  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
+  const { anchoPropioDePantalla } = useAuth();
+  // "Editar distribución" es exclusiva del administrador real (ver migración 0053).
+  const puedeEditarDistribucion = esAdmin;
   // A diferencia de las demás pantallas, este modal por defecto ocupa casi toda la pantalla (no
   // el ancho general de 1280px) — solo se achica si alguien lo pidió explícitamente arrastrando
   // el control, por eso no usa el respaldo de anchoDePantalla().

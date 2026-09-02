@@ -26,12 +26,11 @@ function soloLaUltimaPorEstacion(lista: AsignacionEstacion[]): AsignacionEstacio
 }
 
 export function Asignaciones() {
-  const { usuario, tienePermiso } = useAuth();
-  // "Editar distribución" es del administrador real o de quien tenga el permiso
-  // 'editar_distribucion' — esta pantalla también la usa supervisor, que puede usarla pero no
-  // reacomodarla (a menos que se le dé ese permiso).
+  const { usuario } = useAuth();
+  // "Editar distribución" es exclusiva del administrador real (ver migración 0053) — esta
+  // pantalla también la usa el supervisor, que puede usarla pero no reacomodarla.
   const esAdmin = usuario?.rol === 'administrador';
-  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
+  const puedeEditarDistribucion = esAdmin;
   const editorDistribucion = useEditorDistribucion('asignaciones');
   const [operadores, setOperadores] = useState<Usuario[]>([]);
   const [estaciones, setEstaciones] = useState<EstacionEbar[]>([]);

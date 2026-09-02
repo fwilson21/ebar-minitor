@@ -88,13 +88,13 @@ interface Operador {
 }
 
 export function InformeSemanal() {
-  const { usuario, tienePermiso } = useAuth();
+  const { usuario } = useAuth();
   const puedeVer = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
   // "Editar distribución" acá es solo el control de ancho de esta pantalla (sinBloques en
-  // BarraDistribucion) — es un único documento largo, no una grilla de bloques movibles. Mismo
-  // criterio que VisitForm.tsx.
+  // BarraDistribucion) — es un único documento largo, no una grilla de bloques movibles. Es
+  // exclusiva del administrador real (ver migración 0053), mismo criterio que VisitForm.tsx.
   const esAdministrador = usuario?.rol === 'administrador';
-  const puedeEditarDistribucion = esAdministrador || tienePermiso('editar_distribucion');
+  const puedeEditarDistribucion = esAdministrador;
   const editorDistribucion = useEditorDistribucion('informe_semanal');
 
   const [semanaDesde, setSemanaDesde] = useState(() => lunesDeSemana(hoyLocal()));

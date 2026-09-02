@@ -78,13 +78,12 @@ const TITULOS_METRICA: Record<TipoMetrica, string> = {
 };
 
 export function Dashboard() {
-  const { usuario, tienePermiso, soloLectura } = useAuth();
+  const { usuario, soloLectura } = useAuth();
   const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
-  // "Editar distribución" es del administrador real o de quien tenga el permiso
-  // 'editar_distribucion' (ver /permisos) — ni siquiera supervisor lo tiene por defecto, igual
-  // que era la vieja pantalla separada de Distribución de entorno.
+  // "Editar distribución" (mover/redimensionar bloques + ancho de pantalla) es exclusiva del
+  // administrador real — ni supervisor ni ningún permiso delegado (ver migración 0053).
   const esAdministrador = usuario?.rol === 'administrador';
-  const puedeEditarDistribucion = esAdministrador || tienePermiso('editar_distribucion');
+  const puedeEditarDistribucion = esAdministrador;
   const editorDistribucion = useEditorDistribucion('dashboard');
   // El modal de detalle (abajo) se refleja en "?modal=" de la URL — así queda como una entrada
   // real del historial del navegador: al entrar a una EBAR desde "Ver →" y volver con "← Volver"

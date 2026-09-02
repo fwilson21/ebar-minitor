@@ -88,15 +88,15 @@ function equipoParaBD(equipo: RegistroEquipo | null | undefined) {
 
 export function VisitForm() {
   const { id: estacionId, visitaId } = useParams<{ id: string; visitaId?: string }>();
-  const { usuario, tienePermiso } = useAuth();
+  const { usuario } = useAuth();
   const navigate = useNavigate();
   const modoEdicion = !!visitaId;
   // "Editar distribución" acá es solo el control de ancho de esta pantalla (sinBloques en
   // BarraDistribucion) — el formulario es un único bloque de contenido, no una grilla de bloques
-  // movibles como Inicio/Estaciones. Mismo criterio que el resto de la app: administrador real o
-  // quien tenga el permiso 'editar_distribucion' delegado (ver /permisos).
+  // movibles como Inicio/Estaciones. Es exclusiva del administrador real (ver migración 0053),
+  // mismo criterio que el resto de la app.
   const esAdministrador = usuario?.rol === 'administrador';
-  const puedeEditarDistribucion = esAdministrador || tienePermiso('editar_distribucion');
+  const puedeEditarDistribucion = esAdministrador;
   const editorDistribucion = useEditorDistribucion('visita_formulario');
 
   const [estacion, setEstacion] = useState<EstacionEbar | null>(null);

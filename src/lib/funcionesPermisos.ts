@@ -82,12 +82,8 @@ export const FUNCIONES_PERMISOS: FuncionPermiso[] = [
     descripcion: 'Cambiar los firmantes por defecto (Revisado por / Aprobado por) y la jornada por defecto de cada operador — ajustes globales que se prellenan al generar cualquier planilla.',
     categoria: 'Planillas de horas extras',
   },
-  {
-    clave: 'editar_distribucion',
-    nombre: 'Editar distribución de pantallas',
-    descripcion: 'Mover y redimensionar los bloques de cualquier pantalla, y ajustar su ancho en escritorio ("Editar distribución") — aplica por igual a todas las pantallas que lo tienen.',
-    categoria: 'Distribución de pantallas',
-  },
+  // "Editar distribución" (mover/redimensionar bloques + ancho de pantalla) volvió a ser
+  // exclusiva del administrador real — ya no se delega por permiso (ver migración 0053).
   {
     clave: 'marcar_turnos',
     nombre: 'Marcar turnos',

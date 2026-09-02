@@ -105,7 +105,8 @@ export function CalendarioTurnos() {
   // a un turno ni declarar/quitar feriados a menos que se le dé el permiso correspondiente) — la
   // Planilla de horas extras sí la puede crear/editar completa.
   const esDigitador = usuario?.rol === 'digitador';
-  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
+  // "Editar distribución" es exclusiva del administrador real (ver migración 0053).
+  const puedeEditarDistribucion = esAdmin;
   // Delegables por permiso (ver /permisos) además del administrador real. "Marcar turnos" incluye
   // declarar un feriado nuevo (se hace desde el mismo panel del día); "gestionar_feriados" es
   // solo para quitar de la lista uno ya declarado.

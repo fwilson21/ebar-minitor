@@ -18,12 +18,11 @@ import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agrupa
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
 
 export function Reports() {
-  const { usuario, tienePermiso } = useAuth();
+  const { usuario } = useAuth();
   const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
-  // "Editar distribución" es del administrador real o de quien tenga el permiso
-  // 'editar_distribucion' (ni siquiera supervisor lo tiene por defecto).
+  // "Editar distribución" es exclusiva del administrador real (ver migración 0053).
   const esAdministrador = usuario?.rol === 'administrador';
-  const puedeEditarDistribucion = esAdministrador || tienePermiso('editar_distribucion');
+  const puedeEditarDistribucion = esAdministrador;
   const editorDistribucion = useEditorDistribucion('reportes');
 
   const [tipo, setTipo] = useState<TipoReporte>('consolidado_fecha');

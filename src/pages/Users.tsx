@@ -31,7 +31,8 @@ export function Users() {
   const puedeActivarDesactivar = esAdmin || tienePermiso('activar_desactivar_usuarios');
   const puedeRestablecerPassword = esAdmin || tienePermiso('restablecer_password_usuarios');
   const puedeEliminar = esAdmin || tienePermiso('eliminar_usuarios');
-  const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
+  // "Editar distribución" es exclusiva del administrador real (ver migración 0053).
+  const puedeEditarDistribucion = esAdmin;
   const editorDistribucion = useEditorDistribucion('usuarios');
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [entrandoComoId, setEntrandoComoId] = useState<string | null>(null);
