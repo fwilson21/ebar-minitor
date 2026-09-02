@@ -65,7 +65,7 @@ function esPantallaPrincipal(pathname: string): boolean {
 }
 
 export function AppShell() {
-  const { usuario, logout, tienePermiso, anchoDePantalla } = useAuth();
+  const { usuario, logout, tienePermiso, anchoDePantalla, soloLectura } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const anchoActivo = anchoDePantalla(pantallaPorRuta(location.pathname));
@@ -245,6 +245,12 @@ export function AppShell() {
           </button>
         </div>
       )}
+      {soloLectura && (
+        <div className="w-full bg-sky-600 text-white text-xs sm:text-sm px-4 py-2 text-center sticky top-0 z-40">
+          🖥️ Modo consulta (computadora) — puedes ver todo y generar informes, pero no registrar ni
+          editar visitas. Para eso usa tu teléfono.
+        </div>
+      )}
       {impersonando && (
         <div className="bg-amber-400 text-amber-950 text-xs sm:text-sm px-4 py-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center sticky top-0 z-40">
           <span>
@@ -298,9 +304,11 @@ export function AppShell() {
             <span className="text-sm text-slate-600 truncate max-w-[7rem] sm:max-w-none">
               {usuario?.nombre_completo ? nombreCorto(usuario.nombre_completo) : ''}
             </span>
-            <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-600 hover:text-slate-900">
-              🔑
-            </button>
+            {!soloLectura && (
+              <button onClick={() => setMostrarPassword(true)} className="text-sm text-slate-600 hover:text-slate-900">
+                🔑
+              </button>
+            )}
             <button onClick={manejarClickSalir} className="text-sm text-slate-600 hover:text-slate-900">
               Salir
             </button>

@@ -70,7 +70,7 @@ const TITULOS_METRICA: Record<TipoMetrica, string> = {
 };
 
 export function Dashboard() {
-  const { usuario, tienePermiso } = useAuth();
+  const { usuario, tienePermiso, soloLectura } = useAuth();
   const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
   // "Editar distribución" es del administrador real o de quien tenga el permiso
   // 'editar_distribucion' (ver /permisos) — ni siquiera supervisor lo tiene por defecto, igual
@@ -545,7 +545,7 @@ export function Dashboard() {
           resumen={resumen}
           onAbrirDetalle={abrirDetalleMetrica}
         />
-        {!esAdmin && <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} />}
+        {!esAdmin && <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} soloLectura={soloLectura} />}
         {esAdmin && (
           <BloquePendientesVisita
             estadoVisitasHoy={estadoVisitasHoy}
@@ -587,7 +587,7 @@ export function Dashboard() {
                   />
                 );
               case 'tus_ebar_hoy':
-                if (!esAdmin) return <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} />;
+                if (!esAdmin) return <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} soloLectura={soloLectura} />;
                 // Se ve vacío para el administrador (sus propias EBAR de hoy no aplican) aunque el
                 // bloque siga presente para poder acomodarlo — el operador real sí va a ver su
                 // contenido acá.
@@ -754,7 +754,15 @@ function LeyendaSemaforoVisitas({ esRegular }: { esRegular: boolean }) {
   );
 }
 
-function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: EstacionAsignadaHoy[]; esRegular: boolean }) {
+function BloqueTusEbarHoy({
+  misEstacionesHoy,
+  esRegular,
+  soloLectura,
+}: {
+  misEstacionesHoy: EstacionAsignadaHoy[];
+  esRegular: boolean;
+  soloLectura: boolean;
+}) {
   return (
     <div className="lg:h-full lg:overflow-auto bloque-adaptable">
       <h2 className="text-sm font-semibold text-slate-700 mb-2">
@@ -789,7 +797,9 @@ function BloqueTusEbarHoy({ misEstacionesHoy, esRegular }: { misEstacionesHoy: E
                   return (
                     <Link
                       key={e.id}
-                      to={`/estaciones/${e.id}/nueva-visita`}
+                      // En "modo consulta" (computadora) no se registra nada — la tarjeta lleva a
+                      // la ficha de la estación (ver historial / exportar) en vez de al formulario.
+                      to={soloLectura ? `/estaciones/${e.id}` : `/estaciones/${e.id}/nueva-visita`}
                       className={`tarjeta p-3 flex flex-col gap-1 border-2 transition ${CLASE_TARJETA_SEMAFORO[semaforo]}`}
                     >
                       <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>

@@ -108,11 +108,12 @@ function agruparPorOperador(historial: HistorialItem[]): { operador: string; vis
 
 export function StationDetail() {
   const { id } = useParams<{ id: string }>();
-  const { usuario, tienePermiso } = useAuth();
+  const { usuario, tienePermiso, soloLectura } = useAuth();
   const puedeEditarTodo = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
   const esAdmin = usuario?.rol === 'administrador';
   // Delegable por permiso (ver /permisos) además del administrador real — antes era esAdmin a secas.
-  const puedeGestionarBombas = esAdmin || tienePermiso('gestionar_bombas');
+  // En "modo consulta" (operador desde una computadora) no se gestiona nada, solo se mira.
+  const puedeGestionarBombas = !soloLectura && (esAdmin || tienePermiso('gestionar_bombas'));
   // "Editar distribución" acá es solo el control de ancho de esta pantalla (sinBloques en
   // BarraDistribucion, mismo patrón que VisitForm.tsx) — no una grilla de bloques movibles.
   const puedeEditarDistribucion = esAdmin || tienePermiso('editar_distribucion');
@@ -304,9 +305,11 @@ export function StationDetail() {
 
       {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} sinBloques />}
 
-      <Link to={`/estaciones/${estacion.id}/nueva-visita`} className="boton-primario w-full block text-center">
-        + Registrar visita
-      </Link>
+      {!soloLectura && (
+        <Link to={`/estaciones/${estacion.id}/nueva-visita`} className="boton-primario w-full block text-center">
+          + Registrar visita
+        </Link>
+      )}
 
       {puedeGestionarBombas && estacion.tipo !== 'linea_conduccion' && (
         <div className="tarjeta p-4 space-y-2">
@@ -436,7 +439,7 @@ export function StationDetail() {
                 </p>
                 <div className="space-y-2">
                   {visitas.map((h) => {
-                    const puedeEditar = puedeEditarTodo || usuario?.id === h.operador_id;
+                    const puedeEditar = !soloLectura && (puedeEditarTodo || usuario?.id === h.operador_id);
                     const duracion = duracionVisita(h.fecha_hora_llegada, h.fecha_hora_salida);
                     return (
                       <div key={h.id} className="tarjeta p-3">

@@ -41,10 +41,19 @@ export interface SesionEspejo {
   expires_at: number; // epoch en segundos, igual que lo entrega Supabase Auth
 }
 
+// Clave/valor simple para datos del dispositivo que deben sobrevivir un borrado de localStorage
+// (en iPhone el navegador lo limpia con relativa frecuencia). Hoy solo guarda el identificador
+// del dispositivo (ver dispositivo.ts).
+export interface ValorDispositivo {
+  clave: string;
+  valor: string;
+}
+
 class OfflineDB extends Dexie {
   visitas_pendientes!: Table<VisitaPendiente, string>;
   borradores_visita!: Table<BorradorVisita, string>;
   sesion!: Table<SesionEspejo, string>;
+  config_dispositivo!: Table<ValorDispositivo, string>;
 
   constructor() {
     super('ebar_monitor_offline');
@@ -59,6 +68,12 @@ class OfflineDB extends Dexie {
       visitas_pendientes: 'cliente_uuid, creado_en',
       borradores_visita: 'clave, actualizado_en',
       sesion: 'clave',
+    });
+    this.version(4).stores({
+      visitas_pendientes: 'cliente_uuid, creado_en',
+      borradores_visita: 'clave, actualizado_en',
+      sesion: 'clave',
+      config_dispositivo: 'clave',
     });
   }
 }
@@ -80,6 +95,15 @@ export async function leerSesionEspejo(): Promise<SesionEspejo | undefined> {
 
 export async function limpiarSesionEspejo() {
   await offlineDB.sesion.delete('actual');
+}
+
+export async function leerDeviceIdEspejo(): Promise<string | null> {
+  const fila = await offlineDB.config_dispositivo.get('device_id');
+  return fila?.valor ?? null;
+}
+
+export async function guardarDeviceIdEspejo(valor: string) {
+  await offlineDB.config_dispositivo.put({ clave: 'device_id', valor });
 }
 
 export async function guardarBorradorVisita(clave: string, estacionId: string, visitaId: string | undefined, datos: unknown) {

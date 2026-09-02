@@ -1,4 +1,4 @@
-import { Navigate, Route, createRoutesFromElements } from 'react-router-dom';
+import { Link, Navigate, Route, createRoutesFromElements } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import { AppShell } from './components/AppShell';
 import { Login } from './pages/Login';
@@ -21,6 +21,29 @@ function RutaProtegida({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Envuelve las pantallas que ESCRIBEN datos (registrar/editar visita). En "modo consulta"
+ * (operador desde una computadora) muestra un aviso en vez del formulario — desde la compu solo
+ * se puede ver y generar informes. */
+function RutaSoloEscritura({ children }: { children: React.ReactNode }) {
+  const { soloLectura } = useAuth();
+  if (soloLectura) {
+    return (
+      <div className="tarjeta p-6 border-2 border-sky-500/50 bg-sky-500/10 text-center space-y-3">
+        <p className="text-4xl">🖥️</p>
+        <h1 className="text-lg font-bold uppercase tracking-wide text-slate-800">Modo consulta</h1>
+        <p className="text-sm text-slate-700">
+          Estás en una computadora, en modo consulta: puedes ver toda la información y generar
+          informes, pero para registrar o editar visitas usa tu teléfono de trabajo.
+        </p>
+        <Link to="/estaciones" className="text-xs text-slate-600 hover:text-slate-900 underline">
+          ← Volver a Estaciones
+        </Link>
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
 export const routes = createRoutesFromElements(
   <>
     <Route path="/login" element={<Login />} />
@@ -35,8 +58,22 @@ export const routes = createRoutesFromElements(
       <Route index element={<Dashboard />} />
       <Route path="estaciones" element={<Stations />} />
       <Route path="estaciones/:id" element={<StationDetail />} />
-      <Route path="estaciones/:id/nueva-visita" element={<VisitForm />} />
-      <Route path="estaciones/:id/visitas/:visitaId/editar" element={<VisitForm />} />
+      <Route
+        path="estaciones/:id/nueva-visita"
+        element={
+          <RutaSoloEscritura>
+            <VisitForm />
+          </RutaSoloEscritura>
+        }
+      />
+      <Route
+        path="estaciones/:id/visitas/:visitaId/editar"
+        element={
+          <RutaSoloEscritura>
+            <VisitForm />
+          </RutaSoloEscritura>
+        }
+      />
       <Route path="estaciones/:id/visitas/:visitaId/ver" element={<VisitaDetalle />} />
       <Route path="reportes" element={<Reports />} />
       <Route path="informe-semanal" element={<InformeSemanal />} />

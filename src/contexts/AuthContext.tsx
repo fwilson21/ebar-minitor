@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { obtenerIdDispositivo } from '../lib/dispositivo';
+import { esDispositivoEscritorio, esDispositivoMovil, obtenerIdDispositivoRobusto } from '../lib/dispositivo';
 import { guardarSesionEspejo, limpiarSesionEspejo } from '../lib/offlineDB';
 import { descartarSesionGuardada } from '../lib/impersonar';
 import { obtenerAnchosPantalla, ANCHO_CONTENIDO_DEFAULT } from '../lib/anchoContenido';
@@ -10,6 +10,10 @@ import type { Usuario } from '../lib/types';
 interface AuthState {
   usuario: Usuario | null;
   cargando: boolean;
+  /** true si un operador entró desde una computadora/laptop: puede ver todo y generar informes,
+   * pero no registrar ni editar nada. En el teléfono de trabajo (o para admin/supervisor) es
+   * siempre false. Ver src/lib/dispositivo.ts (esDispositivoEscritorio). */
+  soloLectura: boolean;
   /** ¿El usuario actual tiene habilitada esta función? (ver /permisos). Administrador: siempre true. */
   tienePermiso: (funcion: string) => boolean;
   /** Ancho máximo del contenido en escritorio, por pantalla (cada una tiene su propio control
@@ -70,6 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [cargando, setCargando] = useState(true);
   const [permisos, setPermisos] = useState<Set<string>>(new Set());
   const [anchosPantalla, setAnchosPantalla] = useState<Record<string, number>>({});
+  // El tipo de dispositivo no cambia durante la sesión — se calcula una sola vez.
+  const [esEscritorio] = useState(esDispositivoEscritorio);
+  const soloLectura = usuario?.rol === 'operador' && esEscritorio;
 
   function anchoDePantalla(pantallaId: string): number {
     return anchosPantalla[pantallaId] ?? anchosPantalla['global'] ?? ANCHO_CONTENIDO_DEFAULT;
@@ -143,9 +150,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Los operadores quedan vinculados al primer celular desde el que inician
     // sesión (ver 0015_vinculacion_dispositivo.sql) para evitar que reporten
     // visitas de compañeros que no fueron al sitio desde un mismo celular.
+    //
+    // Esto SOLO aplica al teléfono de trabajo: en una computadora/laptop el operador entra en
+    // "modo consulta" (solo lectura, para generar informes desde una pantalla más cómoda) — ahí
+    // no se vincula ni se verifica ningún dispositivo. El identificador del teléfono ahora tiene
+    // respaldo en IndexedDB (obtenerIdDispositivoRobusto) porque en iPhone el navegador borra el
+    // localStorage seguido y eso dejaba al operador bloqueado con "ya estás en otro teléfono".
     const { data: perfil } = await supabase.from('usuarios').select('rol, device_id').eq('id', userId).single();
-    if (perfil?.rol === 'operador') {
-      const deviceId = obtenerIdDispositivo();
+    if (perfil?.rol === 'operador' && esDispositivoMovil()) {
+      const deviceId = await obtenerIdDispositivoRobusto();
       if (perfil.device_id && perfil.device_id !== deviceId) {
         await supabase.auth.signOut();
         return { error: 'device_mismatch' };
@@ -171,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ usuario, cargando, tienePermiso, anchoDePantalla, anchoPropioDePantalla, setAnchoPantalla, login, logout }}
+      value={{ usuario, cargando, soloLectura, tienePermiso, anchoDePantalla, anchoPropioDePantalla, setAnchoPantalla, login, logout }}
     >
       {children}
     </AuthContext.Provider>
