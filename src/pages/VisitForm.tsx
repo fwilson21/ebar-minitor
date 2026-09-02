@@ -42,6 +42,11 @@ const DISTANCIA_MAXIMA_METROS = 300;
 // importar dónde estuviera el operador en realidad. 150 m es lo que el propio GPS normal reporta
 // como peor caso cerca de estructuras de concreto/metal (ver comentario en `distanciaEfectiva`).
 const MARGEN_GPS_MAXIMO_METROS = 150;
+// Si el propio GPS reporta un margen de error mayor a esto, su lectura NO sirve para afirmar que
+// el operador está lejos (el error tapa la distancia) — típico dentro de una cámara de concreto
+// sin señal de datos. En ese caso se trata igual que "el GPS no pudo ubicarlo" (confirmación
+// manual + la visita queda marcada), no como bloqueo duro.
+const PRECISION_GPS_MINIMA_METROS = 200;
 
 const ESTADOS_ESTACION: { value: EstadoEstacion; label: string; claseActiva: string }[] = [
   { value: 'operativa', label: 'Operativa', claseActiva: 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' },
@@ -941,14 +946,20 @@ export function VisitForm() {
   // celular sigue ubicándose, sobre todo en EBAR sin señal de datos donde tarda más.
   //
   // Dos casos distintos:
-  //  - gpsConfirmaLejos: el GPS SÍ ubicó al operador y está fuera del radio → bloqueo duro, sin
-  //    forma de pasar (mensaje genérico, no revela que se verifica por GPS).
-  //  - gpsSinLectura: el GPS no logró NINGUNA ubicación (apagado, permiso denegado, o timeout
-  //    dentro de la cámara de concreto) → no se puede saber dónde está. En vez de bloquear, se le
-  //    pide confirmar a mano; si confirma, la visita se guarda marcada para revisión.
+  //  - gpsConfirmaLejos: el GPS ubicó al operador CON PRECISIÓN y está fuera del radio → bloqueo
+  //    duro, sin forma de pasar (mensaje genérico, no revela que se verifica por GPS).
+  //  - gpsSinLectura: el GPS no logró NINGUNA ubicación (apagado, permiso denegado, timeout), o
+  //    la logró pero con un margen de error tan grande que no sirve (dentro de la cámara de
+  //    concreto sin señal) → no se puede saber dónde está. En vez de bloquear, se le pide
+  //    confirmar a mano; si confirma, la visita se guarda marcada para revisión del supervisor.
+  const gpsFixImpreciso =
+    requiereUbicacion && ubicacion.tipo === 'ok' && ubicacion.precision > PRECISION_GPS_MINIMA_METROS;
   const gpsConfirmaLejos =
-    requiereUbicacion && ubicacion.tipo === 'ok' && distanciaEfectiva! > DISTANCIA_MAXIMA_METROS;
-  const gpsSinLectura = requiereUbicacion && ubicacion.tipo === 'error';
+    requiereUbicacion &&
+    ubicacion.tipo === 'ok' &&
+    !gpsFixImpreciso &&
+    distanciaEfectiva! > DISTANCIA_MAXIMA_METROS;
+  const gpsSinLectura = requiereUbicacion && (ubicacion.tipo === 'error' || gpsFixImpreciso);
   const ubicandoAun = requiereUbicacion && ubicacion.tipo === 'buscando';
 
   if (cargandoDatos || ubicandoAun) return <p className="text-slate-600">Cargando…</p>;
