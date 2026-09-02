@@ -1,31 +1,56 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { hayCambiosSinGuardar } from '../lib/formularioActivo';
 import {
   BUILD_ACTUAL,
   consultarBuildMinimo,
   exigirBuildActualATodos,
   fechaLegibleBuild,
+  forzarActualizacion,
 } from '../lib/versionApp';
 
 /**
  * Pie de página con la versión que está corriendo este equipo — visible para todos, sirve para
- * el soporte por teléfono ("¿qué versión te aparece abajo?"). Para el administrador agrega el
- * control de "candado de versión": exigir esta versión a todas las tablets/celulares, de modo
- * que los que tengan una anterior queden bloqueados con "Actualiza la app" (ver GuardaVersion).
+ * el soporte por teléfono ("¿qué versión te aparece abajo?").
+ *
+ * Dos controles:
+ *   - "Forzar actualización" (todos): alternativa MANUAL a la actualización automática del
+ *     service worker, para cuando la app se ve rara o no se actualiza sola. Borra la caché y
+ *     recarga limpio (no toca las visitas/fotos pendientes).
+ *   - "Exigir esta versión a todos" (solo admin): candado de versión — los equipos con una
+ *     versión anterior quedan bloqueados con "Actualiza la app" (ver GuardaVersion).
  */
 export function PieVersion() {
   const { usuario } = useAuth();
   const esAdmin = usuario?.rol === 'administrador';
+
+  const [actualizando, setActualizando] = useState(false);
+
   const [minimo, setMinimo] = useState<number | null>(null);
-  const [abierto, setAbierto] = useState(false);
+  const [abiertoAdmin, setAbiertoAdmin] = useState(false);
   const [guardando, setGuardando] = useState(false);
-  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [mensajeAdmin, setMensajeAdmin] = useState<string | null>(null);
 
   useEffect(() => {
     if (esAdmin) consultarBuildMinimo().then(setMinimo);
   }, [esAdmin]);
 
-  async function exigir() {
+  async function actualizarAhora() {
+    if (hayCambiosSinGuardar()) {
+      alert('Tienes una visita a medio llenar. Guárdala (o pausa y sal) antes de actualizar la app.');
+      return;
+    }
+    const ok = window.confirm(
+      '¿Actualizar la app ahora?\n\n' +
+        'Se va a recargar y tarda unos segundos. No se pierde nada de lo que ya guardaste: las ' +
+        'visitas y fotos que estén esperando señal se envían igual después.',
+    );
+    if (!ok) return;
+    setActualizando(true);
+    await forzarActualizacion(); // recarga la página, no vuelve de acá
+  }
+
+  async function exigirATodos() {
     const ok = window.confirm(
       '¿Exigir esta versión a todas las tablets y celulares?\n\n' +
         'Cualquier equipo con una versión anterior va a quedar bloqueado con una pantalla de ' +
@@ -34,23 +59,31 @@ export function PieVersion() {
     );
     if (!ok) return;
     setGuardando(true);
-    setMensaje(null);
+    setMensajeAdmin(null);
     const { error } = await exigirBuildActualATodos(usuario?.id);
     setGuardando(false);
     if (error) {
-      setMensaje(`No se pudo: ${error}`);
+      setMensajeAdmin(`No se pudo: ${error}`);
       return;
     }
     setMinimo(BUILD_ACTUAL);
-    setMensaje('Listo. Los equipos con una versión anterior van a pedir actualización.');
+    setMensajeAdmin('Listo. Los equipos con una versión anterior van a pedir actualización.');
   }
 
   const yaExigidaEsta = minimo != null && minimo > 0 && minimo === BUILD_ACTUAL;
 
   return (
-    <footer className="mt-10 pt-4 border-t border-panel-600/40 text-center space-y-1">
+    <footer className="mt-10 pt-4 border-t border-panel-600/40 text-center space-y-2">
       <p className="text-[11px] text-slate-400">
         EBAR Monitor · versión {fechaLegibleBuild()}
+      </p>
+
+      {/* Alternativa manual a la actualización automática — para todos los usuarios. */}
+      <p className="text-[11px] text-slate-400">
+        ¿La app se ve mal o no se actualiza sola?{' '}
+        <button onClick={actualizarAhora} disabled={actualizando} className="underline disabled:opacity-50">
+          {actualizando ? 'Actualizando…' : 'Forzar actualización'}
+        </button>
       </p>
 
       {esAdmin && (
@@ -62,14 +95,14 @@ export function PieVersion() {
             </p>
           )}
 
-          <button onClick={() => setAbierto((v) => !v)} className="underline">
-            {abierto ? 'Ocultar' : 'Forzar actualización de todos'}
+          <button onClick={() => setAbiertoAdmin((v) => !v)} className="underline">
+            {abiertoAdmin ? 'Ocultar' : 'Exigir esta versión a todos los equipos'}
           </button>
 
-          {abierto && (
+          {abiertoAdmin && (
             <div className="mt-1 flex flex-col items-center gap-1.5">
               <button
-                onClick={exigir}
+                onClick={exigirATodos}
                 disabled={guardando || !BUILD_ACTUAL || yaExigidaEsta}
                 className="boton-secundario text-xs px-3 py-1.5"
               >
@@ -79,9 +112,9 @@ export function PieVersion() {
                     ? 'Esta versión ya es la exigida'
                     : 'Exigir esta versión a todos'}
               </button>
-              {mensaje && (
-                <p className={mensaje.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}>
-                  {mensaje}
+              {mensajeAdmin && (
+                <p className={mensajeAdmin.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}>
+                  {mensajeAdmin}
                 </p>
               )}
             </div>
