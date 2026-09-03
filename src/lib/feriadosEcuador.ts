@@ -124,3 +124,15 @@ export function nombreFeriadoCalculado(fechaIso: string): string | undefined {
 export function esDiaNoRegular(fechaIso: string, feriadosAdicionales: Set<string>): boolean {
   return esFinDeSemana(fechaIso) || esFeriadoCalculado(fechaIso) || feriadosAdicionales.has(fechaIso);
 }
+
+/** null = día regular; si no, el motivo a mostrar (nombre del feriado, o "Fin de semana") — mismo
+ * criterio que esDiaNoRegular, pero con el texto para pintar una celda de calendario (Calendario
+ * de turnos, SelectorDiasReporte). `feriadosAdicionales` acá es un Map fecha→descripción (a
+ * diferencia del Set de esDiaNoRegular) porque además de decidir SI es feriado, hace falta el
+ * texto que escribió quien lo cargó. */
+export function motivoDia(fechaIso: string, feriadosAdicionales: Map<string, string>): string | null {
+  if (esFeriadoCalculado(fechaIso)) return nombreFeriadoCalculado(fechaIso) ?? 'Feriado';
+  if (feriadosAdicionales.has(fechaIso)) return feriadosAdicionales.get(fechaIso)!;
+  if (esFinDeSemana(fechaIso)) return 'Fin de semana';
+  return null;
+}
