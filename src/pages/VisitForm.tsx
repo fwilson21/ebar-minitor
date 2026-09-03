@@ -435,20 +435,17 @@ export function VisitForm() {
         // asignación para hoy, se bloquea.
         setAsignacion(asignadaHoyData === null ? null : { asignadaHoy: asignadaHoyData.length > 0 });
 
-        // Excepción de GPS para hoy — se trae la lista completa de este operador+estación (rara
-        // vez más de una fila) y se decide el rango en JS, en vez de armar el filtro de fechas en
-        // la consulta. Sin señal, la consulta falla y queda sin activar (mismo criterio estricto
-        // de siempre: sin poder confirmar la excepción, no se concede).
-        const { data: excepcionesData } = await supabase
-          .from('excepciones_gps')
-          .select('fecha_inicio, fecha_fin')
-          .eq('operador_id', usuario.id)
-          .eq('estacion_id', estacionId);
-        setExcepcionGpsActiva(
-          (excepcionesData ?? []).some(
-            (e: any) => (!e.fecha_inicio || e.fecha_inicio <= hoy) && (!e.fecha_fin || e.fecha_fin >= hoy),
-          ),
-        );
+        // Excepción de GPS para hoy — se pregunta por una función (no se lee la tabla directo: el
+        // usuario pidió explícitamente que el operador no tenga ninguna forma de darse cuenta de
+        // que se le quitó el bloqueo). La función solo devuelve verdadero/falso para sí mismo
+        // (auth.uid() adentro, ver migración 0057) — nada de quién la otorgó, desde cuándo, ni el
+        // alcance. Sin señal, la llamada falla y queda sin activar (mismo criterio estricto de
+        // siempre: sin poder confirmar la excepción, no se concede).
+        const { data: excepcionActivaData } = await supabase.rpc('excepcion_gps_activa', {
+          p_estacion_id: estacionId,
+          p_fecha: hoy,
+        });
+        setExcepcionGpsActiva(excepcionActivaData === true);
       } else {
         setAsignacion(null);
         setExcepcionGpsActiva(false);
