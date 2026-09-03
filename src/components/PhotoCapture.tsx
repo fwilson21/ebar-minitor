@@ -27,8 +27,8 @@ export function PhotoCapture({ fotos, onChange }: Props) {
   // Cada captura de CamaraFoto llega una por una (mientras el operador sigue disparando con la
   // cámara todavía abierta) — se agrega de a una al estado en vez de esperar a "Listo" para no
   // perder fotos ya tomadas si algo falla a mitad de la sesión.
-  async function agregarFotoDesdeCamara(blob: Blob) {
-    const nueva = await crearFotoLocal(blob, new Date().toISOString());
+  async function agregarFotoDesdeCamara(blob: Blob, dispositivoEnHorizontal: boolean) {
+    const nueva = await crearFotoLocal(blob, new Date().toISOString(), dispositivoEnHorizontal);
     onChange([...fotosRef.current, nueva]);
   }
 

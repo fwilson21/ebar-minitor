@@ -76,6 +76,7 @@ export async function estamparFechaEnFoto(
   archivo: Blob,
   fechaISO: string,
   corregirVolteoCamaraViva = false,
+  dispositivoEnHorizontal = false,
 ): Promise<Blob> {
   try {
     const texto = formatearFechaHoraFoto(fechaISO);
@@ -109,7 +110,13 @@ export async function estamparFechaEnFoto(
     // orientadas por `imageOrientation: 'from-image'` de arriba, incluidas las tomadas realmente en
     // horizontal a propósito — si a esas también se les aplicara este forzado, terminarían giradas
     // de lado en el informe (bug reportado por los operadores, 2026-08-31).
-    const esHorizontal = corregirVolteoCamaraViva && anchoFoto > altoFoto;
+    // `dispositivoEnHorizontal` (leído en CamaraFoto.tsx al momento del disparo, con
+    // `matchMedia('(orientation: landscape)')`) distingue el bug de sensor (celular sostenido en
+    // vertical mientras el cuadro sale acostado) de una foto horizontal tomada a propósito
+    // (celular físicamente girado) — sin esto, TODA foto ancha de la cámara en vivo se forzaba a
+    // vertical, así el operador la hubiera tomado de lado a propósito (ej. un patio de maniobras
+    // ancho) — bug reportado 2026-09-03.
+    const esHorizontal = corregirVolteoCamaraViva && !dispositivoEnHorizontal && anchoFoto > altoFoto;
     const canvas = document.createElement('canvas');
     canvas.width = esHorizontal ? altoFoto : anchoFoto;
     canvas.height = esHorizontal ? anchoFoto : altoFoto;
@@ -157,12 +164,13 @@ export async function estamparFechaEnFoto(
  * EquipoSection.tsx y PumpForm.tsx, ahora centralizado acá. Siempre pide la corrección de volteo
  * (ver comentario en `estamparFechaEnFoto`): esta función es exclusiva de la cámara en vivo, que
  * es justamente la que puede necesitarla; el `<input capture>` de respaldo llama a
- * `estamparFechaEnFoto` directo, sin este flag.
+ * `estamparFechaEnFoto` directo, sin este flag. `dispositivoEnHorizontal` viene tal cual de
+ * `CamaraFoto.onCapturar` — cómo estaba el celular al momento exacto del disparo.
  */
-export async function crearFotoLocal(archivo: Blob, fechaISO: string): Promise<FotoLocal> {
+export async function crearFotoLocal(archivo: Blob, fechaISO: string, dispositivoEnHorizontal = false): Promise<FotoLocal> {
   return {
     id: generarUUID(),
-    blob: await estamparFechaEnFoto(archivo, fechaISO, true),
+    blob: await estamparFechaEnFoto(archivo, fechaISO, true, dispositivoEnHorizontal),
     tomada_en: fechaISO,
     estado_subida: 'pendiente',
   };

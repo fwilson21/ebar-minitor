@@ -72,8 +72,8 @@ export function EquipoSection({
   }
 
   // Ver el mismo comentario en PhotoCapture.tsx: cada captura de CamaraFoto llega una por una.
-  async function agregarFotoDesdeCamara(blob: Blob) {
-    const nueva = await crearFotoLocal(blob, new Date().toISOString());
+  async function agregarFotoDesdeCamara(blob: Blob, dispositivoEnHorizontal: boolean) {
+    const nueva = await crearFotoLocal(blob, new Date().toISOString(), dispositivoEnHorizontal);
     onChange({ ...valorRef.current, fotos: [...valorRef.current.fotos, nueva] });
   }
 

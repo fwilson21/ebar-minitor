@@ -3,7 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 interface Props {
   /** Cuántas fotos más se pueden tomar en esta sesión — el disparador se apaga solo al llegar acá. */
   maxFotos: number;
-  onCapturar: (blob: Blob) => void;
+  /** `dispositivoEnHorizontal` es cómo estaba físicamente el celular AL MOMENTO de disparar (leído
+   * en ese instante, no después) — lo necesita `crearFotoLocal`/`estamparFechaEnFoto` para saber si
+   * un cuadro más ancho que alto es una foto horizontal a propósito o el bug de sensor de siempre. */
+  onCapturar: (blob: Blob, dispositivoEnHorizontal: boolean) => void;
   onCerrar: () => void;
   /** Nombre del subtema al que pertenecen las fotos (ej. "Variadores de frecuencia", "Bomba 2"). Se muestra en el aviso de confirmación. */
   etiquetaSeccion?: string;
@@ -105,10 +108,13 @@ export function CamaraFoto({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
+    // Se lee justo acá, en el instante del disparo — no en `onCapturar` ni más tarde, porque el
+    // operador puede seguir moviendo el celular después de tocar el botón.
+    const dispositivoEnHorizontal = window.matchMedia('(orientation: landscape)').matches;
     canvas.toBlob(
       (blob) => {
         if (blob) {
-          onCapturar(blob);
+          onCapturar(blob, dispositivoEnHorizontal);
           tomadasRef.current += 1;
           setTomadas(tomadasRef.current);
           const numeroFoto = fotosAlAbrir + tomadasRef.current;
