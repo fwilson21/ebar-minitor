@@ -219,6 +219,9 @@ export function EquipoSection({
         {camaraAbierta && (
           <CamaraFoto
             maxFotos={cupoCamara}
+            etiquetaSeccion={titulo}
+            fotosPrevias={valor.fotos.length}
+            totalMax={MAX_FOTOS}
             onCapturar={agregarFotoDesdeCamara}
             onCerrar={() => setCamaraAbierta(false)}
           />

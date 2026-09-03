@@ -5,6 +5,12 @@ interface Props {
   maxFotos: number;
   onCapturar: (blob: Blob) => void;
   onCerrar: () => void;
+  /** Nombre del subtema al que pertenecen las fotos (ej. "Variadores de frecuencia", "Bomba 2"). Se muestra en el aviso de confirmación. */
+  etiquetaSeccion?: string;
+  /** Fotos que ese subtema YA tenía al abrir la cámara — para numerar el aviso ("Foto 2 de 3"). */
+  fotosPrevias?: number;
+  /** Tope total de fotos del subtema (ej. 3). Si se pasa, el aviso dice "de N". */
+  totalMax?: number;
 }
 
 /**
@@ -24,7 +30,14 @@ interface Props {
  * un aviso para reintentar — **ya no hay respaldo a `<input file>`**, justo para no reabrir la
  * puerta a la galería.
  */
-export function CamaraFoto({ maxFotos, onCapturar, onCerrar }: Props) {
+export function CamaraFoto({
+  maxFotos,
+  onCapturar,
+  onCerrar,
+  etiquetaSeccion,
+  fotosPrevias = 0,
+  totalMax,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [listo, setListo] = useState(false);
@@ -32,9 +45,18 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar }: Props) {
   // Sube con cada "Reintentar" para volver a correr el efecto que pide la cámara.
   const [intento, setIntento] = useState(0);
   const [tomadas, setTomadas] = useState(0);
-  // Aviso "✓ Foto guardada" que aparece pegado a cada disparo — antes de esto solo cambiaba el
-  // número entre paréntesis en "Listo", que pasaba desapercibido; el operador no tenía ninguna
-  // señal clara de que la foto sí se había tomado.
+  // Espejo de `tomadas` para leer el conteo exacto dentro del callback async de toBlob (dos
+  // disparos muy seguidos leerían el mismo valor viejo del estado y numerarían las dos "Foto 1").
+  const tomadasRef = useRef(0);
+  // Fotos que el subtema ya tenía cuando se abrió la cámara — congelado (el padre vuelve a
+  // renderizar con un valor más alto cada vez que se agrega una foto, y acá se necesita el de
+  // partida para numerar bien el aviso).
+  const [fotosAlAbrir] = useState(fotosPrevias);
+  // Aviso "✓ Foto N de M tomada" que aparece pegado a cada disparo — antes de esto solo cambiaba
+  // el número entre paréntesis en "Listo", que pasaba desapercibido; el operador no tenía ninguna
+  // señal clara de que la foto sí se había tomado. El texto se mantiene montado (no se borra al
+  // ocultarlo) para que la transición de opacidad haga su fundido de salida.
+  const [avisoTexto, setAvisoTexto] = useState('');
   const [avisoVisible, setAvisoVisible] = useState(false);
   const timeoutAvisoRef = useRef<number | null>(null);
 
@@ -76,7 +98,7 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar }: Props) {
     // videoWidth/videoHeight siguen en 0 hasta que el video carga sus metadatos, un instante
     // después de que el stream ya está listo — sin este chequeo, un toque muy rápido en el
     // disparador podía generar un canvas de 0x0.
-    if (!video || tomadas >= maxFotos || !video.videoWidth) return;
+    if (!video || tomadasRef.current >= maxFotos || !video.videoWidth) return;
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -87,10 +109,14 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar }: Props) {
       (blob) => {
         if (blob) {
           onCapturar(blob);
-          setTomadas((n) => n + 1);
+          tomadasRef.current += 1;
+          setTomadas(tomadasRef.current);
+          const numeroFoto = fotosAlAbrir + tomadasRef.current;
+          const deTotal = totalMax ? ` de ${totalMax}` : '';
+          setAvisoTexto(`✓ Foto ${numeroFoto}${deTotal} tomada`);
           setAvisoVisible(true);
           if (timeoutAvisoRef.current) window.clearTimeout(timeoutAvisoRef.current);
-          timeoutAvisoRef.current = window.setTimeout(() => setAvisoVisible(false), 1300);
+          timeoutAvisoRef.current = window.setTimeout(() => setAvisoVisible(false), 2200);
         }
       },
       'image/jpeg',
@@ -135,16 +161,21 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar }: Props) {
       <video ref={videoRef} autoPlay playsInline muted className="flex-1 w-full h-full object-cover" />
       {!listo && <p className="absolute inset-0 flex items-center justify-center text-white text-sm">Abriendo cámara…</p>}
 
-      {/* Aviso de éxito pegado al disparo — ver comentario en el estado `avisoVisible` de arriba. */}
+      {/* Aviso de éxito pegado al disparo — ver comentario en el estado `aviso` de arriba. */}
       <div
         aria-live="polite"
-        className={`absolute inset-x-0 top-6 flex justify-center pointer-events-none transition-opacity duration-300 ${
+        className={`absolute inset-x-0 top-8 flex justify-center px-4 pointer-events-none transition-opacity duration-300 ${
           avisoVisible ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        <span className="flex items-center gap-1.5 bg-gauge-ok/95 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg">
-          ✓ Foto guardada
-        </span>
+        {avisoTexto && (
+          <div className="flex flex-col items-center gap-0.5 bg-gauge-ok/95 text-white px-6 py-3 rounded-2xl shadow-xl text-center">
+            <span className="text-lg font-bold leading-tight">{avisoTexto}</span>
+            {etiquetaSeccion && (
+              <span className="text-sm font-medium opacity-90 leading-tight">{etiquetaSeccion}</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between px-6 py-5 bg-black/85">
@@ -158,8 +189,9 @@ export function CamaraFoto({ maxFotos, onCapturar, onCerrar }: Props) {
           aria-label="Tomar foto"
           className="w-16 h-16 rounded-full bg-white border-4 border-slate-300 disabled:opacity-40 active:scale-95 transition"
         />
-        <button type="button" onClick={cerrar} className="text-white text-sm px-3 py-2 min-w-[64px] text-right">
-          Listo{tomadas > 0 && ` (${tomadas})`}
+        <button type="button" onClick={cerrar} className="text-white text-sm px-3 py-2 min-w-[72px] text-right">
+          Listo
+          {totalMax ? ` (${fotosAlAbrir + tomadas}/${totalMax})` : tomadas > 0 ? ` (${tomadas})` : ''}
         </button>
       </div>
     </div>

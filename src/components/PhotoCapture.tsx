@@ -55,7 +55,13 @@ export function PhotoCapture({ fotos, onChange }: Props) {
       </div>
 
       {camaraAbierta && (
-        <CamaraFoto maxFotos={Infinity} onCapturar={agregarFotoDesdeCamara} onCerrar={() => setCamaraAbierta(false)} />
+        <CamaraFoto
+          maxFotos={Infinity}
+          etiquetaSeccion="Fotos de la visita"
+          fotosPrevias={fotos.length}
+          onCapturar={agregarFotoDesdeCamara}
+          onCerrar={() => setCamaraAbierta(false)}
+        />
       )}
 
       {fotos.length === 0 ? (

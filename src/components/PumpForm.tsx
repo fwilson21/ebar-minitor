@@ -182,6 +182,9 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
           {camaraAbierta && (
             <CamaraFoto
               maxFotos={cupoCamara}
+              etiquetaSeccion={`Bomba ${bomba.numero_bomba}`}
+              fotosPrevias={valor.fotos.length}
+              totalMax={MAX_FOTOS}
               onCapturar={agregarFotoDesdeCamara}
               onCerrar={() => setCamaraAbierta(false)}
             />
