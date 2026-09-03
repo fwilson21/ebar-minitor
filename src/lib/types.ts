@@ -147,10 +147,6 @@ export interface VisitaInput {
   fecha_hora_salida?: string | null;
   estado_estacion: EstadoEstacion;
   nivel_tanque: NivelTanque;
-  /** true si el operador confirmó a mano su presencia porque el GPS no lo pudo ubicar. */
-  ubicacion_no_confirmada?: boolean;
-  /** Distancia (m) a la que el GPS lo ubicó al confirmar a mano; null si el GPS no dio posición. */
-  ubicacion_distancia_m?: number | null;
   olores_anormales: boolean;
   olores_descripcion?: string | null;
   ruidos_extranos: boolean;

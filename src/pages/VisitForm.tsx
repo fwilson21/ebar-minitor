@@ -10,7 +10,7 @@ import { esMismoDia, formatearFechaHoraFoto, urlMiniaturaDrive } from '../lib/fo
 import { hoyLocal } from '../lib/fecha';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { generarUUID } from '../lib/uuid';
-import { distanciaMetros, formatearDistancia, useUbicacionActual } from '../lib/useUbicacion';
+import { distanciaMetros, useUbicacionActual } from '../lib/useUbicacion';
 import { claveCacheBombas, CLAVE_CACHE_ESTACIONES, guardarCacheLocal, leerCacheLocal } from '../lib/cacheLocal';
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
 import { PumpForm } from '../components/PumpForm';
@@ -33,7 +33,11 @@ import type {
 
 const crearEquipo = (): RegistroEquipo => ({ estado: '', observaciones: '', fotos: [] });
 
-const DISTANCIA_MAXIMA_METROS = 300;
+// Radio (en metros, desde las coordenadas registradas de la estación) dentro del cual se acepta
+// que el operador está en el sitio. Amplio a propósito: el GPS del celular pierde mucha precisión
+// dentro/cerca de las cámaras de bombeo (concreto y metal) y sin señal de datos no tiene A-GPS,
+// así que un radio chico bloqueaba a operadores que sí estaban en la estación.
+const DISTANCIA_MAXIMA_METROS = 1000;
 // Tope al margen de error del GPS que se le resta a la distancia (ver más abajo). Sin este tope,
 // un celular que reporte un margen de error enorme dejaría pasar a cualquier distancia: en
 // iPhone, si el operador tiene desactivada "Ubicación exacta" (Ajustes > Privacidad > Localización
@@ -42,11 +46,6 @@ const DISTANCIA_MAXIMA_METROS = 300;
 // importar dónde estuviera el operador en realidad. 150 m es lo que el propio GPS normal reporta
 // como peor caso cerca de estructuras de concreto/metal (ver comentario en `distanciaEfectiva`).
 const MARGEN_GPS_MAXIMO_METROS = 150;
-// Si el propio GPS reporta un margen de error mayor a esto, su lectura NO sirve para afirmar que
-// el operador está lejos (el error tapa la distancia) — típico dentro de una cámara de concreto
-// sin señal de datos. En ese caso se trata igual que "el GPS no pudo ubicarlo" (confirmación
-// manual + la visita queda marcada), no como bloqueo duro.
-const PRECISION_GPS_MINIMA_METROS = 200;
 
 const ESTADOS_ESTACION: { value: EstadoEstacion; label: string; claseActiva: string }[] = [
   { value: 'operativa', label: 'Operativa', claseActiva: 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' },
@@ -138,16 +137,6 @@ export function VisitForm() {
   const [cerramientoSeguridad, setCerramientoSeguridad] = useState<RegistroEquipo>(crearEquipo);
   const [jardineras, setJardineras] = useState<RegistroEquipo>(crearEquipo);
   const [patiosManiobras, setPatiosManiobras] = useState<RegistroEquipo>(crearEquipo);
-  // GPS: si al registrar una visita NUEVA el chip no puede verificar dónde está el operador (sin
-  // lectura, lectura imprecisa, o lo ubica lejos), se le pide confirmar a mano que está en la
-  // estación en vez de bloquearlo. Si confirma, `ubicacionConfirmadaManual` pasa a true y la
-  // visita se guarda marcada (`ubicacion_no_confirmada`) + con la distancia a la que el GPS lo
-  // ubicó (`distanciaGpsAlConfirmar`, null si el GPS no dio ninguna posición), para revisión del
-  // supervisor. En modo edición se conservan los valores que ya tenía la visita.
-  const [ubicacionConfirmadaManual, setUbicacionConfirmadaManual] = useState(false);
-  const [distanciaGpsAlConfirmar, setDistanciaGpsAlConfirmar] = useState<number | null>(null);
-  const [ubicacionNoConfirmadaOriginal, setUbicacionNoConfirmadaOriginal] = useState(false);
-  const [ubicacionDistanciaOriginal, setUbicacionDistanciaOriginal] = useState<number | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [eliminandoVisita, setEliminandoVisita] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
@@ -218,7 +207,6 @@ export function VisitForm() {
       camaraRejilla, camaraValvulaCompuerta, tableroDistribucion, variador, descargaEmergencia,
       tuberia400ValvulasAire, tuberia400Uniones, tuberia600ValvulasAire, tuberia600Uniones,
       cerramientoSeguridad, jardineras, patiosManiobras,
-      ubicacionConfirmadaManual, distanciaGpsAlConfirmar,
     };
   }
 
@@ -248,10 +236,6 @@ export function VisitForm() {
     setCerramientoSeguridad(datos.cerramientoSeguridad);
     setJardineras(datos.jardineras);
     setPatiosManiobras(datos.patiosManiobras);
-    if (datos.ubicacionConfirmadaManual) {
-      setUbicacionConfirmadaManual(true);
-      setDistanciaGpsAlConfirmar(datos.distanciaGpsAlConfirmar ?? null);
-    }
   }
 
   async function pausarYSalir(salir: () => void) {
@@ -500,10 +484,6 @@ export function VisitForm() {
           setEstadoEstacion(visita.estado_estacion);
           setNivelTanque(visita.nivel_tanque);
           setObservaciones(visita.observaciones_generales ?? '');
-          setUbicacionNoConfirmadaOriginal(Boolean(visita.ubicacion_no_confirmada));
-          setUbicacionDistanciaOriginal(
-            typeof visita.ubicacion_distancia_m === 'number' ? visita.ubicacion_distancia_m : null,
-          );
 
           const todasLasFotos = (visita.fotos as any[]) ?? [];
           const fotosPorSeccion = (nombre: string | null): FotoLocal[] =>
@@ -785,16 +765,6 @@ export function VisitForm() {
       // del resto, quedó opcional (ver primerCampoObligatorioFaltante) sin tener un "sin dato"
       // propio como sí tienen los EquipoSection (estado === '').
       nivel_tanque: esLineaConduccion ? 'medio' : nivelTanque === '' ? 'medio' : (nivelTanque as NivelTanque),
-      // Al crear: true si el operador confirmó a mano su presencia porque el GPS no lo pudo
-      // verificar, + la distancia a la que el GPS lo ubicó en ese momento (null si no dio ninguna
-      // posición). Al editar: se conservan los valores originales (el chequeo de GPS no corre en
-      // edición).
-      ubicacion_no_confirmada: modoEdicion ? ubicacionNoConfirmadaOriginal : ubicacionConfirmadaManual,
-      ubicacion_distancia_m: modoEdicion
-        ? ubicacionDistanciaOriginal
-        : ubicacionConfirmadaManual
-          ? distanciaGpsAlConfirmar
-          : null,
       olores_anormales: false,
       olores_descripcion: null,
       ruidos_extranos: false,
@@ -860,8 +830,6 @@ export function VisitForm() {
         fecha_hora_salida: payload.fecha_hora_salida,
         estado_estacion: payload.estado_estacion,
         nivel_tanque: payload.nivel_tanque,
-        ubicacion_no_confirmada: payload.ubicacion_no_confirmada,
-        ubicacion_distancia_m: payload.ubicacion_distancia_m,
         olores_anormales: payload.olores_anormales,
         olores_descripcion: payload.olores_descripcion,
         ruidos_extranos: payload.ruidos_extranos,
@@ -944,41 +912,27 @@ export function VisitForm() {
   const requiereUbicacion =
     !!estacion && !modoEdicion && usuario?.rol === 'operador' && estacion.latitud != null && estacion.longitud != null;
   const ubicacion = useUbicacionActual(requiereUbicacion);
-  // Distancia cruda que reporta el GPS (sin descontar nada) — es lo que se guarda para el
-  // supervisor cuando el operador confirma a mano (ubicacion_distancia_m).
-  const distanciaCruda =
-    requiereUbicacion && ubicacion.tipo === 'ok'
-      ? Math.round(distanciaMetros(ubicacion.lat, ubicacion.lon, estacion!.latitud!, estacion!.longitud!))
-      : null;
-  // Se descuenta el margen de precisión (`accuracy`) del GPS antes de comparar contra el radio:
-  // cerca de estructuras de concreto/metal el celular puede reportar 50-150 m de margen de error,
-  // y sin esto un operador parado justo en el borde de los 300 m quedaría marcado por error. El
-  // margen que se resta tiene un tope (MARGEN_GPS_MAXIMO_METROS) para que un margen de error
-  // enorme no anule la comparación por completo.
+  // Se descuenta el margen de precisión (`accuracy`) del GPS antes de comparar: cerca de
+  // estructuras de concreto/metal el celular puede reportar 50-150 m de margen de error, y sin
+  // esto un operador parado justo en el borde del radio podía quedar bloqueado por error.
+  // El margen que se resta tiene un tope (MARGEN_GPS_MAXIMO_METROS): si no lo tuviera, un celular
+  // con "Ubicación exacta" desactivada (común en iPhone) reporta un margen de error de varios
+  // kilómetros y la resta anula el bloqueo por completo, sin importar dónde esté el operador.
   const distanciaEfectiva =
-    distanciaCruda != null && ubicacion.tipo === 'ok'
-      ? Math.max(0, distanciaCruda - Math.min(ubicacion.precision, MARGEN_GPS_MAXIMO_METROS))
+    requiereUbicacion && ubicacion.tipo === 'ok'
+      ? Math.max(
+          0,
+          distanciaMetros(ubicacion.lat, ubicacion.lon, estacion!.latitud!, estacion!.longitud!) -
+            Math.min(ubicacion.precision, MARGEN_GPS_MAXIMO_METROS),
+        )
       : null;
-  // Mientras el GPS todavía no da su primera lectura no se pide nada (se trata como una carga
-  // normal) — así se evita el falso aviso mientras el celular sigue ubicándose, sobre todo en
-  // EBAR sin señal de datos donde tarda más.
-  //
-  // Ya NO hay bloqueo duro por GPS. En los 3 casos en que el GPS no logra confirmar dónde está el
-  // operador (no dio ninguna posición; la dio con un margen de error demasiado grande; o lo ubica
-  // fuera del radio de la estación) se le pide confirmar a mano su presencia. Si confirma, la
-  // visita se guarda marcada (`ubicacion_no_confirmada`) + con la distancia (`ubicacion_distancia_m`,
-  // null si el GPS no dio posición) para que el supervisor la revise.
-  const gpsNoConfirmaUbicacion =
+  // Mientras el GPS todavía no da su primera lectura no se bloquea (se trata como una carga
+  // normal, sin mostrar el aviso) — así se evita el falso "no estás en el sitio" mientras el
+  // celular sigue ubicándose, sobre todo en EBAR sin señal de datos donde tarda más.
+  const bloqueadoPorUbicacion =
     requiereUbicacion &&
-    (ubicacion.tipo === 'error' ||
-      (ubicacion.tipo === 'ok' &&
-        (ubicacion.precision > PRECISION_GPS_MINIMA_METROS || distanciaEfectiva! > DISTANCIA_MAXIMA_METROS)));
+    (ubicacion.tipo === 'error' || (ubicacion.tipo === 'ok' && distanciaEfectiva! > DISTANCIA_MAXIMA_METROS));
   const ubicandoAun = requiereUbicacion && ubicacion.tipo === 'buscando';
-
-  function confirmarUbicacionManual() {
-    setUbicacionConfirmadaManual(true);
-    setDistanciaGpsAlConfirmar(distanciaCruda);
-  }
 
   if (cargandoDatos || ubicandoAun) return <p className="text-slate-600">Cargando…</p>;
 
@@ -1015,39 +969,26 @@ export function VisitForm() {
     );
   }
 
-  if (gpsNoConfirmaUbicacion && !ubicacionConfirmadaManual) {
+  if (bloqueadoPorUbicacion) {
+    // Un solo mensaje genérico para los 3 casos (GPS apagado, permiso denegado, fuera de rango)
+    // a propósito: no debe distinguir la causa ni mostrar distancias/coordenadas, para no darle
+    // al operador ninguna pista de que se está verificando su ubicación por GPS.
     return (
-      <div className="tarjeta p-6 border-2 border-gauge-warn/60 bg-gauge-warn/10 text-center space-y-4">
-        <p className="text-4xl">📍</p>
-        <h1 className="text-lg font-bold uppercase tracking-wide text-slate-800">
-          No pudimos confirmar tu ubicación
+      <div className="tarjeta p-6 border-2 border-gauge-danger/60 bg-gauge-danger/10 text-center space-y-3">
+        <p className="text-4xl">🚫</p>
+        <h1 className="text-lg font-bold uppercase tracking-wide text-gauge-danger">
+          No se puede registrar la visita
         </h1>
         <p className="text-sm text-slate-700">
-          El GPS no pudo verificar dónde estás (pasa seguido dentro de las cámaras de concreto).
-          Para continuar, confirma que estás físicamente en <strong>{estacion.nombre}</strong>.
+          No es posible registrar esta visita porque no te encuentras en las instalaciones de la estación EBAR.
         </p>
-
-        <div className="rounded-lg border-2 border-gauge-danger/50 bg-gauge-danger/10 p-3">
-          <p className="text-sm font-bold text-gauge-danger">
-            ⚠️ Esta visita será revisada por tu supervisor.
-          </p>
-          <p className="text-xs text-slate-700 mt-1">
-            Confirma solo si de verdad estás en la estación. Se guardará que el GPS no te ubicó.
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <button type="button" onClick={confirmarUbicacionManual} className="boton-primario w-full">
-            Sí, estoy en la estación — continuar
-          </button>
-          <button
-            type="button"
-            className="text-xs text-slate-600 hover:text-slate-900 underline"
-            onClick={() => navigate(-1)}
-          >
-            No — volver
-          </button>
-        </div>
+        <button
+          type="button"
+          className="text-xs text-slate-600 hover:text-slate-900 underline"
+          onClick={() => navigate(-1)}
+        >
+          ← Volver a la estación
+        </button>
       </div>
     );
   }
@@ -1113,17 +1054,6 @@ export function VisitForm() {
       </div>
 
       {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} sinBloques />}
-
-      {!modoEdicion && ubicacionConfirmadaManual && (
-        <div className="rounded-lg border-2 border-gauge-danger/50 bg-gauge-danger/10 px-3 py-2.5 space-y-1">
-          <p className="text-sm font-bold text-gauge-danger">⚠️ Esta visita será revisada por tu supervisor</p>
-          <p className="text-xs text-slate-700">
-            El GPS no pudo confirmar tu ubicación
-            {distanciaGpsAlConfirmar != null && ` (te ubicó a ${formatearDistancia(distanciaGpsAlConfirmar)} de la estación)`}
-            . Confirmaste a mano que estás en la estación.
-          </p>
-        </div>
-      )}
 
       {esLineaConduccion ? (
         <>

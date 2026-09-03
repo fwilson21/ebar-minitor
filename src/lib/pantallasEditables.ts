@@ -54,8 +54,7 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
       { id: 'pendientes_visita', titulo: 'Pendientes de visita', defaultLayout: { x: 12, y: 8, w: 12, h: 8 } },
       { id: 'requieren_atencion', titulo: 'Requieren atención', defaultLayout: { x: 0, y: 18, w: 12, h: 10 } },
       { id: 'visitas_sospechosas', titulo: 'Visitas con horario sospechoso (admin/supervisor)', defaultLayout: { x: 12, y: 16, w: 12, h: 8 } },
-      { id: 'ubicacion_sin_confirmar', titulo: 'Visitas sin ubicación confirmada por GPS (admin/supervisor)', defaultLayout: { x: 12, y: 24, w: 12, h: 8 } },
-      { id: 'bajo_minimo', titulo: 'Por debajo del mínimo (admin/supervisor)', defaultLayout: { x: 0, y: 36, w: 24, h: 8 } },
+      { id: 'bajo_minimo', titulo: 'Por debajo del mínimo (admin/supervisor)', defaultLayout: { x: 0, y: 28, w: 24, h: 8 } },
     ],
   },
   {

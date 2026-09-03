@@ -11,7 +11,6 @@ import { abrirBlob, descargarBlob, generarReporteVisitas } from '../lib/pdf';
 import { incrustarFotosVisitas } from '../lib/fotos';
 import { obtenerVisitasPorEstacion } from '../lib/visitasReporte';
 import { CLAVE_CACHE_ESTACIONES, leerCacheLocal } from '../lib/cacheLocal';
-import { formatearDistancia } from '../lib/useUbicacion';
 import { hoyLocal } from '../lib/fecha';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
@@ -44,8 +43,6 @@ interface HistorialItem {
   nivel_tanque: string;
   operador: string;
   operador_id: string;
-  ubicacion_no_confirmada?: boolean;
-  ubicacion_distancia_m?: number | null;
   bombas: { numero_bomba: number; estado: string; voltaje: number | null; amperaje: number | null; voltaje_fuera_rango: boolean }[];
   fotos_count: number;
   cerramiento_observaciones?: string | null;
@@ -448,19 +445,11 @@ export function StationDetail() {
                     return (
                       <div key={h.id} className="tarjeta p-3">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="flex items-center gap-2 flex-wrap">
+                          <span className="flex items-center gap-2">
                             <span className="text-sm font-medium">{new Date(h.fecha_hora_llegada).toLocaleString('es-EC', { hour12: false })}</span>
                             {duracion && (
                               <span className={`text-xs ${duracion.corta ? 'text-gauge-warn' : 'text-slate-500'}`}>
                                 · {duracion.texto}
-                              </span>
-                            )}
-                            {h.ubicacion_no_confirmada && (
-                              <span className="text-xs px-2 py-0.5 rounded-full border border-gauge-warn/50 text-gauge-warn bg-gauge-warn/10">
-                                📍 Ubicación sin confirmar por GPS
-                                {typeof h.ubicacion_distancia_m === 'number'
-                                  ? ` — GPS a ${formatearDistancia(h.ubicacion_distancia_m)}`
-                                  : ' — sin señal GPS'}
                               </span>
                             )}
                           </span>
@@ -595,16 +584,6 @@ function UltimaVisitaResumen({ visita }: { visita: HistorialItem }) {
         </p>
         <span className="text-xs text-slate-500">{visita.operador}</span>
       </div>
-
-      {visita.ubicacion_no_confirmada && (
-        <p className="text-[11px] text-gauge-warn">
-          📍 Ubicación sin confirmar por GPS
-          {typeof visita.ubicacion_distancia_m === 'number'
-            ? ` (GPS a ${formatearDistancia(visita.ubicacion_distancia_m)})`
-            : ' (sin señal GPS)'}{' '}
-          — revisar
-        </p>
-      )}
 
       {(equiposConAlerta.length > 0 || alertasVoltaje > 0) ? (
         <div className="flex gap-1.5 flex-wrap">

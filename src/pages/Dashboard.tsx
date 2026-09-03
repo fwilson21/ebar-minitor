@@ -13,7 +13,6 @@ import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, direccionOParroquia } from '../lib/agruparEstaciones';
 import { hoyLocal } from '../lib/fecha';
-import { formatearDistancia } from '../lib/useUbicacion';
 import { ManijaRedimension } from '../components/ManijaRedimension';
 import { obtenerTamanoModal, guardarTamanoModal } from '../lib/tamanoModal';
 
@@ -43,15 +42,6 @@ type AsignacionBajoMinimo = {
   estacion_nombre: string;
   estacion_codigo: string;
   visitas: number;
-};
-type VisitaSinUbicacion = {
-  id: string;
-  estacion_id: string;
-  estacion_nombre: string;
-  estacion_codigo: string;
-  operador_nombre: string;
-  fecha_hora_llegada: string;
-  distancia_m: number | null;
 };
 
 /** Una de las 5 tarjetas de "Inicio" — al tocarla se abre ModalListaEstaciones con el detalle. */
@@ -106,7 +96,6 @@ export function Dashboard() {
   const [estadoVisitasHoy, setEstadoVisitasHoy] = useState<EstacionAsignadaHoy[]>([]);
   const [mostrarSinVisitar, setMostrarSinVisitar] = useState(true);
   const [sospechosas, setSospechosas] = useState<ParSospechoso[]>([]);
-  const [visitasSinUbicacion, setVisitasSinUbicacion] = useState<VisitaSinUbicacion[]>([]);
   const [misEstacionesHoy, setMisEstacionesHoy] = useState<EstacionAsignadaHoy[]>([]);
   const [esRegular, setEsRegular] = useState(true);
   const [bajoMinimo, setBajoMinimo] = useState<AsignacionBajoMinimo[]>([]);
@@ -238,33 +227,8 @@ export function Dashboard() {
           lon: v.estaciones_ebar?.longitud ?? null,
         }));
         setSospechosas(detectarVisitasSospechosas(paraChequeo));
-
-        // Visitas registradas sin que el GPS confirmara la ubicación (el operador la confirmó a
-        // mano porque el GPS no logró ubicarlo — ver VisitForm.tsx). Para que el supervisor las
-        // revise aparte. Se mira una ventana un poco más amplia (21 días).
-        const hace21Dias = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
-        const { data: sinUbicacion } = await supabase
-          .from('visitas')
-          .select(
-            'id, estacion_id, fecha_hora_llegada, ubicacion_distancia_m, usuarios ( nombre_completo ), estaciones_ebar ( nombre, codigo )',
-          )
-          .eq('ubicacion_no_confirmada', true)
-          .gte('fecha_hora_llegada', hace21Dias)
-          .order('fecha_hora_llegada', { ascending: false });
-        setVisitasSinUbicacion(
-          ((sinUbicacion as any[]) ?? []).map((v) => ({
-            id: v.id,
-            estacion_id: v.estacion_id,
-            estacion_nombre: v.estaciones_ebar?.nombre ?? '-',
-            estacion_codigo: v.estaciones_ebar?.codigo ?? '-',
-            operador_nombre: v.usuarios?.nombre_completo ?? '-',
-            fecha_hora_llegada: v.fecha_hora_llegada,
-            distancia_m: typeof v.ubicacion_distancia_m === 'number' ? v.ubicacion_distancia_m : null,
-          })),
-        );
       } else {
         setSospechosas([]);
-        setVisitasSinUbicacion([]);
       }
 
       // "Por debajo del mínimo de 2 visitas": solo en días regulares, solo admin/supervisor —
@@ -563,13 +527,7 @@ export function Dashboard() {
     if (!rolParaBloques || rolParaBloques === 'todos') return true;
     const rolEsAdminComo = rolParaBloques === 'administrador' || rolParaBloques === 'supervisor';
     if (b.id === 'tus_ebar_hoy') return !rolEsAdminComo;
-    if (
-      b.id === 'visitas_sospechosas' ||
-      b.id === 'bajo_minimo' ||
-      b.id === 'pendientes_visita' ||
-      b.id === 'ubicacion_sin_confirmar'
-    )
-      return rolEsAdminComo;
+    if (b.id === 'visitas_sospechosas' || b.id === 'bajo_minimo' || b.id === 'pendientes_visita') return rolEsAdminComo;
     return true;
   });
 
@@ -597,7 +555,6 @@ export function Dashboard() {
         )}
         <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />
         {esAdmin && <BloqueVisitasSospechosas sospechosas={sospechosas} />}
-        {esAdmin && <BloqueUbicacionSinConfirmar visitas={visitasSinUbicacion} />}
         {esAdmin && <BloqueBajoMinimo bajoMinimo={bajoMinimo} />}
       </div>
 
@@ -653,9 +610,6 @@ export function Dashboard() {
                 return <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />;
               case 'visitas_sospechosas':
                 if (esAdmin) return <BloqueVisitasSospechosas sospechosas={sospechosas} />;
-                return modoEdicionActivo ? <BloqueVistaPreviaNoDisponible texto="Solo lo ve administrador/supervisor." /> : null;
-              case 'ubicacion_sin_confirmar':
-                if (esAdmin) return <BloqueUbicacionSinConfirmar visitas={visitasSinUbicacion} />;
                 return modoEdicionActivo ? <BloqueVistaPreviaNoDisponible texto="Solo lo ve administrador/supervisor." /> : null;
               case 'bajo_minimo':
                 if (esAdmin) return <BloqueBajoMinimo bajoMinimo={bajoMinimo} />;
@@ -977,43 +931,6 @@ function BloqueVisitasSospechosas({ sospechosas }: { sospechosas: ParSospechoso[
               {formatFechaCorta(s.visitaAnterior.fecha_hora_llegada)} → {formatFechaCorta(s.visitaSiguiente.fecha_hora_llegada)}
             </p>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BloqueUbicacionSinConfirmar({ visitas }: { visitas: VisitaSinUbicacion[] }) {
-  if (visitas.length === 0) return null;
-  return (
-    <div className="lg:h-full lg:overflow-auto">
-      <h2 className="text-sm font-semibold text-slate-700 mb-2">
-        📍 Visitas sin ubicación confirmada por GPS ({visitas.length})
-      </h2>
-      <p className="text-xs text-slate-500 mb-2">
-        El operador confirmó a mano que estaba en la estación porque el GPS no logró ubicarlo (últimos 21 días).
-      </p>
-      <div className="space-y-2">
-        {visitas.map((v) => (
-          <Link
-            key={v.id}
-            to={`/estaciones/${v.estacion_id}/visitas/${v.id}/ver`}
-            className="tarjeta p-3 border border-gauge-warn/40 flex items-center justify-between gap-2 hover:border-gauge-warn/70 transition"
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-slate-900 truncate">{v.operador_nombre}</p>
-              <p className="text-xs text-slate-600 truncate">
-                {v.estacion_codigo !== v.estacion_nombre ? `${v.estacion_codigo} — ` : ''}
-                {v.estacion_nombre}
-              </p>
-              <p className="text-xs text-slate-500">
-                {formatFechaCorta(v.fecha_hora_llegada)}
-                {' · '}
-                {v.distancia_m != null ? `GPS a ${formatearDistancia(v.distancia_m)}` : 'sin señal GPS'}
-              </p>
-            </div>
-            <span className="text-xs text-gauge-warn flex-shrink-0">Revisar →</span>
-          </Link>
         ))}
       </div>
     </div>

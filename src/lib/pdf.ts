@@ -4,7 +4,6 @@ import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { MEMBRETE_FONDO_BASE64 } from '../assets/membrete/membreteData';
 import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, separarLabelVineta, type BloqueInformePdf } from './informeSemanal';
 import { codigoYNombre } from './agruparEstaciones';
-import { formatearDistancia } from './useUbicacion';
 
 (pdfMake as any).vfs = (pdfFonts as any).vfs;
 
@@ -26,8 +25,6 @@ export interface VisitaParaReporte {
   operador_nombre: string;
   estado_estacion: string;
   nivel_tanque: string;
-  ubicacion_no_confirmada?: boolean;
-  ubicacion_distancia_m?: number | null;
   cerramiento_observaciones?: string | null;
   jardineras_observaciones?: string | null;
   patios_maniobras_observaciones?: string | null;
@@ -393,19 +390,6 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
     {},
   ];
   const filaUbicacion = v.estacion_ubicacion ? [['Ubicación', v.estacion_ubicacion]] : [];
-  const filaGpsSinConfirmar = v.ubicacion_no_confirmada
-    ? [[
-        { text: 'Ubicación GPS', bold: true },
-        {
-          text:
-            '⚠ SIN CONFIRMAR — el operador confirmó a mano su presencia' +
-            (typeof v.ubicacion_distancia_m === 'number'
-              ? ` (el GPS lo ubicó a ${formatearDistancia(v.ubicacion_distancia_m)})`
-              : ' (el GPS no dio posición)'),
-          color: '#B45309',
-        },
-      ]]
-    : [];
 
   const encabezadoTabla = esLineaConduccion
     ? [
@@ -415,7 +399,6 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
         ['Llegada', formatFechaHora(v.fecha_hora_llegada)],
         ['Salida', v.fecha_hora_salida ? formatFechaHora(v.fecha_hora_salida) : '-'],
         ['Operador', v.operador_nombre],
-        ...filaGpsSinConfirmar,
         ['Estado general', ESTADO_LABEL[v.estado_estacion] ?? v.estado_estacion],
       ]
     : [
@@ -425,7 +408,6 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
         ['Llegada', formatFechaHora(v.fecha_hora_llegada)],
         ['Salida', v.fecha_hora_salida ? formatFechaHora(v.fecha_hora_salida) : '-'],
         ['Operador', v.operador_nombre],
-        ...filaGpsSinConfirmar,
         ['Estado de la estación', ESTADO_LABEL[v.estado_estacion] ?? v.estado_estacion],
         ['Nivel de tanque', v.nivel_tanque],
       ];

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { urlMiniaturaDrive } from '../lib/fotos';
-import { formatearDistancia } from '../lib/useUbicacion';
 import { FotoLightbox } from '../components/FotoLightbox';
 import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
 import type { EstacionEbar, EstadoBomba, FotoLocal } from '../lib/types';
@@ -46,8 +45,6 @@ interface DetalleVisita {
   fecha_hora_salida: string | null;
   estado_estacion: string;
   nivel_tanque: string;
-  ubicacion_no_confirmada?: boolean;
-  ubicacion_distancia_m?: number | null;
   observaciones_generales: string | null;
   cerramiento_observaciones: string | null;
   jardineras_observaciones: string | null;
@@ -235,17 +232,6 @@ export function VisitaDetalle() {
           Llegada: {llegada.toLocaleString('es-EC', { hour12: false })}
           {salida && <> · Salida: {salida.toLocaleString('es-EC', { hour12: false })}</>}
         </p>
-        {visita.ubicacion_no_confirmada && (
-          <div className="mt-2 rounded-lg border-2 border-gauge-warn/50 bg-gauge-warn/10 px-3 py-2 text-sm text-gauge-warn">
-            <p className="font-bold">📍 Ubicación no confirmada por GPS — revisar</p>
-            <p className="text-xs text-slate-700 mt-1">
-              El operador confirmó a mano su presencia porque el GPS no lo pudo verificar.{' '}
-              {typeof visita.ubicacion_distancia_m === 'number'
-                ? `El GPS lo ubicó a ${formatearDistancia(visita.ubicacion_distancia_m)} de la estación.`
-                : 'El GPS no dio ninguna posición.'}
-            </p>
-          </div>
-        )}
       </div>
 
       {!esLineaConduccion && (
