@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
@@ -338,7 +338,12 @@ export function AppShell() {
               administrador) sin cambiar de ruta (ej. ya estabas en "/"), esto fuerza a React a
               desmontar y volver a montar la pantalla activa para que recargue sus propios datos
               con la sesión nueva — si no, quedaría mostrando datos de la identidad anterior. */}
-          <Outlet key={usuario?.id} />
+          {/* Suspense: cada pantalla ahora se carga sola (React.lazy, ver App.tsx) — mientras se
+              baja el trozo de la pantalla a la que se está entrando, se ve este "Cargando…" en vez
+              de una pantalla en blanco. */}
+          <Suspense fallback={<p className="text-slate-600">Cargando…</p>}>
+            <Outlet key={usuario?.id} />
+          </Suspense>
 
           <PieVersion />
         </main>
