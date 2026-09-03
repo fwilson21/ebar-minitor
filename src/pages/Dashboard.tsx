@@ -1195,12 +1195,18 @@ function FilaEstacionDetalle({ estacion: e }: { estacion: FilaDetalleMetrica }) 
                 <br />
                 Salida {formatFechaCorta(e.salida)}
                 {/* Cuánto le tomó la visita (llegada → salida) — mismo criterio de "visita
-                    relámpago" que el historial de StationDetail (ver duracionVisita). */}
+                    relámpago" que el historial de StationDetail (ver duracionVisita). En línea
+                    aparte y con la palabra "Duración" para que no se lea como un dato suelto. */}
                 {(() => {
                   const duracion = duracionVisita(e.llegada!, e.salida);
                   return (
                     duracion && (
-                      <span className={duracion.corta ? 'text-gauge-warn' : 'text-slate-500'}> · {duracion.texto}</span>
+                      <>
+                        <br />
+                        <span className={duracion.corta ? 'text-gauge-warn' : 'text-slate-500'}>
+                          Duración: {duracion.texto}
+                        </span>
+                      </>
                     )
                   );
                 })()}
