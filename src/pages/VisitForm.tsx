@@ -120,6 +120,11 @@ export function VisitForm() {
   const [cargandoDatos, setCargandoDatos] = useState(true);
   const [horaLlegada, setHoraLlegada] = useState(new Date().toISOString());
   const [fechaSalidaOriginal, setFechaSalidaOriginal] = useState<string | null>(null);
+  // Quién registró la visita DE VERDAD, para no pisarlo al editar (bug real reportado por el
+  // usuario, 2026-09-03: un supervisor/administrador corrigiendo la visita de un operador hacía
+  // que la visita quedara atribuida a quien la editó, no a quien la hizo en el sitio — ver
+  // operador_id en manejarGuardar). null en visita nueva (ahí sí es correcto usar usuario.id).
+  const [operadorIdOriginal, setOperadorIdOriginal] = useState<string | null>(null);
   const [ahora, setAhora] = useState(Date.now());
   const [estadoEstacion, setEstadoEstacion] = useState<EstadoEstacion | ''>('');
   const [nivelTanque, setNivelTanque] = useState<NivelTanque | ''>('');
@@ -500,6 +505,7 @@ export function VisitForm() {
         if (visita) {
           setHoraLlegada(visita.fecha_hora_llegada);
           setFechaSalidaOriginal(visita.fecha_hora_salida ?? new Date().toISOString());
+          setOperadorIdOriginal(visita.operador_id);
           setEstadoEstacion(visita.estado_estacion);
           setNivelTanque(visita.nivel_tanque);
           setObservaciones(visita.observaciones_generales ?? '');
@@ -774,7 +780,10 @@ export function VisitForm() {
       id: modoEdicion ? visitaId : undefined,
       cliente_uuid: generarUUID(),
       estacion_id: estacion.id,
-      operador_id: usuario.id,
+      // En una visita nueva, quien la registra. Al EDITAR, se conserva quien la hizo de verdad
+      // (operadorIdOriginal) aunque la esté corrigiendo otra persona (supervisor/administrador) —
+      // ver el comentario del estado más arriba.
+      operador_id: modoEdicion && operadorIdOriginal ? operadorIdOriginal : usuario.id,
       fecha_hora_llegada: horaLlegada,
       fecha_hora_salida: modoEdicion ? fechaSalidaOriginal : new Date().toISOString(),
       estado_estacion: estadoDerivado,
