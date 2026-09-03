@@ -39,6 +39,17 @@ export interface TurnoCalendario {
   created_at?: string;
 }
 
+/** Motivo por el que una EBAR no se visitó un día puntual — no bloquea nada, es solo informativo
+ * (se muestra junto a la tarjeta roja del Dashboard y en el reporte del día). Ver migración 0055. */
+export interface JustificacionNoVisita {
+  id: string;
+  estacion_id: string;
+  fecha: string;
+  motivo: string;
+  creado_por: string;
+  creado_en?: string;
+}
+
 export interface EstacionEbar {
   id: string;
   codigo: string;

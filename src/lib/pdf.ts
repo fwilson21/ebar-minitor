@@ -185,6 +185,16 @@ export interface DatosEncabezadoMemo {
   fecha: string | null;
 }
 
+/** Una EBAR sin ninguna visita en la fecha del reporte, con su justificación si la tiene (ver
+ * migración 0055 / justificaciones_no_visita) — usada solo en "Reporte consolidado" de un solo
+ * día (ver bloqueNoVisitadas). */
+export interface FilaNoVisitadaReporte {
+  nombre: string;
+  codigo: string;
+  motivo: string | null;
+  registrado_por: string | null;
+}
+
 /** Encabezado tipo memo institucional (formato GADMFO: "INFORME No. ..." + tabla PARA/DE/ASUNTO/
  * FECHA) — pedido explícito del usuario con una captura de referencia, usado tanto en el Informe
  * Semanal como en el Reporte consolidado/de estación/diario e Historial de estación (todos los que
@@ -214,6 +224,28 @@ function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
           hLineColor: () => '#B9C6CE',
           vLineColor: () => '#B9C6CE',
         },
+      },
+    ],
+    margin: [0, 0, 0, 16],
+  };
+}
+
+/** "EBAR sin visitar" del día del reporte, con el motivo si quedó justificado — solo se agrega en
+ * "Reporte consolidado" de un solo día (ver Reports.tsx). Vacío = no se agrega nada. */
+function bloqueNoVisitadas(filas: FilaNoVisitadaReporte[]): any {
+  if (filas.length === 0) return null;
+  return {
+    stack: [
+      { text: `EBAR sin visitar (${filas.length})`, style: 'subtitulo', margin: [0, 4, 0, 4] },
+      {
+        table: {
+          widths: ['auto', '*', '*'],
+          body: [
+            [{ text: 'Código', bold: true }, { text: 'Estación', bold: true }, { text: 'Motivo', bold: true }],
+            ...filas.map((f) => [f.codigo, f.nombre, f.motivo ? `${f.motivo}${f.registrado_por ? ` (${f.registrado_por})` : ''}` : '-']),
+          ],
+        },
+        layout: 'lightHorizontalLines',
       },
     ],
     margin: [0, 0, 0, 16],
@@ -506,6 +538,7 @@ const ESTILOS = {
 export function generarReporteVisitas(
   visitas: VisitaParaReporte[],
   memo: DatosEncabezadoMemo,
+  noVisitadas: FilaNoVisitadaReporte[] = [],
 ): Promise<Blob> {
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
@@ -554,7 +587,8 @@ export function generarReporteVisitas(
         bloqueFirma(v.operador_nombre, 'Firma del operador', v.firma_url),
         { text: '', pageBreak: visitas.indexOf(v) < visitas.length - 1 ? 'after' : undefined },
       ]),
-    ],
+      bloqueNoVisitadas(noVisitadas),
+    ].filter(Boolean),
     styles: ESTILOS,
     // 8 en vez de 9 — junto con los márgenes achicados de arriba, menos hojas al imprimir.
     defaultStyle: { fontSize: 8, color: '#16303F' },

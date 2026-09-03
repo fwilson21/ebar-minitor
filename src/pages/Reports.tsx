@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { abrirBlob, descargarBlob, generarReporteVisitas, type VisitaParaReporte } from '../lib/pdf';
+import { abrirBlob, descargarBlob, generarReporteVisitas, type VisitaParaReporte, type FilaNoVisitadaReporte } from '../lib/pdf';
 import { incrustarFotosVisitas } from '../lib/fotos';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
 import type { EstacionEbar, Usuario } from '../lib/types';
@@ -186,6 +186,52 @@ export function Reports() {
     return (data ?? []).map(mapearVisitaFila);
   }
 
+  // "EBAR sin visitar" con su motivo, si lo tiene — solo aplica a "Reporte consolidado" de un
+  // solo día (fechaInicio === fechaFin); en un rango de varios días o en los otros 2 tipos de
+  // reporte (diario por operador, de una sola estación) no hay una lista de "no visitadas" con un
+  // significado claro, así que queda vacía y el PDF no agrega la sección (ver bloqueNoVisitadas en
+  // pdf.ts). Es la foto de TODA la empresa ese día — no se filtra por el operador elegido arriba
+  // (que no visitó no dice quién sí), pero si se eligieron estaciones puntuales en el filtro, la
+  // lista se acota a esas.
+  async function obtenerNoVisitadas(): Promise<FilaNoVisitadaReporte[]> {
+    if (tipo !== 'consolidado_fecha' || fechaInicioEfectiva !== fechaFinEfectiva) return [];
+    if (estacionIds !== null && estacionIds.size === 0) return [];
+
+    let queryEstaciones = supabase.from('estaciones_ebar').select('id, nombre, codigo').eq('activa', true);
+    if (estacionIds !== null) queryEstaciones = queryEstaciones.in('id', [...estacionIds]);
+
+    const [{ data: todasActivas }, { data: visitasDelDia }, { data: justificacionesDia }] = await Promise.all([
+      queryEstaciones,
+      supabase
+        .from('visitas')
+        .select('estacion_id')
+        .gte('fecha_hora_llegada', `${fechaInicioEfectiva}T00:00:00`)
+        .lte('fecha_hora_llegada', `${fechaInicioEfectiva}T23:59:59`),
+      supabase
+        .from('justificaciones_no_visita')
+        .select('estacion_id, motivo, usuarios ( nombre_completo )')
+        .eq('fecha', fechaInicioEfectiva),
+    ]);
+
+    const idsConVisita = new Set(((visitasDelDia ?? []) as any[]).map((v) => v.estacion_id));
+    const mapaJustificaciones = new Map(
+      ((justificacionesDia ?? []) as any[]).map((j) => [
+        j.estacion_id,
+        { motivo: j.motivo as string, registrado_por: (j.usuarios?.nombre_completo as string) ?? null },
+      ]),
+    );
+
+    return ((todasActivas ?? []) as EstacionEbar[])
+      .filter((e) => !idsConVisita.has(e.id))
+      .map((e) => ({
+        nombre: e.nombre,
+        codigo: e.codigo,
+        motivo: mapaJustificaciones.get(e.id)?.motivo ?? null,
+        registrado_por: mapaJustificaciones.get(e.id)?.registrado_por ?? null,
+      }))
+      .sort((a, b) => a.codigo.localeCompare(b.codigo));
+  }
+
   async function manejarGenerar() {
     setGenerando(true);
     setMensaje(null);
@@ -197,14 +243,19 @@ export function Reports() {
         return;
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
+      const noVisitadas = await obtenerNoVisitadas();
 
-      const blob = await generarReporteVisitas(visitas, {
-        numero: numeroInforme,
-        para: { nombre: paraNombre, cargo: paraCargo },
-        de: { nombre: deNombre, cargo: deCargo },
-        asunto,
-        fecha: hoyLocal(),
-      });
+      const blob = await generarReporteVisitas(
+        visitas,
+        {
+          numero: numeroInforme,
+          para: { nombre: paraNombre, cargo: paraCargo },
+          de: { nombre: deNombre, cargo: deCargo },
+          asunto,
+          fecha: hoyLocal(),
+        },
+        noVisitadas,
+      );
       const nombreFechas =
         fechaInicioEfectiva === fechaFinEfectiva ? fechaInicioEfectiva : `${fechaInicioEfectiva}_a_${fechaFinEfectiva}`;
       const ahora = new Date();

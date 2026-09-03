@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
 import type { DashboardResumen, EstacionEbar } from '../lib/types';
+import { ModalJustificarNoVisita } from '../components/ModalJustificarNoVisita';
 import { StationCard } from '../components/StationCard';
 import { detectarVisitasSospechosas, type ParSospechoso, type VisitaParaChequeo } from '../lib/visitasSospechosas';
 import { esDiaNoRegular } from '../lib/feriadosEcuador';
@@ -35,6 +36,9 @@ const COLUMNAS_EQUIPOS_ALERTA = [
 
 type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona' | 'tipo' | 'direccion' | 'parroquia'>;
 type EstacionAsignadaHoy = EstacionSimple & { visitasHoy: number };
+/** Justificación de "por qué no se visitó" ya guardada para la fecha del Dashboard, por estación
+ * — a lo sumo una por EBAR (ver migración 0055). */
+type MapaJustificaciones = Record<string, { motivo: string; creado_por_nombre: string }>;
 type AsignacionBajoMinimo = {
   operador_id: string;
   operador_nombre: string;
@@ -105,6 +109,13 @@ export function Dashboard() {
   const [detalleMetrica, setDetalleMetrica] = useState<FilaDetalleMetrica[] | null>(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [tamanoModalMetrica, setTamanoModalMetrica] = useState(TAMANO_MODAL_METRICA_DEFAULT);
+  const [justificaciones, setJustificaciones] = useState<MapaJustificaciones>({});
+  // Estación sobre la que se está escribiendo (o editando) la justificación de "no visitada" —
+  // null = modal cerrado. Abre el mismo modal desde "Tus EBAR de hoy" (operador) y "Pendientes de
+  // visita" (admin/supervisor), ver ModalJustificarNoVisita.
+  const [justificarEstacion, setJustificarEstacion] = useState<EstacionSimple | null>(null);
+  const [guardandoJustificacion, setGuardandoJustificacion] = useState(false);
+  const [errorJustificacion, setErrorJustificacion] = useState<string | null>(null);
 
   // Tamaño guardado del modal de detalle — se carga una sola vez (no depende de la fecha
   // seleccionada, a diferencia de `cargar()` de abajo).
@@ -120,6 +131,7 @@ export function Dashboard() {
         { data: todasEstaciones },
         { data: visitasDelDia },
         { data: feriadosAdic },
+        { data: justificacionesDia },
       ] = await Promise.all([
         supabase.rpc('rpc_dashboard_resumen', {
           p_fecha: fecha,
@@ -134,10 +146,18 @@ export function Dashboard() {
           .gte('fecha_hora_llegada', `${fecha}T00:00:00`)
           .lte('fecha_hora_llegada', `${fecha}T23:59:59`),
         supabase.from('feriados_adicionales').select('fecha'),
+        supabase.from('justificaciones_no_visita')
+          .select('estacion_id, motivo, usuarios ( nombre_completo )')
+          .eq('fecha', fecha),
       ]);
 
       setResumen(resumenData as DashboardResumen);
       setTodasEstacionesInfo((todasEstaciones as EstacionSimple[]) ?? []);
+      const mapaJustificaciones: MapaJustificaciones = {};
+      for (const j of (justificacionesDia as any[]) ?? []) {
+        mapaJustificaciones[j.estacion_id] = { motivo: j.motivo, creado_por_nombre: j.usuarios?.nombre_completo ?? '-' };
+      }
+      setJustificaciones(mapaJustificaciones);
 
       // Para operadores: sus EBAR asignadas hoy (por defecto o especial) filtran "Requieren
       // atención" y "Pendientes de visita", además de armar "Tus EBAR de hoy" más abajo. Si
@@ -509,6 +529,31 @@ export function Dashboard() {
     await guardarTamanoModal('modal_metrica_dashboard', t);
   }
 
+  // Guarda (o edita) el motivo de "por qué no se visitó" para justificarEstacion, en la fecha que
+  // se está viendo — una fila por estación+fecha (ver migración 0055), así que reescribir el mismo
+  // día actualiza la fila existente en vez de duplicarla.
+  async function guardarJustificacion(motivo: string) {
+    if (!justificarEstacion || !usuario) return;
+    setGuardandoJustificacion(true);
+    setErrorJustificacion(null);
+    const { error } = await supabase
+      .from('justificaciones_no_visita')
+      .upsert(
+        { estacion_id: justificarEstacion.id, fecha, motivo, creado_por: usuario.id },
+        { onConflict: 'estacion_id,fecha' },
+      );
+    setGuardandoJustificacion(false);
+    if (error) {
+      setErrorJustificacion('No se pudo guardar. Intenta de nuevo.');
+      return;
+    }
+    setJustificaciones((prev) => ({
+      ...prev,
+      [justificarEstacion.id]: { motivo, creado_por_nombre: usuario.nombre_completo },
+    }));
+    setJustificarEstacion(null);
+  }
+
   // Los bloques que un rol nunca llega a ver ("tus_ebar_hoy" es solo de operador,
   // "visitas_sospechosas"/"bajo_minimo"/"pendientes_visita" son solo de admin/supervisor) se
   // sacan del grid editable — si no, quedan como una celda vacía y arrastrable sin contenido
@@ -544,13 +589,23 @@ export function Dashboard() {
           resumen={resumen}
           onAbrirDetalle={abrirDetalleMetrica}
         />
-        {!esAdmin && <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} soloLectura={soloLectura} />}
+        {!esAdmin && (
+          <BloqueTusEbarHoy
+            misEstacionesHoy={misEstacionesHoy}
+            esRegular={esRegular}
+            soloLectura={soloLectura}
+            justificaciones={justificaciones}
+            onJustificar={setJustificarEstacion}
+          />
+        )}
         {esAdmin && (
           <BloquePendientesVisita
             estadoVisitasHoy={estadoVisitasHoy}
             esRegular={esRegular}
             mostrarSinVisitar={mostrarSinVisitar}
             setMostrarSinVisitar={setMostrarSinVisitar}
+            justificaciones={justificaciones}
+            onJustificar={setJustificarEstacion}
           />
         )}
         <BloqueRequierenAtencion estacionesConProblemas={estacionesConProblemas} ultimasVisitas={ultimasVisitas} />
@@ -586,7 +641,16 @@ export function Dashboard() {
                   />
                 );
               case 'tus_ebar_hoy':
-                if (!esAdmin) return <BloqueTusEbarHoy misEstacionesHoy={misEstacionesHoy} esRegular={esRegular} soloLectura={soloLectura} />;
+                if (!esAdmin)
+                  return (
+                    <BloqueTusEbarHoy
+                      misEstacionesHoy={misEstacionesHoy}
+                      esRegular={esRegular}
+                      soloLectura={soloLectura}
+                      justificaciones={justificaciones}
+                      onJustificar={setJustificarEstacion}
+                    />
+                  );
                 // Se ve vacío para el administrador (sus propias EBAR de hoy no aplican) aunque el
                 // bloque siga presente para poder acomodarlo — el operador real sí va a ver su
                 // contenido acá.
@@ -599,6 +663,8 @@ export function Dashboard() {
                       esRegular={esRegular}
                       mostrarSinVisitar={mostrarSinVisitar}
                       setMostrarSinVisitar={setMostrarSinVisitar}
+                      justificaciones={justificaciones}
+                      onJustificar={setJustificarEstacion}
                     />
                   );
                 }
@@ -633,6 +699,20 @@ export function Dashboard() {
           tamano={tamanoModalMetrica}
           onGuardarTamano={guardarTamanoModalMetrica}
           onCerrar={cerrarModalMetrica}
+        />
+      )}
+
+      {justificarEstacion && (
+        <ModalJustificarNoVisita
+          estacion={justificarEstacion}
+          motivoInicial={justificaciones[justificarEstacion.id]?.motivo ?? ''}
+          guardando={guardandoJustificacion}
+          error={errorJustificacion}
+          onGuardar={guardarJustificacion}
+          onCerrar={() => {
+            setJustificarEstacion(null);
+            setErrorJustificacion(null);
+          }}
         />
       )}
     </div>
@@ -753,14 +833,70 @@ function LeyendaSemaforoVisitas({ esRegular }: { esRegular: boolean }) {
   );
 }
 
+/** Una tarjeta de EBAR con semáforo (usada por "Tus EBAR de hoy" y "Pendientes de visita"). El
+ * nombre/código llevan al formulario (o a la ficha, en modo consulta); si la tarjeta está en rojo
+ * (0 visitas hoy) y el rol puede justificar, se agrega debajo un botón aparte (no anidado dentro
+ * del Link) para poner o ver el motivo de "por qué no se visitó" — ver ModalJustificarNoVisita. */
+function TarjetaEstacionSemaforo({
+  estacion,
+  esRegular,
+  meta,
+  to,
+  justificacion,
+  permiteJustificar,
+  onJustificar,
+}: {
+  estacion: EstacionAsignadaHoy;
+  esRegular: boolean;
+  meta: number;
+  to: string;
+  justificacion?: { motivo: string; creado_por_nombre: string };
+  permiteJustificar: boolean;
+  onJustificar: (estacion: EstacionSimple) => void;
+}) {
+  const semaforo = colorSemaforoVisita(estacion.visitasHoy, meta);
+  return (
+    <div className={`tarjeta p-3 flex flex-col gap-1 border-2 transition ${CLASE_TARJETA_SEMAFORO[semaforo]}`}>
+      <Link key={estacion.id} to={to} className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-slate-900 truncate">{estacion.nombre}</p>
+        <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{estacion.codigo}</p>
+        <span className={`text-xs mt-1 font-semibold ${CLASE_TEXTO_SEMAFORO[semaforo]}`}>
+          {esRegular
+            ? `${Math.min(estacion.visitasHoy, meta)}/${meta} hoy`
+            : estacion.visitasHoy > 0
+              ? `${estacion.visitasHoy} visita${estacion.visitasHoy > 1 ? 's' : ''} hoy`
+              : 'Sin visitar'}
+        </span>
+      </Link>
+      {semaforo === 'danger' && permiteJustificar && (
+        <button
+          type="button"
+          onClick={() => onJustificar(estacion)}
+          className="text-[11px] text-left mt-1 pt-1 border-t border-black/10"
+        >
+          {justificacion ? (
+            <span className="text-slate-600">📝 {justificacion.motivo}</span>
+          ) : (
+            <span className="text-sky-700 hover:text-sky-900 font-medium">+ Justificar</span>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function BloqueTusEbarHoy({
   misEstacionesHoy,
   esRegular,
   soloLectura,
+  justificaciones,
+  onJustificar,
 }: {
   misEstacionesHoy: EstacionAsignadaHoy[];
   esRegular: boolean;
   soloLectura: boolean;
+  justificaciones: MapaJustificaciones;
+  onJustificar: (estacion: EstacionSimple) => void;
 }) {
   return (
     <div className="lg:h-full lg:overflow-auto bloque-adaptable">
@@ -790,29 +926,21 @@ function BloqueTusEbarHoy({
                 {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo} ({estaciones.length})
               </p>
               <div className="grid-tarjetas-compactas">
-                {estaciones.map((e) => {
-                  const meta = esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1;
-                  const semaforo = colorSemaforoVisita(e.visitasHoy, meta);
-                  return (
-                    <Link
-                      key={e.id}
-                      // En "modo consulta" (computadora) no se registra nada — la tarjeta lleva a
-                      // la ficha de la estación (ver historial / exportar) en vez de al formulario.
-                      to={soloLectura ? `/estaciones/${e.id}` : `/estaciones/${e.id}/nueva-visita`}
-                      className={`tarjeta p-3 flex flex-col gap-1 border-2 transition ${CLASE_TARJETA_SEMAFORO[semaforo]}`}
-                    >
-                      <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
-                      <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
-                      <span className={`text-xs mt-1 font-semibold ${CLASE_TEXTO_SEMAFORO[semaforo]}`}>
-                        {esRegular
-                          ? `${Math.min(e.visitasHoy, MINIMO_VISITAS_DIA_REGULAR)}/${MINIMO_VISITAS_DIA_REGULAR} hoy`
-                          : e.visitasHoy > 0
-                            ? `${e.visitasHoy} visita${e.visitasHoy > 1 ? 's' : ''} hoy`
-                            : 'Sin visitar'}
-                      </span>
-                    </Link>
-                  );
-                })}
+                {estaciones.map((e) => (
+                  <TarjetaEstacionSemaforo
+                    key={e.id}
+                    estacion={e}
+                    esRegular={esRegular}
+                    meta={esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1}
+                    // En "modo consulta" (computadora) no se registra nada — la tarjeta lleva a la
+                    // ficha de la estación (ver historial / exportar) en vez de al formulario, y
+                    // tampoco se puede justificar.
+                    to={soloLectura ? `/estaciones/${e.id}` : `/estaciones/${e.id}/nueva-visita`}
+                    justificacion={justificaciones[e.id]}
+                    permiteJustificar={!soloLectura}
+                    onJustificar={onJustificar}
+                  />
+                ))}
               </div>
             </div>
           ))}
@@ -829,11 +957,15 @@ function BloquePendientesVisita({
   esRegular,
   mostrarSinVisitar,
   setMostrarSinVisitar,
+  justificaciones,
+  onJustificar,
 }: {
   estadoVisitasHoy: EstacionAsignadaHoy[];
   esRegular: boolean;
   mostrarSinVisitar: boolean;
   setMostrarSinVisitar: (updater: (v: boolean) => boolean) => void;
+  justificaciones: MapaJustificaciones;
+  onJustificar: (estacion: EstacionSimple) => void;
 }) {
   if (estadoVisitasHoy.length === 0) return null;
   const meta = esRegular ? MINIMO_VISITAS_DIA_REGULAR : 1;
@@ -863,26 +995,18 @@ function BloquePendientesVisita({
                   pinta entera (fondo + borde) según el semáforo: rojo sin ninguna visita hoy,
                   amarillo con al menos 1 pero sin llegar a la meta, verde ya cumplida. */}
               <div className="grid-tarjetas-compactas">
-                {estaciones.map((e) => {
-                  const semaforo = colorSemaforoVisita(e.visitasHoy, meta);
-                  return (
-                    <Link
-                      key={e.id}
-                      to={`/estaciones/${e.id}/nueva-visita`}
-                      className={`tarjeta p-3 flex flex-col gap-1 border-2 transition ${CLASE_TARJETA_SEMAFORO[semaforo]}`}
-                    >
-                      <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
-                      <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
-                      <span className={`text-xs mt-1 font-semibold ${CLASE_TEXTO_SEMAFORO[semaforo]}`}>
-                        {esRegular
-                          ? `${Math.min(e.visitasHoy, MINIMO_VISITAS_DIA_REGULAR)}/${MINIMO_VISITAS_DIA_REGULAR} hoy`
-                          : e.visitasHoy > 0
-                            ? `${e.visitasHoy} visita${e.visitasHoy > 1 ? 's' : ''} hoy`
-                            : 'Sin visitar'}
-                      </span>
-                    </Link>
-                  );
-                })}
+                {estaciones.map((e) => (
+                  <TarjetaEstacionSemaforo
+                    key={e.id}
+                    estacion={e}
+                    esRegular={esRegular}
+                    meta={meta}
+                    to={`/estaciones/${e.id}/nueva-visita`}
+                    justificacion={justificaciones[e.id]}
+                    permiteJustificar
+                    onJustificar={onJustificar}
+                  />
+                ))}
               </div>
             </div>
           ))}
