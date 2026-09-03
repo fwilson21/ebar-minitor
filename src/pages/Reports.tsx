@@ -36,14 +36,20 @@ export function Reports() {
   // de ser la opción por defecto.
   const [formato, setFormato] = useState<'extenso' | 'compacto'>('compacto');
   // Filtro adicional, independiente del tipo (se ofrece en los 3): deja solo las visitas de fin de
-  // semana o feriado dentro del rango elegido — para revisar de un vistazo qué días no regulares
-  // trabajó el operador. Si en ese rango no hubo ninguna, no sale nada en el reporte (mismo aviso
-  // de "sin visitas" de siempre, con el mensaje ajustado — ver manejarGenerar).
+  // semana o feriado dentro del rango elegido — automático, sin calendario (para eso está
+  // diasEspecificos más abajo). Si en ese rango no hubo ninguna, no sale nada en el reporte (mismo
+  // aviso de "sin visitas" de siempre, con el mensaje ajustado — ver manejarGenerar).
   const [soloFinSemanaFeriado, setSoloFinSemanaFeriado] = useState(false);
-  // Dentro del rango de fechas elegido, cuáles sábado/domingo/feriado puntuales entran al reporte
-  // — se puede dejar afuera cualquiera sin que los demás tengan que ser consecutivos (pedido del
-  // usuario, calendario en SelectorDiasReporte). Arranca con todos los que haya en el rango
-  // (ver el useEffect más abajo) y el usuario destilda los que no quiere.
+  // Modo aparte (NO ligado a soloFinSemanaFeriado — el usuario pidió explícitamente que el
+  // calendario sea independiente de ese casillero): deja elegir a mano, día por día, cualquier
+  // combinación de fechas dentro del rango — no tienen por qué ser consecutivas ni fin de semana/
+  // feriado. Mutuamente excluyente con soloFinSemanaFeriado (ver los 2 onChange más abajo) para no
+  // tener que resolver qué pasa si ambos filtros están activos a la vez.
+  const [diasEspecificos, setDiasEspecificos] = useState(false);
+  // Días elegidos a mano en el calendario (SelectorDiasReporte) — solo se usa mientras
+  // diasEspecificos está activo. Arranca con todo el rango ya marcado (ver el useEffect más abajo)
+  // y el usuario destilda los que no quiere — más cómodo que arrancar vacío para el caso típico
+  // ("todo el mes menos 2 días puntuales").
   const [diasElegidos, setDiasElegidos] = useState<Set<string>>(new Set());
   // fecha → descripción de los feriados agregados a mano (tabla feriados_adicionales) — se trae
   // una sola vez acá (no en obtenerVisitas, como antes) para poder pintar el calendario Y filtrar
@@ -109,8 +115,9 @@ export function Reports() {
   }, [esAdmin]);
 
   // Feriados agregados a mano — una sola vez al entrar a la pantalla (no cambian según lo que se
-  // elija después). Alimenta tanto el calendario de "Solo fines de semana y feriados" como el
-  // filtro real al generar (ver obtenerVisitas).
+  // elija después). Alimenta tanto el calendario de "Días específicos" (marca los feriados/fines
+  // de semana aparte, aunque acá se puedan elegir todos los días) como el filtro automático de
+  // "Solo fines de semana y feriados" al generar (ver obtenerVisitas).
   useEffect(() => {
     supabase
       .from('feriados_adicionales')
@@ -134,21 +141,18 @@ export function Reports() {
       ? formatFechaCorta(fechaInicioEfectiva)
       : `${formatFechaCorta(fechaInicioEfectiva)} al ${formatFechaCorta(fechaFinEfectiva)}`;
 
-  // Con "Solo fines de semana y feriados" activo, `diasElegidos` arranca con TODOS los que haya
-  // en el rango — el usuario destilda a mano los que no quiere (ver SelectorDiasReporte). Se
-  // vuelve a armar completo cada vez que cambia el rango o se prende el casillero (si ya estaba
-  // prendido y solo cambia el rango, también se reinicia — es la forma más predecible: "cambié el
-  // rango, arranco de nuevo con todos los de ese rango").
+  // Con "días específicos" activo, `diasElegidos` arranca con TODO el rango marcado (cualquier
+  // día, no solo fin de semana/feriado — a diferencia del filtro automático de arriba) — el
+  // usuario destilda a mano los que no quiere (ver SelectorDiasReporte). Se vuelve a armar
+  // completo cada vez que cambia el rango o se prende el modo (si ya estaba prendido y solo
+  // cambia el rango, también se reinicia — es la forma más predecible: "cambié el rango, arranco
+  // de nuevo con todos los de ese rango").
   useEffect(() => {
-    if (!soloFinSemanaFeriado) return;
-    const feriadosSet = new Set(feriadosAdicionalesMap.keys());
+    if (!diasEspecificos) return;
     const dias = new Set<string>();
-    for (let f = fechaInicioEfectiva; f <= fechaFinEfectiva; f = sumarUnDia(f)) {
-      if (esDiaNoRegular(f, feriadosSet)) dias.add(f);
-    }
+    for (let f = fechaInicioEfectiva; f <= fechaFinEfectiva; f = sumarUnDia(f)) dias.add(f);
     setDiasElegidos(dias);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soloFinSemanaFeriado, fechaInicioEfectiva, fechaFinEfectiva, feriadosAdicionalesMap]);
+  }, [diasEspecificos, fechaInicioEfectiva, fechaFinEfectiva]);
 
   // El selector de Estación solo ofrece las EBAR visitadas DENTRO del rango de fechas elegido (y
   // por el operador puntual elegido, si hay uno) — así, al mover las fechas, la lista se acota a
@@ -195,11 +199,11 @@ export function Reports() {
 
   // Título base del reporte (sin sufijo de operador/estación) — se usa tanto para armar el título
   // real del PDF (manejarGenerar) como para sugerir el "Asunto" del encabezado tipo memo acá abajo.
-  // Con el filtro de fin de semana/feriado activo, se lo aclara en el título para que no se
-  // confunda con un reporte de días regulares.
+  // Con alguno de los 2 filtros de fecha activos, se lo aclara en el título para que no se
+  // confunda con un reporte de días regulares (son mutuamente excluyentes, nunca los 2 a la vez).
   const tituloBase =
     (tipo === 'diario_operador' ? 'Reporte diario' : tipo === 'consolidado_fecha' ? 'Reporte consolidado' : 'Reporte de estación') +
-    (soloFinSemanaFeriado ? ' (fin de semana/feriado)' : '');
+    (diasEspecificos ? ' (días específicos)' : soloFinSemanaFeriado ? ' (fin de semana/feriado)' : '');
   // El "Asunto" sugerido incluye el nombre de las EBAR del campo Estación — elegidas a mano, o
   // todas las que ofrece el selector si quedó en "Todas las estaciones" (pedido del usuario:
   // el asunto de un reporte de un operador debe nombrar sus EBAR aunque no haya tildado ninguna).
@@ -240,13 +244,17 @@ export function Reports() {
     if (error) throw error;
 
     const visitas = (data ?? []).map(mapearVisitaFila);
-    if (!soloFinSemanaFeriado) return visitas;
 
-    // Se acota a los días elegidos a mano en el calendario (diasElegidos) — NO a "todo sábado/
-    // domingo/feriado del rango": el usuario puede haber destildado alguno puntual. `fecha_hora_
-    // llegada` ya viene en hora local (ver hoyLocal en fecha.ts), por eso alcanza con recortar los
-    // primeros 10 caracteres — mismo criterio que ya usa StationDetail.tsx para filtrar por día.
-    return visitas.filter((v) => diasElegidos.has(v.fecha_hora_llegada.slice(0, 10)));
+    // `fecha_hora_llegada` ya viene en hora local (ver hoyLocal en fecha.ts), por eso alcanza con
+    // recortar los primeros 10 caracteres — mismo criterio que ya usa StationDetail.tsx para
+    // filtrar por día. Los 2 modos son mutuamente excluyentes (ver los onChange de los 2
+    // casilleros): "días específicos" manda si está activo, si no aplica el filtro automático.
+    if (diasEspecificos) return visitas.filter((v) => diasElegidos.has(v.fecha_hora_llegada.slice(0, 10)));
+    if (soloFinSemanaFeriado) {
+      const feriadosSet = new Set(feriadosAdicionalesMap.keys());
+      return visitas.filter((v) => esDiaNoRegular(v.fecha_hora_llegada.slice(0, 10), feriadosSet));
+    }
+    return visitas;
   }
 
   // "EBAR sin visitar CON MOTIVO REGISTRADO" — solo las que el operador (o supervisor/admin) ya
@@ -302,8 +310,8 @@ export function Reports() {
     setMensaje(null);
     // Estas 2 validaciones van ANTES de setGenerando(true)/tocar la base — son puramente de
     // formulario, no hace falta el ir-y-venir de "Generando…" para mostrarlas.
-    if (soloFinSemanaFeriado && diasElegidos.size === 0) {
-      setMensaje('Elegí al menos un día en el calendario de fin de semana/feriado.');
+    if (diasEspecificos && diasElegidos.size === 0) {
+      setMensaje('Elegí al menos un día en el calendario.');
       return;
     }
     if (soloFinSemanaFeriado && !numeroInforme.trim()) {
@@ -316,9 +324,11 @@ export function Reports() {
       const visitasSinFotos = await obtenerVisitas();
       if (visitasSinFotos.length === 0) {
         setMensaje(
-          soloFinSemanaFeriado
-            ? 'No hay visitas en fin de semana o feriado para los filtros seleccionados.'
-            : 'No hay visitas registradas para los filtros seleccionados.',
+          diasEspecificos
+            ? 'No hay visitas registradas en los días elegidos.'
+            : soloFinSemanaFeriado
+              ? 'No hay visitas en fin de semana o feriado para los filtros seleccionados.'
+              : 'No hay visitas registradas para los filtros seleccionados.',
         );
         return;
       }
@@ -343,8 +353,8 @@ export function Reports() {
       const horaArchivo = [ahora.getHours(), ahora.getMinutes(), ahora.getSeconds()]
         .map((n) => String(n).padStart(2, '0'))
         .join('-');
-      const sufijoFinSemana = soloFinSemanaFeriado ? '_finsemana-feriado' : '';
-      const nombre = `reporte_${tipo}_${formato}${sufijoFinSemana}_${nombreFechas}_${horaArchivo}.pdf`;
+      const sufijoFiltroFecha = diasEspecificos ? '_dias-especificos' : soloFinSemanaFeriado ? '_finsemana-feriado' : '';
+      const nombre = `reporte_${tipo}_${formato}${sufijoFiltroFecha}_${nombreFechas}_${horaArchivo}.pdf`;
       setUltimoPdf(blob);
       setUltimoNombre(nombre);
       descargarBlob(blob, nombre);
@@ -440,6 +450,8 @@ export function Reports() {
           setFormato={setFormato}
           soloFinSemanaFeriado={soloFinSemanaFeriado}
           setSoloFinSemanaFeriado={setSoloFinSemanaFeriado}
+          diasEspecificos={diasEspecificos}
+          setDiasEspecificos={setDiasEspecificos}
           diasElegidos={diasElegidos}
           setDiasElegidos={setDiasElegidos}
           feriadosAdicionalesMap={feriadosAdicionalesMap}
@@ -502,6 +514,8 @@ export function Reports() {
                     setFormato={setFormato}
                     soloFinSemanaFeriado={soloFinSemanaFeriado}
                     setSoloFinSemanaFeriado={setSoloFinSemanaFeriado}
+                    diasEspecificos={diasEspecificos}
+                    setDiasEspecificos={setDiasEspecificos}
                     diasElegidos={diasElegidos}
                     setDiasElegidos={setDiasElegidos}
                     feriadosAdicionalesMap={feriadosAdicionalesMap}
@@ -562,6 +576,8 @@ function BloqueFiltrosGenerar({
   setFormato,
   soloFinSemanaFeriado,
   setSoloFinSemanaFeriado,
+  diasEspecificos,
+  setDiasEspecificos,
   diasElegidos,
   setDiasElegidos,
   feriadosAdicionalesMap,
@@ -599,6 +615,8 @@ function BloqueFiltrosGenerar({
   setFormato: (f: 'extenso' | 'compacto') => void;
   soloFinSemanaFeriado: boolean;
   setSoloFinSemanaFeriado: (v: boolean) => void;
+  diasEspecificos: boolean;
+  setDiasEspecificos: (v: boolean) => void;
   diasElegidos: Set<string>;
   setDiasElegidos: (v: Set<string>) => void;
   feriadosAdicionalesMap: Map<string, string>;
@@ -649,14 +667,32 @@ function BloqueFiltrosGenerar({
         </select>
       </div>
 
+      {/* Los 2 son mutuamente excluyentes (marcar uno destilda el otro) — evita tener que definir
+          qué pasa si ambos filtros de fecha están activos a la vez. */}
       <label className="flex items-center gap-2.5 text-sm text-slate-700">
         <input
           type="checkbox"
           className="w-5 h-5 accent-gauge-ok shrink-0"
           checked={soloFinSemanaFeriado}
-          onChange={(e) => setSoloFinSemanaFeriado(e.target.checked)}
+          onChange={(e) => {
+            setSoloFinSemanaFeriado(e.target.checked);
+            if (e.target.checked) setDiasEspecificos(false);
+          }}
         />
         Solo fines de semana y feriados
+      </label>
+
+      <label className="flex items-center gap-2.5 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          className="w-5 h-5 accent-gauge-ok shrink-0"
+          checked={diasEspecificos}
+          onChange={(e) => {
+            setDiasEspecificos(e.target.checked);
+            if (e.target.checked) setSoloFinSemanaFeriado(false);
+          }}
+        />
+        Días específicos (elegir a mano, no tienen que ser consecutivos)
       </label>
 
       {esAdmin && operadores.length > 0 && (
@@ -691,7 +727,7 @@ function BloqueFiltrosGenerar({
         </div>
       )}
 
-      {soloFinSemanaFeriado && (
+      {diasEspecificos && (
         <SelectorDiasReporte
           fechaInicio={fechaInicio}
           fechaFin={esRango ? fechaFin : fechaInicio}
@@ -724,7 +760,9 @@ function BloqueFiltrosGenerar({
         </label>
         <input
           type="text"
-          className={`campo ${soloFinSemanaFeriado && !numeroInforme.trim() ? 'border-gauge-danger' : ''}`}
+          // Sombreado en rojo mientras el casillero esté marcado (no solo cuando está vacío) —
+          // pedido explícito del usuario, para que salte a la vista que ese campo ahora importa.
+          className={`campo ${soloFinSemanaFeriado ? 'border-gauge-danger bg-gauge-danger/10' : ''}`}
           placeholder="ej. 020-GADMFO-DAPA-2026"
           value={numeroInforme}
           onChange={(e) => setNumeroInforme(e.target.value)}
