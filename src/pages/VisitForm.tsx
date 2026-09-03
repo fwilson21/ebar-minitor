@@ -109,6 +109,12 @@ export function VisitForm() {
   // desde "Asignar" — si el operador no tiene la estación asignada hoy (por defecto o especial),
   // no puede registrar la visita, tenga o no otras asignaciones cargadas.
   const [asignacion, setAsignacion] = useState<{ asignadaHoy: boolean } | null>(null);
+  // Excepción al bloqueo por GPS (ver migración 0056) — la otorga supervisor/administrador desde
+  // "Asignar" para un operador+estación con problemas conocidos de cobertura, no algo que el
+  // operador se auto-conceda. Mientras esté activa para hoy, el chequeo de ubicación de más abajo
+  // no bloquea nada, sin dejar ningún rastro especial en la visita (la trazabilidad de quién/
+  // cuándo/por qué queda en la tabla de la excepción, no acá).
+  const [excepcionGpsActiva, setExcepcionGpsActiva] = useState(false);
   const [registrosBombas, setRegistrosBombas] = useState<Record<string, RegistroBombaInput>>({});
   const [bombasSeleccionadas, setBombasSeleccionadas] = useState<Set<string>>(new Set());
   const [cargandoDatos, setCargandoDatos] = useState(true);
@@ -428,8 +434,24 @@ export function VisitForm() {
         // esto). Si la consulta sí respondió (aunque sea con 0 filas), ya se puede confiar: sin
         // asignación para hoy, se bloquea.
         setAsignacion(asignadaHoyData === null ? null : { asignadaHoy: asignadaHoyData.length > 0 });
+
+        // Excepción de GPS para hoy — se trae la lista completa de este operador+estación (rara
+        // vez más de una fila) y se decide el rango en JS, en vez de armar el filtro de fechas en
+        // la consulta. Sin señal, la consulta falla y queda sin activar (mismo criterio estricto
+        // de siempre: sin poder confirmar la excepción, no se concede).
+        const { data: excepcionesData } = await supabase
+          .from('excepciones_gps')
+          .select('fecha_inicio, fecha_fin')
+          .eq('operador_id', usuario.id)
+          .eq('estacion_id', estacionId);
+        setExcepcionGpsActiva(
+          (excepcionesData ?? []).some(
+            (e: any) => (!e.fecha_inicio || e.fecha_inicio <= hoy) && (!e.fecha_fin || e.fecha_fin >= hoy),
+          ),
+        );
       } else {
         setAsignacion(null);
+        setExcepcionGpsActiva(false);
       }
 
       const clave = `visita:${estacionId}:${visitaId ?? 'nueva'}`;
@@ -931,6 +953,7 @@ export function VisitForm() {
   // celular sigue ubicándose, sobre todo en EBAR sin señal de datos donde tarda más.
   const bloqueadoPorUbicacion =
     requiereUbicacion &&
+    !excepcionGpsActiva &&
     (ubicacion.tipo === 'error' || (ubicacion.tipo === 'ok' && distanciaEfectiva! > DISTANCIA_MAXIMA_METROS));
   const ubicandoAun = requiereUbicacion && ubicacion.tipo === 'buscando';
 

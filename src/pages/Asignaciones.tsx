@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import type { AsignacionEstacion, EstacionEbar, Usuario } from '../lib/types';
+import type { AsignacionEstacion, EstacionEbar, ExcepcionGps, Usuario } from '../lib/types';
+import { hoyLocal } from '../lib/fecha';
 import { registrarFormularioActivo, desregistrarFormularioActivo } from '../lib/formularioActivo';
 import { GridEditable } from '../components/GridEditable';
 import { BarraDistribucion } from '../components/BarraDistribucion';
@@ -57,6 +58,18 @@ export function Asignaciones() {
   const [fechaEspecial, setFechaEspecial] = useState('');
   const [seleccionEspecial, setSeleccionEspecial] = useState<Set<string>>(new Set());
 
+  // Excepción de GPS (ver migración 0056): supervisor/administrador la otorga a un operador para
+  // una EBAR con problemas conocidos de cobertura, sin depender de que el propio operador se la
+  // auto-conceda. Mensaje/guardando propios (no el `mensaje`/`guardando` compartido de arriba) —
+  // el usuario pidió que cada aviso quede pegado a su propio botón.
+  const [excepcionesGps, setExcepcionesGps] = useState<ExcepcionGps[]>([]);
+  const [seleccionExcepcion, setSeleccionExcepcion] = useState<Set<string>>(new Set());
+  const [modoExcepcion, setModoExcepcion] = useState<'un_dia' | 'rango' | 'indefinido'>('un_dia');
+  const [excepcionDesde, setExcepcionDesde] = useState('');
+  const [excepcionHasta, setExcepcionHasta] = useState('');
+  const [guardandoExcepcion, setGuardandoExcepcion] = useState(false);
+  const [mensajeExcepcion, setMensajeExcepcion] = useState<string | null>(null);
+
   useEffect(() => {
     async function cargarBase() {
       const [{ data: ops }, { data: est }, { data: asigTodas }] = await Promise.all([
@@ -82,10 +95,55 @@ export function Asignaciones() {
       setAsignacionesDefault(new Set());
       setSeleccionDefault(new Set());
       setAsignacionesEspeciales([]);
+      setExcepcionesGps([]);
       return;
     }
     cargarAsignaciones(operadorId);
+    cargarExcepciones(operadorId);
   }, [operadorId]);
+
+  async function cargarExcepciones(opId: string) {
+    const { data } = await supabase.from('excepciones_gps').select('*').eq('operador_id', opId);
+    setExcepcionesGps(((data as ExcepcionGps[]) ?? []).sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')));
+  }
+
+  async function agregarExcepcion() {
+    if (!operadorId || seleccionExcepcion.size === 0) return;
+    if (modoExcepcion !== 'indefinido' && !excepcionDesde) return;
+    if (modoExcepcion === 'rango' && !excepcionHasta) return;
+    setGuardandoExcepcion(true);
+    setMensajeExcepcion(null);
+    try {
+      const fecha_inicio = modoExcepcion === 'indefinido' ? null : excepcionDesde;
+      const fecha_fin = modoExcepcion === 'indefinido' ? null : modoExcepcion === 'un_dia' ? excepcionDesde : excepcionHasta;
+      const { error } = await supabase.from('excepciones_gps').insert(
+        [...seleccionExcepcion].map((estacion_id) => ({
+          operador_id: operadorId,
+          estacion_id,
+          fecha_inicio,
+          fecha_fin,
+          creado_por: usuario?.id,
+        })),
+      );
+      if (error) throw error;
+      setSeleccionExcepcion(new Set());
+      await cargarExcepciones(operadorId);
+      setMensajeExcepcion('Excepción de GPS agregada.');
+    } catch (err: any) {
+      setMensajeExcepcion(`No se pudo agregar: ${err.message ?? err}`);
+    } finally {
+      setGuardandoExcepcion(false);
+    }
+  }
+
+  async function quitarExcepcion(id: string) {
+    setGuardandoExcepcion(true);
+    setMensajeExcepcion(null);
+    const { error } = await supabase.from('excepciones_gps').delete().eq('id', id);
+    if (error) setMensajeExcepcion(`No se pudo quitar: ${error.message}`);
+    else setExcepcionesGps((prev) => prev.filter((e) => e.id !== id));
+    setGuardandoExcepcion(false);
+  }
 
   async function cargarAsignaciones(opId: string) {
     setCargandoAsignaciones(true);
@@ -186,24 +244,30 @@ export function Asignaciones() {
   }
 
   // Le avisa al header (botón "Salir") si hay cambios sin guardar en esta pantalla: la
-  // asignación por defecto marcada pero no guardada, o una asignación especial a medio llenar
-  // (fecha + al menos una estación ya elegidas pero sin tocar "Agregar" todavía).
+  // asignación por defecto marcada pero no guardada, una asignación especial a medio llenar
+  // (fecha + al menos una estación ya elegidas pero sin tocar "Agregar" todavía), o una excepción
+  // de GPS a medio llenar (misma idea, ver agregarExcepcion para la validación exacta por modo).
   useEffect(() => {
     const seleccionDefaultDistinta =
       seleccionDefault.size !== asignacionesDefault.size ||
       [...seleccionDefault].some((id) => !asignacionesDefault.has(id));
     const hayPendienteEspecial = !!fechaEspecial && seleccionEspecial.size > 0;
+    const hayPendienteExcepcion =
+      seleccionExcepcion.size > 0 &&
+      (modoExcepcion === 'indefinido' || !!excepcionDesde) &&
+      (modoExcepcion !== 'rango' || !!excepcionHasta);
 
     registrarFormularioActivo({
-      hayCambios: seleccionDefaultDistinta || hayPendienteEspecial,
+      hayCambios: seleccionDefaultDistinta || hayPendienteEspecial || hayPendienteExcepcion,
       guardar: async () => {
         if (seleccionDefaultDistinta) await guardarDefault();
         if (hayPendienteEspecial) await agregarEspecial();
+        if (hayPendienteExcepcion) await agregarExcepcion();
       },
     });
     return () => desregistrarFormularioActivo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seleccionDefault, asignacionesDefault, fechaEspecial, seleccionEspecial]);
+  }, [seleccionDefault, asignacionesDefault, fechaEspecial, seleccionEspecial, seleccionExcepcion, modoExcepcion, excepcionDesde, excepcionHasta]);
 
   if (cargando) return <p className="text-slate-600">Cargando…</p>;
 
@@ -241,6 +305,19 @@ export function Asignaciones() {
     alternar,
     nombreEstacion,
     codigoEstacion,
+    excepcionesGps,
+    seleccionExcepcion,
+    setSeleccionExcepcion,
+    modoExcepcion,
+    setModoExcepcion,
+    excepcionDesde,
+    setExcepcionDesde,
+    excepcionHasta,
+    setExcepcionHasta,
+    guardandoExcepcion,
+    mensajeExcepcion,
+    agregarExcepcion,
+    quitarExcepcion,
   };
 
   return (
@@ -263,6 +340,7 @@ export function Asignaciones() {
           <>
             <BloqueAsignacionDefault {...props} />
             <BloqueAsignacionEspecial {...props} />
+            <BloqueExcepcionGps {...props} />
           </>
         )}
       </div>
@@ -290,6 +368,8 @@ export function Asignaciones() {
                 return operadorId && cargandoAsignaciones ? <p className="text-slate-600">Cargando…</p> : <BloqueAsignacionDefault {...props} />;
               case 'asignacion_especial':
                 return operadorId && cargandoAsignaciones ? <p className="text-slate-600">Cargando…</p> : <BloqueAsignacionEspecial {...props} />;
+              case 'excepcion_gps':
+                return operadorId && cargandoAsignaciones ? <p className="text-slate-600">Cargando…</p> : <BloqueExcepcionGps {...props} />;
               default:
                 return null;
             }
@@ -329,6 +409,19 @@ type BloquesProps = {
   alternar: (set: Set<string>, setSet: (s: Set<string>) => void, estacionId: string) => void;
   nombreEstacion: (id: string) => string;
   codigoEstacion: (id: string) => string;
+  excepcionesGps: ExcepcionGps[];
+  seleccionExcepcion: Set<string>;
+  setSeleccionExcepcion: (s: Set<string>) => void;
+  modoExcepcion: 'un_dia' | 'rango' | 'indefinido';
+  setModoExcepcion: (m: 'un_dia' | 'rango' | 'indefinido') => void;
+  excepcionDesde: string;
+  setExcepcionDesde: (v: string) => void;
+  excepcionHasta: string;
+  setExcepcionHasta: (v: string) => void;
+  guardandoExcepcion: boolean;
+  mensajeExcepcion: string | null;
+  agregarExcepcion: () => void;
+  quitarExcepcion: (id: string) => void;
 };
 
 function BloqueResumen({
@@ -583,6 +676,174 @@ function BloqueAsignacionEspecial({
           Elegí una fecha arriba, en "Resumen de asignaciones", para ver las que ya están cargadas.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Cómo se ve el período de una excepción ya guardada — igual criterio que la migración: ambas
+ * fechas null = indefinida, iguales = un día, distintas = un rango. Si ya venció (fecha_fin en el
+ * pasado), lo aclara aparte en vez de dejarla ver como si siguiera vigente. */
+function descripcionRangoExcepcion(e: ExcepcionGps): string {
+  const hoy = hoyLocal();
+  if (!e.fecha_inicio && !e.fecha_fin) return 'Todos los días (indefinida)';
+  const vencida = e.fecha_fin !== null && e.fecha_fin < hoy;
+  const texto = e.fecha_inicio === e.fecha_fin ? `${e.fecha_inicio}` : `${e.fecha_inicio ?? '—'} al ${e.fecha_fin ?? '—'}`;
+  return vencida ? `${texto} (vencida)` : texto;
+}
+
+/** Excepción al bloqueo por GPS de VisitForm.tsx (ver migración 0056) — para un operador con
+ * problemas conocidos de cobertura en una EBAR puntual (ej. Lapo en EBAR-9 con la señal de Claro
+ * floja). La otorga supervisor/administrador, nunca el propio operador. */
+function BloqueExcepcionGps({
+  estaciones,
+  operadorId,
+  excepcionesGps,
+  seleccionExcepcion,
+  setSeleccionExcepcion,
+  modoExcepcion,
+  setModoExcepcion,
+  excepcionDesde,
+  setExcepcionDesde,
+  excepcionHasta,
+  setExcepcionHasta,
+  guardandoExcepcion,
+  mensajeExcepcion,
+  agregarExcepcion,
+  quitarExcepcion,
+  alternar,
+  nombreEstacion,
+}: BloquesProps) {
+  const sinOperador = !operadorId;
+  const listaParaGuardar =
+    seleccionExcepcion.size > 0 &&
+    (modoExcepcion === 'indefinido' || !!excepcionDesde) &&
+    (modoExcepcion !== 'rango' || !!excepcionHasta);
+  return (
+    <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
+      <div>
+        <h2 className="text-base font-semibold">Excepción de GPS</h2>
+        <p className="text-xs text-slate-500">
+          Para cuando el GPS no logra confirmar la ubicación de este operador en una EBAR puntual (ej. sin señal de
+          datos dentro de la cámara) y de verdad está ahí — deja registrar la visita sin el chequeo de ubicación,
+          solo para la(s) EBAR y el período que elijas.
+        </p>
+      </div>
+
+      {sinOperador && (
+        <p className="text-xs text-slate-500 italic">Elegí un operador arriba para poder agregar una excepción.</p>
+      )}
+
+      <div>
+        <label className="etiqueta">Duración</label>
+        <div className="flex gap-2 flex-wrap">
+          {(
+            [
+              ['un_dia', 'Un día puntual'],
+              ['rango', 'Un rango de fechas'],
+              ['indefinido', 'Todos los días'],
+            ] as const
+          ).map(([valor, etiqueta]) => (
+            <button
+              key={valor}
+              type="button"
+              disabled={sinOperador}
+              onClick={() => setModoExcepcion(valor)}
+              className={`text-sm px-3 py-1.5 rounded-full border transition ${
+                modoExcepcion === valor ? 'bg-gauge-ok/15 border-gauge-ok text-gauge-ok' : 'border-panel-600 text-slate-600'
+              } ${sinOperador ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {etiqueta}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {modoExcepcion !== 'indefinido' && (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="etiqueta">{modoExcepcion === 'un_dia' ? 'Fecha' : 'Desde'}</label>
+            <input
+              type="date"
+              className="campo"
+              value={excepcionDesde}
+              onChange={(e) => setExcepcionDesde(e.target.value)}
+              disabled={sinOperador}
+            />
+          </div>
+          {modoExcepcion === 'rango' && (
+            <div>
+              <label className="etiqueta">Hasta</label>
+              <input
+                type="date"
+                className="campo"
+                value={excepcionHasta}
+                min={excepcionDesde || undefined}
+                onChange={(e) => setExcepcionHasta(e.target.value)}
+                disabled={sinOperador}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {agruparPorZonaYTipo(estaciones).map(({ zona, tipo, estaciones: delGrupo }) => (
+          <div key={`${zona}-${tipo}`}>
+            <p className="text-xs font-bold text-sky-700 uppercase tracking-wider mb-1.5">
+              {ETIQUETA_ZONA[zona] ?? zona} · {ETIQUETA_TIPO[tipo] ?? tipo}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {delGrupo.map((e) => {
+                const activo = seleccionExcepcion.has(e.id);
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    disabled={sinOperador}
+                    onClick={() => alternar(seleccionExcepcion, setSeleccionExcepcion, e.id)}
+                    className={`text-sm px-3 py-1.5 rounded-full border transition ${
+                      activo ? 'bg-gauge-warn/15 border-gauge-warn text-gauge-warn' : 'border-panel-600 text-slate-600'
+                    } ${sinOperador ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {e.codigo}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={agregarExcepcion} disabled={guardandoExcepcion || !listaParaGuardar} className="boton-primario w-full">
+        {guardandoExcepcion ? 'Guardando…' : 'Agregar excepción'}
+      </button>
+      {mensajeExcepcion && (
+        <p className={`text-sm ${mensajeExcepcion.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+          {mensajeExcepcion}
+        </p>
+      )}
+
+      <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
+        <p className="text-xs text-slate-500">Excepciones de este operador:</p>
+        {sinOperador ? null : excepcionesGps.length > 0 ? (
+          excepcionesGps.map((ex) => (
+            <div key={ex.id} className="flex items-center justify-between text-sm gap-2">
+              <span className="text-slate-700 truncate">
+                {nombreEstacion(ex.estacion_id)} · {descripcionRangoExcepcion(ex)}
+              </span>
+              <button
+                onClick={() => quitarExcepcion(ex.id)}
+                disabled={guardandoExcepcion}
+                className="text-gauge-danger hover:underline text-xs shrink-0"
+              >
+                Quitar
+              </button>
+            </div>
+          ))
+        ) : (
+          <p className="text-xs text-slate-500 italic">Sin excepciones de GPS para este operador.</p>
+        )}
+      </div>
     </div>
   );
 }

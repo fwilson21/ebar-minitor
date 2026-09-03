@@ -83,6 +83,7 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
       // celda queda vacía (mismo criterio que el resto de bloques condicionales de la app).
       { id: 'asignacion_default', titulo: 'Asignación por defecto', defaultLayout: { x: 12, y: 4, w: 12, h: 10 } },
       { id: 'asignacion_especial', titulo: 'Asignación especial por fecha', defaultLayout: { x: 12, y: 14, w: 12, h: 14 } },
+      { id: 'excepcion_gps', titulo: 'Excepción de GPS', defaultLayout: { x: 0, y: 28, w: 24, h: 16 } },
     ],
   },
   {

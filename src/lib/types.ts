@@ -39,6 +39,19 @@ export interface TurnoCalendario {
   created_at?: string;
 }
 
+/** Excepción al bloqueo por GPS de VisitForm.tsx, otorgada por supervisor/administrador a un
+ * operador para una EBAR puntual — `fecha_inicio`/`fecha_fin` null en ambas = indefinida ("todos
+ * los días"); iguales = un solo día; distintas = un rango. Ver migración 0056. */
+export interface ExcepcionGps {
+  id: string;
+  operador_id: string;
+  estacion_id: string;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  creado_por: string;
+  created_at?: string;
+}
+
 /** Motivo por el que una EBAR no se visitó un día puntual — no bloquea nada, es solo informativo
  * (se muestra junto a la tarjeta roja del Dashboard y en el reporte del día). Ver migración 0055. */
 export interface JustificacionNoVisita {
