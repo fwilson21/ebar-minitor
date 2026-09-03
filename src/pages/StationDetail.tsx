@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
-import type { Bomba, EstacionEbar } from '../lib/types';
+import type { Bomba, EstacionEbar, EstadoEstacion } from '../lib/types';
 import { direccionOParroquia } from '../lib/agruparEstaciones';
 import { EstadoBadge } from '../components/EstadoBadge';
 import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
@@ -17,11 +17,12 @@ import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 
 const VISITAS_EN_PDF = 30;
 
-// La gestión de bombas (solo administrador) no funciona sin conexión — a diferencia de registrar
-// una visita, no hay ninguna cola offline para esto (es una acción puntual, no algo que un
-// administrador necesite hacer en el sitio sin señal). Sin conexión, supabase-js devuelve el
-// error crudo de fetch ("TypeError: Failed to fetch"); esto lo traduce a un mensaje claro.
-function mensajeErrorBombas(error: { message?: string }): string {
+// La gestión de bombas y el cambio de estado a mano (ambos solo administrador) no funcionan sin
+// conexión — a diferencia de registrar una visita, no hay ninguna cola offline para esto (son
+// acciones puntuales, no algo que un administrador necesite hacer en el sitio sin señal). Sin
+// conexión, supabase-js devuelve el error crudo de fetch ("TypeError: Failed to fetch"); esto lo
+// traduce a un mensaje claro.
+function mensajeErrorAccion(error: { message?: string }): string {
   if (!navigator.onLine || error.message?.includes('Failed to fetch')) {
     return 'no tienes conexión a internet. Esta acción necesita señal.';
   }
@@ -135,6 +136,8 @@ export function StationDetail() {
   const [bombasAdmin, setBombasAdmin] = useState<Bomba[]>([]);
   const [mensajeBombas, setMensajeBombas] = useState<string | null>(null);
   const [guardandoBomba, setGuardandoBomba] = useState(false);
+  const [cambiandoEstado, setCambiandoEstado] = useState(false);
+  const [mensajeEstado, setMensajeEstado] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -175,6 +178,23 @@ export function StationDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, puedeGestionarBombas]);
 
+  // "estado_actual" normalmente solo lo cambia una visita (VisitForm.tsx) — esto es la salida de
+  // emergencia para cuando queda descuadrado sin ninguna visita real (ej. una visita de prueba
+  // borrada dejó la EBAR atascada en "Fuera de servicio"). Exclusiva del administrador (mismo
+  // criterio que la política RLS "estaciones_update_admin" — ni siquiera supervisor puede).
+  async function cambiarEstadoEstacion(nuevo: EstadoEstacion) {
+    if (!id || !estacion || nuevo === estacion.estado_actual) return;
+    setCambiandoEstado(true);
+    setMensajeEstado(null);
+    const { error } = await supabase.from('estaciones_ebar').update({ estado_actual: nuevo }).eq('id', id);
+    if (error) {
+      setMensajeEstado(`No se pudo cambiar el estado: ${mensajeErrorAccion(error)}`);
+    } else {
+      setEstacion((prev) => (prev ? { ...prev, estado_actual: nuevo } : prev));
+    }
+    setCambiandoEstado(false);
+  }
+
   /** Mantiene estaciones_ebar.numero_bombas (solo informativo, se muestra en la lista de estaciones) al día. */
   async function sincronizarConteoBombas(lista: Bomba[]) {
     if (!id) return;
@@ -189,7 +209,7 @@ export function StationDetail() {
     setMensajeBombas(null);
     const { error } = await supabase.from('bombas').insert({ estacion_id: id, numero_bomba: numero });
     if (error) {
-      setMensajeBombas(`No se pudo agregar la bomba: ${mensajeErrorBombas(error)}`);
+      setMensajeBombas(`No se pudo agregar la bomba: ${mensajeErrorAccion(error)}`);
     } else {
       const { data } = await supabase.from('bombas').select('*').eq('estacion_id', id).order('numero_bomba');
       const lista = (data as Bomba[]) ?? [];
@@ -211,7 +231,7 @@ export function StationDetail() {
     setMensajeBombas(null);
     const { error } = await supabase.from('bombas').update({ activa: !bomba.activa }).eq('id', bomba.id);
     if (error) {
-      setMensajeBombas(`No se pudo actualizar la bomba: ${mensajeErrorBombas(error)}`);
+      setMensajeBombas(`No se pudo actualizar la bomba: ${mensajeErrorAccion(error)}`);
     } else {
       const { data } = await supabase.from('bombas').select('*').eq('estacion_id', id).order('numero_bomba');
       const lista = (data as Bomba[]) ?? [];
@@ -282,6 +302,27 @@ export function StationDetail() {
           </div>
           <EstadoBadge estado={estacion.estado_actual} />
         </div>
+
+        {esAdmin && (
+          <div className="mt-2 flex items-center gap-2">
+            <label className="text-xs text-slate-500" htmlFor="estado-a-mano">
+              Cambiar estado a mano:
+            </label>
+            <select
+              id="estado-a-mano"
+              className="campo py-1 text-xs w-auto"
+              value={estacion.estado_actual}
+              disabled={cambiandoEstado}
+              onChange={(e) => cambiarEstadoEstacion(e.target.value as EstadoEstacion)}
+            >
+              <option value="operativa">Operativa</option>
+              <option value="mantenimiento_correctivo">Mant. correctivo</option>
+              <option value="fuera_de_servicio">Fuera de servicio</option>
+            </select>
+            {mensajeEstado && <p className="text-xs text-gauge-danger">{mensajeEstado}</p>}
+          </div>
+        )}
+
         <p className="text-sm text-slate-600 mt-2">{direccionOParroquia(estacion)}</p>
         {estacion.descripcion && <p className="text-sm text-slate-500 mt-1">{estacion.descripcion}</p>}
         {estacion.latitud && estacion.longitud && (
