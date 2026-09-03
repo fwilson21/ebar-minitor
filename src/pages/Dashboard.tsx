@@ -5,6 +5,7 @@ import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
 import type { DashboardResumen, EstacionEbar } from '../lib/types';
 import { ModalJustificarNoVisita } from '../components/ModalJustificarNoVisita';
+import { duracionVisita } from '../lib/duracionVisita';
 import { StationCard } from '../components/StationCard';
 import { detectarVisitasSospechosas, type ParSospechoso, type VisitaParaChequeo } from '../lib/visitasSospechosas';
 import { esDiaNoRegular } from '../lib/feriadosEcuador';
@@ -1193,6 +1194,16 @@ function FilaEstacionDetalle({ estacion: e }: { estacion: FilaDetalleMetrica }) 
               <>
                 <br />
                 Salida {formatFechaCorta(e.salida)}
+                {/* Cuánto le tomó la visita (llegada → salida) — mismo criterio de "visita
+                    relámpago" que el historial de StationDetail (ver duracionVisita). */}
+                {(() => {
+                  const duracion = duracionVisita(e.llegada!, e.salida);
+                  return (
+                    duracion && (
+                      <span className={duracion.corta ? 'text-gauge-warn' : 'text-slate-500'}> · {duracion.texto}</span>
+                    )
+                  );
+                })()}
               </>
             )}
           </p>

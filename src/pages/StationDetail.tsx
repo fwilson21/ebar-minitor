@@ -14,6 +14,7 @@ import { CLAVE_CACHE_ESTACIONES, leerCacheLocal } from '../lib/cacheLocal';
 import { hoyLocal } from '../lib/fecha';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
+import { duracionVisita } from '../lib/duracionVisita';
 
 const VISITAS_EN_PDF = 30;
 
@@ -81,17 +82,6 @@ const EQUIPOS_LABELS: { clave: keyof HistorialItem; label: string }[] = [
   { clave: 'tuberia_600_uniones_elastomericas', label: 'Tub.600 Uniones' },
 ];
 
-// Visitas más cortas que esto se resaltan en el historial (no se bloquea nada, es solo para que
-// el supervisor note "visitas relámpago" de un vistazo).
-const VISITA_CORTA_MINUTOS = 3;
-
-function duracionVisita(llegada: string, salida?: string | null): { texto: string; corta: boolean } | null {
-  if (!salida) return null;
-  const minutos = Math.round((new Date(salida).getTime() - new Date(llegada).getTime()) / 60000);
-  if (minutos < 0) return null;
-  const texto = minutos < 60 ? `${minutos} min` : `${Math.floor(minutos / 60)}h ${String(minutos % 60).padStart(2, '0')}min`;
-  return { texto, corta: minutos < VISITA_CORTA_MINUTOS };
-}
 
 /** Agrupa el historial (ya filtrado) por operador, ordenado alfabéticamente por nombre — dentro
  * de cada grupo se conserva el orden de `historial` (más reciente primero). */
