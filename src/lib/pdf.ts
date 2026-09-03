@@ -185,9 +185,11 @@ export interface DatosEncabezadoMemo {
   fecha: string | null;
 }
 
-/** Una EBAR sin ninguna visita en la fecha del reporte, con su justificación si la tiene (ver
+/** Una EBAR sin ninguna visita en la fecha del reporte QUE YA TIENE justificación registrada (ver
  * migración 0055 / justificaciones_no_visita) — usada solo en "Reporte consolidado" de un solo
- * día (ver bloqueNoVisitadas). */
+ * día (ver bloqueNoVisitadas). Reports.tsx ya filtra a solo las que tienen motivo antes de
+ * armar esta lista — acá `motivo` nunca debería llegar null, pero el tipo se deja opcional por
+ * si alguna vez se reutiliza esta interfaz sin ese filtro. */
 export interface FilaNoVisitadaReporte {
   nombre: string;
   codigo: string;
@@ -230,13 +232,14 @@ function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
   };
 }
 
-/** "EBAR sin visitar" del día del reporte, con el motivo si quedó justificado — solo se agrega en
- * "Reporte consolidado" de un solo día (ver Reports.tsx). Vacío = no se agrega nada. */
+/** "EBAR sin visitar" del día del reporte QUE YA TIENE motivo registrado (Reports.tsx filtra las
+ * que no lo tienen antes de llegar acá — listar las 29 sin ninguna razón no aportaba nada) — solo
+ * se agrega en "Reporte consolidado" de un solo día. Vacío = no se agrega nada. */
 function bloqueNoVisitadas(filas: FilaNoVisitadaReporte[]): any {
   if (filas.length === 0) return null;
   return {
     stack: [
-      { text: `EBAR sin visitar (${filas.length})`, style: 'subtitulo', margin: [0, 4, 0, 4] },
+      { text: `EBAR sin visitar — motivo registrado (${filas.length})`, style: 'subtitulo', margin: [0, 4, 0, 4] },
       {
         table: {
           widths: ['auto', '*', '*'],
@@ -557,10 +560,27 @@ function filasFotosCompacto(items: Array<{ url: string; label: string }>): any[]
   return filas;
 }
 
+/** Reparte una lista de párrafos en 2 columnas — el Compacto tiene puro texto corto (una línea de
+ * "Estado: X" al lado de otra) que a columna única deja media página en blanco a la derecha (el
+ * usuario lo señaló con captura); a 2 columnas se aprovecha el ancho y baja a la mitad el alto que
+ * ocupa. `null` si no hay nada que repartir. */
+function dosColumnas(parrafos: any[]): any {
+  if (parrafos.length === 0) return null;
+  const mitad = Math.ceil(parrafos.length / 2);
+  return {
+    columns: [
+      { width: '*', stack: parrafos.slice(0, mitad) },
+      { width: '*', stack: parrafos.slice(mitad) },
+    ],
+    columnGap: 16,
+  };
+}
+
 /** Formato Compacto de una visita: misma cabecera de datos que el Extenso (bloqueVisita), pero las
- * categorías van listadas en texto corrido, sin la caja con borde de cada una, y las fotos se
- * juntan en una sola grilla al final — una foto representativa por categoría en vez de todas las
- * que se tomaron. Pedido explícito del usuario (2026-09-03) para un reporte de menos hojas. */
+ * categorías van listadas en texto corrido a 2 columnas (ver dosColumnas), sin la caja con borde
+ * de cada una, y las fotos se juntan en una sola grilla al final — una foto representativa por
+ * categoría en vez de todas las que se tomaron. Pedido explícito del usuario (2026-09-03) para un
+ * reporte de menos hojas. */
 function bloqueVisitaCompacto(v: VisitaParaReporte): any[] {
   const esLineaConduccion = v.estacion_tipo === 'linea_conduccion';
   const cabecera = cabeceraVisita(v, esLineaConduccion);
@@ -570,7 +590,7 @@ function bloqueVisitaCompacto(v: VisitaParaReporte): any[] {
     return [
       cabecera,
       { text: 'Tuberías de impulsión', style: 'subtitulo', margin: [0, 2, 0, 4] },
-      { stack: categorias.map((c) => c.parrafo) },
+      dosColumnas(categorias.map((c) => c.parrafo)),
       ...filasFotosCompacto(fotosRepresentativas(categorias)),
       lineaCierreVisita(),
     ].filter(Boolean);
@@ -584,26 +604,35 @@ function bloqueVisitaCompacto(v: VisitaParaReporte): any[] {
     cabecera,
     { text: 'Registro de bombas', style: 'subtitulo', margin: [0, 2, 0, 4] },
     catBombas.length > 0
-      ? { stack: catBombas.map((c) => c.parrafo) }
+      ? dosColumnas(catBombas.map((c) => c.parrafo))
       : { text: 'Sin registro de bombas en esta visita.', italics: true, fontSize: 9, color: '#5B7184', margin: [0, 0, 0, 3] },
     { text: 'Estado de equipos', style: 'subtitulo', margin: [0, 2, 0, 4] },
-    { stack: catEquipos.map((c) => c.parrafo) },
-    ...(catExtra.length > 0 ? [{ stack: catExtra.map((c) => c.parrafo), margin: [0, 2, 0, 0] }] : []),
+    dosColumnas(catEquipos.map((c) => c.parrafo)),
+    catExtra.length > 0 ? { ...dosColumnas(catExtra.map((c) => c.parrafo)), margin: [0, 2, 0, 0] } : null,
     ...filasFotosCompacto(fotosRepresentativas([...catBombas, ...catEquipos, ...catExtra])),
     lineaCierreVisita(),
   ].filter(Boolean);
 }
 
+// Compartido por los 3 generadores que firman (generarReporteVisitas, generarReporteTurnos,
+// generarInformeSemanal) — pedido explícito del usuario (2026-09-03, con captura señalando el
+// espacio vacío a la derecha de la firma): el bloque de firma era angosto (200pt de ancho fijo,
+// línea de 180pt) dejando la mayor parte de la página en blanco. Se agranda el bloque entero
+// (línea + nombre + cargo se achican/agrandan juntos, siguen centrados como un solo grupo bajo la
+// línea) en vez de solo estirar el espacio vacío de al lado.
+const ANCHO_BLOQUE_FIRMA = 320;
+const ANCHO_LINEA_FIRMA = 280;
+
 function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null, espacioVacio = '\n\n') {
   return {
     columns: [
       {
-        width: 200,
+        width: ANCHO_BLOQUE_FIRMA,
         stack: [
           firmaUrl
-            ? { image: firmaUrl, fit: [150, 80], alignment: 'center' }
+            ? { image: firmaUrl, fit: [190, 90], alignment: 'center' }
             : { text: espacioVacio },
-          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 0.5 }] },
+          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: ANCHO_LINEA_FIRMA, y2: 0, lineWidth: 0.5 }] },
           { text: nombre, alignment: 'center', style: 'firmaNombre' },
           { text: etiqueta, alignment: 'center', style: 'firmaEtiqueta' },
         ],

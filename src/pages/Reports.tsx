@@ -92,7 +92,11 @@ export function Reports() {
 
   const operadorNombre =
     operadores.find((o) => o.id === operadorId)?.nombre_completo ?? usuario?.nombre_completo ?? '';
-  const estacionesElegidas = estacionIds ? estaciones.filter((e) => estacionIds.has(e.id)) : [];
+  // Con selección explícita, solo esas EBAR; con "Todas las estaciones" (null), TODAS las que
+  // ofrece el selector (ya vienen acotadas al rango de fechas + operador elegido, ver
+  // cargarEstaciones más abajo) — así el Asunto (más abajo) nombra las EBAR reales del reporte
+  // incluso sin haber tildado ninguna a mano.
+  const estacionesElegidas = estacionIds ? estaciones.filter((e) => estacionIds.has(e.id)) : estaciones;
 
   const esRango = tipo === 'consolidado_fecha' || tipo === 'individual_estacion';
   const fechaInicioEfectiva = fechaInicio;
@@ -149,9 +153,9 @@ export function Reports() {
   // real del PDF (manejarGenerar) como para sugerir el "Asunto" del encabezado tipo memo acá abajo.
   const tituloBase =
     tipo === 'diario_operador' ? 'Reporte diario' : tipo === 'consolidado_fecha' ? 'Reporte consolidado' : 'Reporte de estación';
-  // El "Asunto" sugerido incluye el nombre de las EBAR elegidas a mano en el campo Estación
-  // (pedido del usuario). Con "Todas las estaciones" (estacionIds === null) no se listan — no
-  // aporta nada al asunto.
+  // El "Asunto" sugerido incluye el nombre de las EBAR del campo Estación — elegidas a mano, o
+  // todas las que ofrece el selector si quedó en "Todas las estaciones" (pedido del usuario:
+  // el asunto de un reporte de un operador debe nombrar sus EBAR aunque no haya tildado ninguna).
   const nombresEstacionesElegidas = estacionesElegidas.map((e) => e.nombre).join(', ');
   const asuntoSugerido = nombresEstacionesElegidas
     ? `${tituloBase} — ${nombresEstacionesElegidas} — ${rangoLabel}`
@@ -191,9 +195,12 @@ export function Reports() {
     return (data ?? []).map(mapearVisitaFila);
   }
 
-  // "EBAR sin visitar" con su motivo, si lo tiene — solo aplica a "Reporte consolidado" de un
-  // solo día (fechaInicio === fechaFin); en un rango de varios días o en los otros 2 tipos de
-  // reporte (diario por operador, de una sola estación) no hay una lista de "no visitadas" con un
+  // "EBAR sin visitar CON MOTIVO REGISTRADO" — solo las que el operador (o supervisor/admin) ya
+  // justificó (ver justificaciones_no_visita, migración 0055), no todas las que faltan por
+  // visitar (esas ya se ven aparte en el Dashboard — acá listarlas todas sin motivo no aportaba
+  // nada, solo alargaba el PDF). Solo aplica a "Reporte consolidado" de un solo día
+  // (fechaInicio === fechaFin); en un rango de varios días o en los otros 2 tipos de reporte
+  // (diario por operador, de una sola estación) no hay una lista de "no visitadas" con un
   // significado claro, así que queda vacía y el PDF no agrega la sección (ver bloqueNoVisitadas en
   // pdf.ts). Es la foto de TODA la empresa ese día — no se filtra por el operador elegido arriba
   // (que no visitó no dice quién sí), pero si se eligieron estaciones puntuales en el filtro, la
@@ -227,12 +234,12 @@ export function Reports() {
     );
 
     return ((todasActivas ?? []) as EstacionEbar[])
-      .filter((e) => !idsConVisita.has(e.id))
+      .filter((e) => !idsConVisita.has(e.id) && mapaJustificaciones.has(e.id))
       .map((e) => ({
         nombre: e.nombre,
         codigo: e.codigo,
-        motivo: mapaJustificaciones.get(e.id)?.motivo ?? null,
-        registrado_por: mapaJustificaciones.get(e.id)?.registrado_por ?? null,
+        motivo: mapaJustificaciones.get(e.id)!.motivo,
+        registrado_por: mapaJustificaciones.get(e.id)!.registrado_por,
       }))
       .sort((a, b) => a.codigo.localeCompare(b.codigo));
   }
