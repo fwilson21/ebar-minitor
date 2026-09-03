@@ -8,10 +8,6 @@ import { incrustarFotosVisitas } from '../lib/fotos';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
 import type { EstacionEbar, Usuario } from '../lib/types';
 import { codigoYNombre } from '../lib/agruparEstaciones';
-import { GridEditable } from '../components/GridEditable';
-import { BarraDistribucion } from '../components/BarraDistribucion';
-import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
-import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { hoyLocal } from '../lib/fecha';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
 import { esDiaNoRegular } from '../lib/feriadosEcuador';
@@ -22,10 +18,6 @@ type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacio
 export function Reports() {
   const { usuario } = useAuth();
   const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
-  // "Editar distribución" es exclusiva del administrador real (ver migración 0053).
-  const esAdministrador = usuario?.rol === 'administrador';
-  const puedeEditarDistribucion = esAdministrador;
-  const editorDistribucion = useEditorDistribucion('reportes');
 
   const [tipo, setTipo] = useState<TipoReporte>('consolidado_fecha');
   // Formato del PDF, independiente del tipo (se ofrece en los 3): Extenso = como siempre, una caja
@@ -431,9 +423,7 @@ export function Reports() {
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="titulo-pantalla">Reportes</h1>
-        {/* Fuera de GridEditable a propósito (no es un bloque movible más) — el Informe Semanal
-            es una pantalla aparte, esto es solo la puerta de entrada. Exclusivo de
-            administrador/supervisor, igual que el resto de esta pantalla. */}
+        {/* El Informe Semanal es una pantalla aparte, esto es solo la puerta de entrada. */}
         {esAdmin && (
           <Link to="/informe-semanal" className="boton-secundario text-sm py-2 px-3">
             📋 Informe Semanal
@@ -441,8 +431,24 @@ export function Reports() {
         )}
       </div>
 
-      {/* Celular: exactamente el mismo apilado de siempre, sin GridEditable. */}
-      <div className="lg:hidden space-y-5">
+      {/* Un solo bloque (ya no hay versión aparte para celular/escritorio ni "Editar
+          distribución" en esta pantalla — ver nota abajo): en columna en celular, lado a lado en
+          escritorio (mismas proporciones 7/5 que tenía el grid fijo de antes), y cada tarjeta
+          crece o se achica sola según lo que tenga adentro.
+
+          Antes esto vivía dentro de GridEditable, con un alto FIJO que el administrador
+          arrastraba a mano. El contenido de "Filtros y Generar PDF" cambia mucho de tamaño según
+          lo que se elige (el calendario de "Días específicos" agrega ~300px, "Estación" aparece o
+          no, etc.) — con alto fijo, cuando el contenido no entraba se ENCOGÍA entero (ancho y
+          alto juntos, con BloqueAutoEncogible) y se veía angosto/con zoom raro, y cuando el
+          contenido era más corto que el alto guardado quedaba un hueco vacío abajo (los 2
+          problemas que reportó el usuario, 2026-09-03, con capturas). Se decidió sacar esta
+          pantalla del todo de "Editar distribución" (opción elegida entre 3, ver conversación)
+          en vez de agrandar el bloque a mano o solo evitar el encogido — así ninguno de los 2
+          problemas puede volver a pasar, sea cual sea el contenido. El resto de pantallas de la
+          app (Inicio, Estaciones, Turnos, etc.) siguen con GridEditable normal, esto es solo para
+          Reportes. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[7fr_5fr] gap-5 lg:items-start">
         <BloqueFiltrosGenerar
           tipo={tipo}
           onCambiarTipo={cambiarTipo}
@@ -490,80 +496,6 @@ export function Reports() {
           avisoCompartirManual={avisoCompartirManual}
           ultimoNombre={ultimoNombre}
         />
-      </div>
-
-      {/* Escritorio (lg+): mismos bloques, acomodados según lo guardado (o el acomodo por
-          defecto). Solo el administrador ve "Editar distribución" (ni siquiera supervisor). */}
-      <div className="hidden lg:block space-y-3">
-        {puedeEditarDistribucion && <BarraDistribucion editor={editorDistribucion} />}
-        <GridEditable
-          pantallaId="reportes"
-          bloques={PANTALLAS_EDITABLES.find((p) => p.id === 'reportes')!.bloques}
-          modoEdicion={puedeEditarDistribucion && editorDistribucion.modoEdicion}
-          resetSignal={editorDistribucion.resetSignal}
-          objetivoEdicion={editorDistribucion.objetivoActivo}
-          onGuardar={editorDistribucion.guardar}
-          renderBloque={(bloqueId) => {
-            switch (bloqueId) {
-              case 'filtros_generar':
-                return (
-                  <BloqueFiltrosGenerar
-                    tipo={tipo}
-                    onCambiarTipo={cambiarTipo}
-                    formato={formato}
-                    setFormato={setFormato}
-                    soloFinSemanaFeriado={soloFinSemanaFeriado}
-                    setSoloFinSemanaFeriado={setSoloFinSemanaFeriado}
-                    diasEspecificos={diasEspecificos}
-                    setDiasEspecificos={setDiasEspecificos}
-                    diasElegidos={diasElegidos}
-                    setDiasElegidos={setDiasElegidos}
-                    feriadosAdicionalesMap={feriadosAdicionalesMap}
-                    esAdmin={esAdmin}
-                    operadores={operadores}
-                    operadorId={operadorId}
-                    setOperadorId={setOperadorId}
-                    estaciones={estaciones}
-                    estacionIds={estacionIds}
-                    setEstacionIds={setEstacionIds}
-                    esRango={esRango}
-                    fechaInicio={fechaInicio}
-                    setFechaInicio={setFechaInicio}
-                    fechaFin={fechaFin}
-                    setFechaFin={setFechaFin}
-                    numeroInforme={numeroInforme}
-                    setNumeroInforme={setNumeroInforme}
-                    paraNombre={paraNombre}
-                    setParaNombre={setParaNombre}
-                    paraCargo={paraCargo}
-                    setParaCargo={setParaCargo}
-                    deNombre={deNombre}
-                    setDeNombre={setDeNombre}
-                    deCargo={deCargo}
-                    setDeCargo={setDeCargo}
-                    asunto={asunto}
-                    setAsunto={setAsunto}
-                    setAsuntoTocado={setAsuntoTocado}
-                    generando={generando}
-                    manejarGenerar={manejarGenerar}
-                  />
-                );
-              case 'compartir':
-                return (
-                  <BloqueCompartir
-                    enviando={enviando}
-                    manejarCompartir={manejarCompartir}
-                    mensaje={mensaje}
-                    avisoCompartirManual={avisoCompartirManual}
-                    ultimoNombre={ultimoNombre}
-                  />
-                );
-              default:
-                return null;
-            }
-          }}
-        />
-        {editorDistribucion.guardando && <p className="text-xs text-slate-500">Guardando…</p>}
       </div>
     </div>
   );
@@ -649,7 +581,7 @@ function BloqueFiltrosGenerar({
   manejarGenerar: () => void;
 }) {
   return (
-    <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
+    <div className="tarjeta p-4 space-y-3">
       <div>
         <label className="etiqueta">Tipo de reporte</label>
         <select className="campo" value={tipo} onChange={(e) => onCambiarTipo(e.target.value as TipoReporte)}>
@@ -896,13 +828,13 @@ function SelectorEstaciones({
         {resumen}
       </button>
 
-      {/* createPortal a document.body: en escritorio este selector vive dentro de un bloque de
-          GridEditable, que react-grid-layout posiciona con `transform` (translate) en línea —
-          cualquier ancestro con `transform` vuelve a definir el marco de referencia de los hijos
-          `position: fixed` (spec de CSS), así que sin el portal este modal (y su fondo oscuro)
-          quedaba encogido/recortado al tamaño del bloque en vez de cubrir toda la pantalla, y el
-          título "Elegir estaciones" se veía cortado. Con el portal, el modal sale de ese árbol y
-          se posiciona de verdad contra el viewport completo. */}
+      {/* createPortal a document.body: Reportes ya no usa GridEditable (ver el comentario grande
+          en el return de Reports()), así que esto ya no es estrictamente necesario, pero se deja
+          igual — no hace daño y evita depender de que ningún ancestro futuro tenga `transform`
+          (spec de CSS: eso redefine el marco de referencia de los hijos `position: fixed`, y sin
+          el portal este modal quedaba encogido/recortado al tamaño del bloque en GridEditable en
+          vez de cubrir toda la pantalla). Con el portal, el modal sale de ese árbol y se posiciona
+          de verdad contra el viewport completo. */}
       {abierto &&
         createPortal(
           <>
@@ -993,7 +925,7 @@ function BloqueCompartir({
   ultimoNombre: string;
 }) {
   return (
-    <div className="tarjeta p-4 space-y-2 lg:h-full lg:overflow-auto">
+    <div className="tarjeta p-4 space-y-2">
       <p className="etiqueta mb-1">Compartir</p>
       {/* Siempre clickeable (antes quedaba deshabilitado sin ninguna explicación mientras no
           hubiera un PDF generado) — manejarCompartir ya trae su propia validación y avisa "Primero

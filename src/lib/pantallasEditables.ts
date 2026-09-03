@@ -86,14 +86,10 @@ export const PANTALLAS_EDITABLES: PantallaEditable[] = [
       { id: 'excepcion_gps', titulo: 'Excepción de GPS', defaultLayout: { x: 0, y: 28, w: 24, h: 16 } },
     ],
   },
-  {
-    id: 'reportes',
-    nombre: 'Reportes',
-    bloques: [
-      { id: 'filtros_generar', titulo: 'Filtros y Generar PDF', defaultLayout: { x: 0, y: 0, w: 14, h: 18 } },
-      { id: 'compartir', titulo: 'Compartir', defaultLayout: { x: 14, y: 0, w: 10, h: 18 } },
-    ],
-  },
+  // 'reportes' se sacó de acá (2026-09-03): esa pantalla dejó de usar GridEditable/"Editar
+  // distribución" del todo — ver el comentario grande en Reports.tsx (return del componente) para
+  // el porqué (el contenido de "Filtros y Generar PDF" cambia demasiado de alto según lo que se
+  // elige, y un bloque de alto fijo se encogía raro o dejaba un hueco vacío).
   {
     id: 'modal_nueva_planilla',
     nombre: 'Modal: Nueva planilla',
