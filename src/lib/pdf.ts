@@ -374,49 +374,105 @@ function empacarCajas(cajas: { ancho: number; contenido: any }[]): any[] {
   }));
 }
 
-function bloqueEquipos(v: VisitaParaReporte): any {
-  const items: Array<{ clave: string; parrafo: any }> = [
-    { clave: 'lineas_impulsion', parrafo: parrafoEquipo('Líneas de impulsión', v.lineas_impulsion) },
-    { clave: 'guias_izado', parrafo: parrafoEquipo('Guías de izado de bombas', v.guias_izado) },
-    { clave: 'valvulas_compuerta', parrafo: parrafoEquipo('Válvulas de compuerta', v.valvulas_compuerta) },
-    { clave: 'valvulas_check', parrafo: parrafoEquipo('Válvulas check', v.valvulas_check) },
-    { clave: 'valvula_aire', parrafo: parrafoTieneConEstado('Válvula de aire', v.valvula_aire) },
-    { clave: 'camara_rejilla', parrafo: parrafoEquipo('Cámara de llegada — Rejilla', v.camara_rejilla) },
-    { clave: 'camara_valvula_compuerta', parrafo: parrafoTieneConEstado('Cámara de llegada — Compuerta', v.camara_valvula_compuerta) },
-    { clave: 'tablero_distribucion', parrafo: parrafoEquipo('Tablero de distribución, contactores y breakers', v.tablero_distribucion) },
-    { clave: 'variador', parrafo: parrafoTieneConEstado('Variadores de frecuencia', v.variador) },
-    { clave: 'descarga_emergencia', parrafo: parrafoTiene('Descarga de emergencia', v.descarga_emergencia) },
-  ];
+/** Una categoría de una visita (una bomba, un equipo, una tubería, o un bloque de observaciones
+ * sueltas como "Patios de maniobras") — el mismo dato de fondo alimenta las 2 presentaciones del
+ * reporte: el formato Extenso la mete en una caja con borde junto a sus fotos (cajaCategoria +
+ * bloqueFotos), el Compacto solo lista `parrafo` en texto corrido y junta UNA foto representativa
+ * de cada categoría en una grilla aparte (ver bloqueVisitaCompacto/filasFotosCompacto). Que las 2
+ * presentaciones lean de la misma fuente evita que se desincronicen si algún día se agrega/quita
+ * una categoría. */
+interface CategoriaVisita {
+  label: string;
+  parrafo: any;
+  fotos: Array<{ url: string; etiqueta?: string | null }>;
+}
 
-  const cajas = items.map(({ clave, parrafo }) => {
-    const fotos = fotosDeSeccion(v.fotos, clave);
-    const ancho = anchoCategoria(fotos.length);
-    return { ancho, contenido: cajaCategoria([parrafo, bloqueFotos(fotos)], ancho) };
+function categoriasBombas(v: VisitaParaReporte): CategoriaVisita[] {
+  return v.bombas.map((b) => {
+    const label = `Bomba ${b.numero_bomba}`;
+    const parrafo = parrafoElemento(label, [
+      [{ text: 'Estado: ', bold: true }, ESTADO_BOMBA_LABEL[b.estado] ?? b.estado],
+      [
+        { text: 'Voltaje: ', bold: true },
+        b.voltaje_fuera_rango
+          ? { text: `${b.voltaje ?? '-'} V ⚠`, color: '#B91C1C', bold: true }
+          : `${b.voltaje ?? '-'} V`,
+      ],
+      [{ text: 'Amperaje: ', bold: true }, `${b.amperaje ?? '-'} A`],
+      [{ text: 'Horas acumuladas: ', bold: true }, `${b.horas_operacion_acumuladas ?? '-'}`],
+      [{ text: 'Observaciones: ', bold: true }, b.observaciones || '-'],
+    ]);
+    return { label, parrafo, fotos: fotosDeSeccion(v.fotos, `bomba_${b.numero_bomba}`) };
   });
+}
 
-  return [{ text: 'Estado de equipos', style: 'subtitulo', margin: [0, 2, 0, 4] }, ...empacarCajas(cajas)];
+function categoriasEquipos(v: VisitaParaReporte): CategoriaVisita[] {
+  const items: Array<{ clave: string; label: string; parrafo: any }> = [
+    { clave: 'lineas_impulsion', label: 'Líneas de impulsión', parrafo: parrafoEquipo('Líneas de impulsión', v.lineas_impulsion) },
+    { clave: 'guias_izado', label: 'Guías de izado de bombas', parrafo: parrafoEquipo('Guías de izado de bombas', v.guias_izado) },
+    { clave: 'valvulas_compuerta', label: 'Válvulas de compuerta', parrafo: parrafoEquipo('Válvulas de compuerta', v.valvulas_compuerta) },
+    { clave: 'valvulas_check', label: 'Válvulas check', parrafo: parrafoEquipo('Válvulas check', v.valvulas_check) },
+    { clave: 'valvula_aire', label: 'Válvula de aire', parrafo: parrafoTieneConEstado('Válvula de aire', v.valvula_aire) },
+    { clave: 'camara_rejilla', label: 'Cámara de llegada — Rejilla', parrafo: parrafoEquipo('Cámara de llegada — Rejilla', v.camara_rejilla) },
+    { clave: 'camara_valvula_compuerta', label: 'Cámara de llegada — Compuerta', parrafo: parrafoTieneConEstado('Cámara de llegada — Compuerta', v.camara_valvula_compuerta) },
+    { clave: 'tablero_distribucion', label: 'Tablero de distribución, contactores y breakers', parrafo: parrafoEquipo('Tablero de distribución, contactores y breakers', v.tablero_distribucion) },
+    { clave: 'variador', label: 'Variadores de frecuencia', parrafo: parrafoTieneConEstado('Variadores de frecuencia', v.variador) },
+    { clave: 'descarga_emergencia', label: 'Descarga de emergencia', parrafo: parrafoTiene('Descarga de emergencia', v.descarga_emergencia) },
+  ];
+  return items.map(({ clave, label, parrafo }) => ({ label, parrafo, fotos: fotosDeSeccion(v.fotos, clave) }));
+}
+
+function categoriasTuberias(v: VisitaParaReporte): CategoriaVisita[] {
+  const items: Array<{ clave: string; label: string; parrafo: any }> = [
+    { clave: 'tuberia_400_valvulas_aire', label: '400mm — Válvulas de aire', parrafo: parrafoEquipo('400mm — Válvulas de aire', v.tuberia_400_valvulas_aire) },
+    { clave: 'tuberia_400_uniones_elastomericas', label: '400mm — Uniones elastoméricas', parrafo: parrafoEquipo('400mm — Uniones elastoméricas', v.tuberia_400_uniones_elastomericas) },
+    { clave: 'tuberia_600_valvulas_aire', label: '600mm — Válvulas de aire', parrafo: parrafoEquipo('600mm — Válvulas de aire', v.tuberia_600_valvulas_aire) },
+    { clave: 'tuberia_600_uniones_elastomericas', label: '600mm — Uniones elastoméricas', parrafo: parrafoEquipo('600mm — Uniones elastoméricas', v.tuberia_600_uniones_elastomericas) },
+  ];
+  return items.map(({ clave, label, parrafo }) => ({ label, parrafo, fotos: fotosDeSeccion(v.fotos, clave) }));
+}
+
+/** Cerramiento/jardineras/patios de maniobras/observaciones generales — solo entran las que
+ * tienen texto (mismo criterio de siempre). */
+function categoriasExtra(v: VisitaParaReporte): CategoriaVisita[] {
+  return (
+    [
+      { label: 'Cerramiento y seguridad', texto: v.cerramiento_observaciones, clave: 'cerramiento_seguridad' },
+      { label: 'Jardineras y áreas verdes', texto: v.jardineras_observaciones, clave: 'jardineras' },
+      { label: 'Patios de maniobras', texto: v.patios_maniobras_observaciones, clave: 'patios_maniobras' },
+      { label: 'Observaciones generales', texto: v.observaciones_generales, clave: null },
+    ] as Array<{ label: string; texto?: string | null; clave: string | null }>
+  )
+    .filter((it) => it.texto)
+    .map((it) => ({
+      label: it.label,
+      parrafo: { text: [{ text: `${it.label}: `, bold: true, color: COLOR_TITULO_CATEGORIA }, it.texto], margin: [0, 0, 0, 2] },
+      fotos: fotosDeSeccion(v.fotos, it.clave),
+    }));
+}
+
+function cajasDeCategorias(categorias: CategoriaVisita[]): { ancho: number; contenido: any }[] {
+  return categorias.map((c) => {
+    const ancho = anchoCategoria(c.fotos.length);
+    return { ancho, contenido: cajaCategoria([c.parrafo, bloqueFotos(c.fotos)], ancho) };
+  });
+}
+
+function bloqueEquipos(v: VisitaParaReporte): any {
+  return [{ text: 'Estado de equipos', style: 'subtitulo', margin: [0, 2, 0, 4] }, ...empacarCajas(cajasDeCategorias(categoriasEquipos(v)))];
 }
 
 function bloqueTuberias(v: VisitaParaReporte): any {
-  const items: Array<{ clave: string; parrafo: any }> = [
-    { clave: 'tuberia_400_valvulas_aire', parrafo: parrafoEquipo('400mm — Válvulas de aire', v.tuberia_400_valvulas_aire) },
-    { clave: 'tuberia_400_uniones_elastomericas', parrafo: parrafoEquipo('400mm — Uniones elastoméricas', v.tuberia_400_uniones_elastomericas) },
-    { clave: 'tuberia_600_valvulas_aire', parrafo: parrafoEquipo('600mm — Válvulas de aire', v.tuberia_600_valvulas_aire) },
-    { clave: 'tuberia_600_uniones_elastomericas', parrafo: parrafoEquipo('600mm — Uniones elastoméricas', v.tuberia_600_uniones_elastomericas) },
-  ];
-
-  const cajas = items.map(({ clave, parrafo }) => {
-    const fotos = fotosDeSeccion(v.fotos, clave);
-    const ancho = anchoCategoria(fotos.length);
-    return { ancho, contenido: cajaCategoria([parrafo, bloqueFotos(fotos)], ancho) };
-  });
-
-  return [{ text: 'Tuberías de impulsión', style: 'subtitulo', margin: [0, 2, 0, 4] }, ...empacarCajas(cajas)];
+  return [{ text: 'Tuberías de impulsión', style: 'subtitulo', margin: [0, 2, 0, 4] }, ...empacarCajas(cajasDeCategorias(categoriasTuberias(v)))];
 }
 
-function bloqueVisita(v: VisitaParaReporte): any[] {
-  const esLineaConduccion = v.estacion_tipo === 'linea_conduccion';
+function lineaCierreVisita(): any {
+  return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 2, 0, 6] };
+}
 
+/** Tabla de datos de la visita (estación/zona/llegada/salida/operador/estado/...) — idéntica para
+ * el formato Extenso y el Compacto (el usuario pidió mantener el encabezado y los datos igual). */
+function cabeceraVisita(v: VisitaParaReporte, esLineaConduccion: boolean): any {
   const filaTitulo = [
     { text: codigoYNombre({ codigo: v.estacion_codigo, nombre: v.estacion_nombre }), style: 'estacionTitulo', colSpan: 2 },
     {},
@@ -444,37 +500,22 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
         ['Nivel de tanque', v.nivel_tanque],
       ];
 
-  const cabecera = {
+  return {
     table: { widths: ['*', '*'], body: encabezadoTabla },
     layout: 'lightHorizontalLines',
     margin: [0, 0, 0, 4],
   };
+}
+
+function bloqueVisita(v: VisitaParaReporte): any[] {
+  const esLineaConduccion = v.estacion_tipo === 'linea_conduccion';
+  const cabecera = cabeceraVisita(v, esLineaConduccion);
 
   if (esLineaConduccion) {
-    return [
-      cabecera,
-      bloqueTuberias(v),
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 2, 0, 6] },
-    ].filter(Boolean);
+    return [cabecera, bloqueTuberias(v), lineaCierreVisita()].filter(Boolean);
   }
 
-  const cajasBombas = v.bombas.map((b) => {
-    const fotos = fotosDeSeccion(v.fotos, `bomba_${b.numero_bomba}`);
-    const ancho = anchoCategoria(fotos.length);
-    const parrafo = parrafoElemento(`Bomba ${b.numero_bomba}`, [
-      [{ text: 'Estado: ', bold: true }, ESTADO_BOMBA_LABEL[b.estado] ?? b.estado],
-      [
-        { text: 'Voltaje: ', bold: true },
-        b.voltaje_fuera_rango
-          ? { text: `${b.voltaje ?? '-'} V ⚠`, color: '#B91C1C', bold: true }
-          : `${b.voltaje ?? '-'} V`,
-      ],
-      [{ text: 'Amperaje: ', bold: true }, `${b.amperaje ?? '-'} A`],
-      [{ text: 'Horas acumuladas: ', bold: true }, `${b.horas_operacion_acumuladas ?? '-'}`],
-      [{ text: 'Observaciones: ', bold: true }, b.observaciones || '-'],
-    ]);
-    return { ancho, contenido: cajaCategoria([parrafo, bloqueFotos(fotos)], ancho) };
-  });
+  const cajasBombas = cajasDeCategorias(categoriasBombas(v));
 
   return [
     cabecera,
@@ -483,24 +524,73 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
       ? empacarCajas(cajasBombas)
       : { text: 'Sin registro de bombas en esta visita.', italics: true, fontSize: 9, color: '#5B7184', margin: [0, 0, 0, 3] },
     bloqueEquipos(v),
-    ...empacarCajas(
-      (
-        [
-          { label: 'Cerramiento y seguridad', texto: v.cerramiento_observaciones, clave: 'cerramiento_seguridad' },
-          { label: 'Jardineras y áreas verdes', texto: v.jardineras_observaciones, clave: 'jardineras' },
-          { label: 'Patios de maniobras', texto: v.patios_maniobras_observaciones, clave: 'patios_maniobras' },
-          { label: 'Observaciones generales', texto: v.observaciones_generales, clave: null },
-        ] as Array<{ label: string; texto?: string | null; clave: string | null }>
-      )
-        .filter((it) => it.texto)
-        .map((it) => {
-          const fotos = fotosDeSeccion(v.fotos, it.clave);
-          const ancho = anchoCategoria(fotos.length);
-          const parrafo = { text: [{ text: `${it.label}: `, bold: true, color: COLOR_TITULO_CATEGORIA }, it.texto], margin: [0, 0, 0, 2] };
-          return { ancho, contenido: cajaCategoria([parrafo, bloqueFotos(fotos)], ancho) };
-        }),
-    ),
-    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 2, 0, 6] },
+    ...empacarCajas(cajasDeCategorias(categoriasExtra(v))),
+    lineaCierreVisita(),
+  ].filter(Boolean);
+}
+
+/** Fotos representativas de un grupo de categorías: la primera foto de cada una que tenga alguna
+ * (categorías sin fotos simplemente no aportan ninguna) — usada por el formato Compacto. */
+function fotosRepresentativas(categorias: CategoriaVisita[]): Array<{ url: string; label: string }> {
+  return categorias.filter((c) => c.fotos.length > 0).map((c) => ({ url: c.fotos[0].url, label: c.label }));
+}
+
+/** Grilla de fotos del formato Compacto: 5 por fila, con el nombre de la categoría centrado debajo
+ * — mismo mecanismo que `filasFotosInforme` (Informe Semanal), a 5 en vez de 4. */
+function filasFotosCompacto(items: Array<{ url: string; label: string }>): any[] {
+  if (!items.length) return [];
+  const filas: any[] = [];
+  for (let i = 0; i < items.length; i += 5) {
+    const grupo = items.slice(i, i + 5);
+    filas.push({
+      columns: grupo.map((it) => ({
+        width: '*',
+        stack: [
+          { image: it.url, fit: [90, 90], alignment: 'center' },
+          { text: it.label, fontSize: 6.5, alignment: 'center', color: '#5B7184', margin: [0, 2, 0, 0] },
+        ],
+      })),
+      columnGap: 6,
+      margin: [0, 4, 0, 4],
+    });
+  }
+  return filas;
+}
+
+/** Formato Compacto de una visita: misma cabecera de datos que el Extenso (bloqueVisita), pero las
+ * categorías van listadas en texto corrido, sin la caja con borde de cada una, y las fotos se
+ * juntan en una sola grilla al final — una foto representativa por categoría en vez de todas las
+ * que se tomaron. Pedido explícito del usuario (2026-09-03) para un reporte de menos hojas. */
+function bloqueVisitaCompacto(v: VisitaParaReporte): any[] {
+  const esLineaConduccion = v.estacion_tipo === 'linea_conduccion';
+  const cabecera = cabeceraVisita(v, esLineaConduccion);
+
+  if (esLineaConduccion) {
+    const categorias = categoriasTuberias(v);
+    return [
+      cabecera,
+      { text: 'Tuberías de impulsión', style: 'subtitulo', margin: [0, 2, 0, 4] },
+      { stack: categorias.map((c) => c.parrafo) },
+      ...filasFotosCompacto(fotosRepresentativas(categorias)),
+      lineaCierreVisita(),
+    ].filter(Boolean);
+  }
+
+  const catBombas = categoriasBombas(v);
+  const catEquipos = categoriasEquipos(v);
+  const catExtra = categoriasExtra(v);
+
+  return [
+    cabecera,
+    { text: 'Registro de bombas', style: 'subtitulo', margin: [0, 2, 0, 4] },
+    catBombas.length > 0
+      ? { stack: catBombas.map((c) => c.parrafo) }
+      : { text: 'Sin registro de bombas en esta visita.', italics: true, fontSize: 9, color: '#5B7184', margin: [0, 0, 0, 3] },
+    { text: 'Estado de equipos', style: 'subtitulo', margin: [0, 2, 0, 4] },
+    { stack: catEquipos.map((c) => c.parrafo) },
+    ...(catExtra.length > 0 ? [{ stack: catExtra.map((c) => c.parrafo), margin: [0, 2, 0, 0] }] : []),
+    ...filasFotosCompacto(fotosRepresentativas([...catBombas, ...catEquipos, ...catExtra])),
+    lineaCierreVisita(),
   ].filter(Boolean);
 }
 
@@ -539,6 +629,7 @@ export function generarReporteVisitas(
   visitas: VisitaParaReporte[],
   memo: DatosEncabezadoMemo,
   noVisitadas: FilaNoVisitadaReporte[] = [],
+  formato: 'extenso' | 'compacto' = 'extenso',
 ): Promise<Blob> {
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
@@ -583,7 +674,7 @@ export function generarReporteVisitas(
       encabezado(),
       bloqueEncabezadoMemo(memo),
       ...visitas.flatMap((v) => [
-        ...bloqueVisita(v),
+        ...(formato === 'compacto' ? bloqueVisitaCompacto(v) : bloqueVisita(v)),
         bloqueFirma(v.operador_nombre, 'Firma del operador', v.firma_url),
         { text: '', pageBreak: visitas.indexOf(v) < visitas.length - 1 ? 'after' : undefined },
       ]),

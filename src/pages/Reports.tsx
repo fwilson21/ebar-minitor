@@ -26,6 +26,11 @@ export function Reports() {
   const editorDistribucion = useEditorDistribucion('reportes');
 
   const [tipo, setTipo] = useState<TipoReporte>('consolidado_fecha');
+  // Formato del PDF, independiente del tipo (se ofrece en los 3): Extenso = como siempre, una caja
+  // con borde por categoría y todas sus fotos. Compacto = las categorías listadas en texto, con
+  // una sola grilla de fotos al final (una representativa por categoría, 5 por fila) — pedido del
+  // usuario para un reporte de menos hojas. El encabezado/datos de la visita no cambian entre los 2.
+  const [formato, setFormato] = useState<'extenso' | 'compacto'>('extenso');
   const [fechaInicio, setFechaInicio] = useState(hoyLocal());
   const [fechaFin, setFechaFin] = useState(hoyLocal());
   const [operadores, setOperadores] = useState<Usuario[]>([]);
@@ -255,6 +260,7 @@ export function Reports() {
           fecha: hoyLocal(),
         },
         noVisitadas,
+        formato,
       );
       const nombreFechas =
         fechaInicioEfectiva === fechaFinEfectiva ? fechaInicioEfectiva : `${fechaInicioEfectiva}_a_${fechaFinEfectiva}`;
@@ -262,7 +268,7 @@ export function Reports() {
       const horaArchivo = [ahora.getHours(), ahora.getMinutes(), ahora.getSeconds()]
         .map((n) => String(n).padStart(2, '0'))
         .join('-');
-      const nombre = `reporte_${tipo}_${nombreFechas}_${horaArchivo}.pdf`;
+      const nombre = `reporte_${tipo}_${formato}_${nombreFechas}_${horaArchivo}.pdf`;
       setUltimoPdf(blob);
       setUltimoNombre(nombre);
       descargarBlob(blob, nombre);
@@ -354,6 +360,8 @@ export function Reports() {
         <BloqueFiltrosGenerar
           tipo={tipo}
           onCambiarTipo={cambiarTipo}
+          formato={formato}
+          setFormato={setFormato}
           esAdmin={esAdmin}
           operadores={operadores}
           operadorId={operadorId}
@@ -409,6 +417,8 @@ export function Reports() {
                   <BloqueFiltrosGenerar
                     tipo={tipo}
                     onCambiarTipo={cambiarTipo}
+                    formato={formato}
+                    setFormato={setFormato}
                     esAdmin={esAdmin}
                     operadores={operadores}
                     operadorId={operadorId}
@@ -462,6 +472,8 @@ export function Reports() {
 function BloqueFiltrosGenerar({
   tipo,
   onCambiarTipo,
+  formato,
+  setFormato,
   esAdmin,
   operadores,
   operadorId,
@@ -492,6 +504,8 @@ function BloqueFiltrosGenerar({
 }: {
   tipo: TipoReporte;
   onCambiarTipo: (t: TipoReporte) => void;
+  formato: 'extenso' | 'compacto';
+  setFormato: (f: 'extenso' | 'compacto') => void;
   esAdmin: boolean;
   operadores: Usuario[];
   operadorId: string;
@@ -528,6 +542,14 @@ function BloqueFiltrosGenerar({
           <option value="consolidado_fecha">Consolidado por fecha</option>
           <option value="diario_operador">Diario por operador</option>
           <option value="individual_estacion">Individual por estación</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="etiqueta">Formato</label>
+        <select className="campo" value={formato} onChange={(e) => setFormato(e.target.value as 'extenso' | 'compacto')}>
+          <option value="extenso">Extenso — una caja con todas las fotos por categoría</option>
+          <option value="compacto">Compacto — actividades en lista, 1 foto por categoría (5 por fila)</option>
         </select>
       </div>
 
