@@ -14,6 +14,7 @@ import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { hoyLocal } from '../lib/fecha';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
+import { esDiaNoRegular } from '../lib/feriadosEcuador';
 
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
 
@@ -33,6 +34,11 @@ export function Reports() {
   // Arranca en "compacto" (pedido del usuario, 2026-09-03) — Extenso sigue disponible, solo deja
   // de ser la opción por defecto.
   const [formato, setFormato] = useState<'extenso' | 'compacto'>('compacto');
+  // Filtro adicional, independiente del tipo (se ofrece en los 3): deja solo las visitas de fin de
+  // semana o feriado dentro del rango elegido — para revisar de un vistazo qué días no regulares
+  // trabajó el operador. Si en ese rango no hubo ninguna, no sale nada en el reporte (mismo aviso
+  // de "sin visitas" de siempre, con el mensaje ajustado — ver manejarGenerar).
+  const [soloFinSemanaFeriado, setSoloFinSemanaFeriado] = useState(false);
   const [fechaInicio, setFechaInicio] = useState(hoyLocal());
   const [fechaFin, setFechaFin] = useState(hoyLocal());
   const [operadores, setOperadores] = useState<Usuario[]>([]);
@@ -153,8 +159,11 @@ export function Reports() {
 
   // Título base del reporte (sin sufijo de operador/estación) — se usa tanto para armar el título
   // real del PDF (manejarGenerar) como para sugerir el "Asunto" del encabezado tipo memo acá abajo.
+  // Con el filtro de fin de semana/feriado activo, se lo aclara en el título para que no se
+  // confunda con un reporte de días regulares.
   const tituloBase =
-    tipo === 'diario_operador' ? 'Reporte diario' : tipo === 'consolidado_fecha' ? 'Reporte consolidado' : 'Reporte de estación';
+    (tipo === 'diario_operador' ? 'Reporte diario' : tipo === 'consolidado_fecha' ? 'Reporte consolidado' : 'Reporte de estación') +
+    (soloFinSemanaFeriado ? ' (fin de semana/feriado)' : '');
   // El "Asunto" sugerido incluye el nombre de las EBAR del campo Estación — elegidas a mano, o
   // todas las que ofrece el selector si quedó en "Todas las estaciones" (pedido del usuario:
   // el asunto de un reporte de un operador debe nombrar sus EBAR aunque no haya tildado ninguna).
@@ -194,7 +203,17 @@ export function Reports() {
     const { data, error } = await query;
     if (error) throw error;
 
-    return (data ?? []).map(mapearVisitaFila);
+    const visitas = (data ?? []).map(mapearVisitaFila);
+    if (!soloFinSemanaFeriado) return visitas;
+
+    // Se acota a sábado/domingo/feriado — mismo cálculo que "Calendario de turnos"/Dashboard
+    // (esDiaNoRegular: feriados fijos + movibles + los 2 locales + los agregados a mano en
+    // feriados_adicionales). `fecha_hora_llegada` ya viene en hora local (ver hoyLocal en
+    // fecha.ts), por eso alcanza con recortar los primeros 10 caracteres — mismo criterio que ya
+    // usa StationDetail.tsx para filtrar el historial por día.
+    const { data: feriadosAdic } = await supabase.from('feriados_adicionales').select('fecha');
+    const feriadosSet = new Set(((feriadosAdic ?? []) as any[]).map((f) => f.fecha as string));
+    return visitas.filter((v) => esDiaNoRegular(v.fecha_hora_llegada.slice(0, 10), feriadosSet));
   }
 
   // "EBAR sin visitar CON MOTIVO REGISTRADO" — solo las que el operador (o supervisor/admin) ya
@@ -253,7 +272,11 @@ export function Reports() {
     try {
       const visitasSinFotos = await obtenerVisitas();
       if (visitasSinFotos.length === 0) {
-        setMensaje('No hay visitas registradas para los filtros seleccionados.');
+        setMensaje(
+          soloFinSemanaFeriado
+            ? 'No hay visitas en fin de semana o feriado para los filtros seleccionados.'
+            : 'No hay visitas registradas para los filtros seleccionados.',
+        );
         return;
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
@@ -277,7 +300,8 @@ export function Reports() {
       const horaArchivo = [ahora.getHours(), ahora.getMinutes(), ahora.getSeconds()]
         .map((n) => String(n).padStart(2, '0'))
         .join('-');
-      const nombre = `reporte_${tipo}_${formato}_${nombreFechas}_${horaArchivo}.pdf`;
+      const sufijoFinSemana = soloFinSemanaFeriado ? '_finsemana-feriado' : '';
+      const nombre = `reporte_${tipo}_${formato}${sufijoFinSemana}_${nombreFechas}_${horaArchivo}.pdf`;
       setUltimoPdf(blob);
       setUltimoNombre(nombre);
       descargarBlob(blob, nombre);
@@ -371,6 +395,8 @@ export function Reports() {
           onCambiarTipo={cambiarTipo}
           formato={formato}
           setFormato={setFormato}
+          soloFinSemanaFeriado={soloFinSemanaFeriado}
+          setSoloFinSemanaFeriado={setSoloFinSemanaFeriado}
           esAdmin={esAdmin}
           operadores={operadores}
           operadorId={operadorId}
@@ -428,6 +454,8 @@ export function Reports() {
                     onCambiarTipo={cambiarTipo}
                     formato={formato}
                     setFormato={setFormato}
+                    soloFinSemanaFeriado={soloFinSemanaFeriado}
+                    setSoloFinSemanaFeriado={setSoloFinSemanaFeriado}
                     esAdmin={esAdmin}
                     operadores={operadores}
                     operadorId={operadorId}
@@ -483,6 +511,8 @@ function BloqueFiltrosGenerar({
   onCambiarTipo,
   formato,
   setFormato,
+  soloFinSemanaFeriado,
+  setSoloFinSemanaFeriado,
   esAdmin,
   operadores,
   operadorId,
@@ -515,6 +545,8 @@ function BloqueFiltrosGenerar({
   onCambiarTipo: (t: TipoReporte) => void;
   formato: 'extenso' | 'compacto';
   setFormato: (f: 'extenso' | 'compacto') => void;
+  soloFinSemanaFeriado: boolean;
+  setSoloFinSemanaFeriado: (v: boolean) => void;
   esAdmin: boolean;
   operadores: Usuario[];
   operadorId: string;
@@ -561,6 +593,15 @@ function BloqueFiltrosGenerar({
           <option value="extenso">Extenso — una caja con todas las fotos por categoría</option>
         </select>
       </div>
+
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={soloFinSemanaFeriado}
+          onChange={(e) => setSoloFinSemanaFeriado(e.target.checked)}
+        />
+        Solo fines de semana y feriados
+      </label>
 
       {esAdmin && operadores.length > 0 && (
         <div>
