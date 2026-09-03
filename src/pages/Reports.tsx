@@ -30,7 +30,9 @@ export function Reports() {
   // con borde por categoría y todas sus fotos. Compacto = las categorías listadas en texto, con
   // una sola grilla de fotos al final (una representativa por categoría, 5 por fila) — pedido del
   // usuario para un reporte de menos hojas. El encabezado/datos de la visita no cambian entre los 2.
-  const [formato, setFormato] = useState<'extenso' | 'compacto'>('extenso');
+  // Arranca en "compacto" (pedido del usuario, 2026-09-03) — Extenso sigue disponible, solo deja
+  // de ser la opción por defecto.
+  const [formato, setFormato] = useState<'extenso' | 'compacto'>('compacto');
   const [fechaInicio, setFechaInicio] = useState(hoyLocal());
   const [fechaFin, setFechaFin] = useState(hoyLocal());
   const [operadores, setOperadores] = useState<Usuario[]>([]);
@@ -555,8 +557,8 @@ function BloqueFiltrosGenerar({
       <div>
         <label className="etiqueta">Formato</label>
         <select className="campo" value={formato} onChange={(e) => setFormato(e.target.value as 'extenso' | 'compacto')}>
-          <option value="extenso">Extenso — una caja con todas las fotos por categoría</option>
           <option value="compacto">Compacto — actividades en lista, 1 foto por categoría (5 por fila)</option>
+          <option value="extenso">Extenso — una caja con todas las fotos por categoría</option>
         </select>
       </div>
 
