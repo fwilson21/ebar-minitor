@@ -134,6 +134,9 @@ function bloqueFotos(fotos?: Array<{ url: string; etiqueta?: string | null }>): 
   return {
     columns: fotos.slice(0, 4).map((f) => ({
       width: 108,
+      // `unbreakable` evita que pdfmake corte la foto en una hoja y su leyenda en la siguiente
+      // cuando la fila cae justo en el límite de página (bug reportado por el usuario, 2026-09-03).
+      unbreakable: true,
       stack: [
         { image: f.url, fit: [100, 100], alignment: 'center' },
         { text: etiquetaFoto(f.etiqueta), fontSize: 7, alignment: 'center', color: '#5B7184', margin: [0, 2, 0, 0] },
@@ -548,6 +551,9 @@ function filasFotosCompacto(items: Array<{ url: string; label: string }>): any[]
     filas.push({
       columns: grupo.map((it) => ({
         width: '*',
+        // Ver comentario igual en bloqueFotos: sin esto, pdfmake puede dejar la foto en una hoja
+        // y su leyenda en la siguiente cuando la fila cae en el límite de página.
+        unbreakable: true,
         stack: [
           { image: it.url, fit: [90, 90], alignment: 'center' },
           { text: it.label, fontSize: 6.5, alignment: 'center', color: '#5B7184', margin: [0, 2, 0, 0] },
@@ -633,13 +639,18 @@ function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null,
             ? { image: firmaUrl, fit: [190, 90], alignment: 'center' }
             : { text: espacioVacio },
           { canvas: [{ type: 'line', x1: 0, y1: 0, x2: ANCHO_LINEA_FIRMA, y2: 0, lineWidth: 0.5 }] },
-          { text: nombre, alignment: 'center', style: 'firmaNombre' },
-          { text: etiqueta, alignment: 'center', style: 'firmaEtiqueta' },
+          // Izquierda, no centrado (pedido del usuario) — la línea ya arranca en el borde
+          // izquierdo de la columna (x1: 0 arriba), así nombre/cargo quedan alineados con ella en
+          // vez de flotar centrados debajo de una línea que empieza a la izquierda.
+          { text: nombre, alignment: 'left', style: 'firmaNombre' },
+          { text: etiqueta, alignment: 'left', style: 'firmaEtiqueta' },
         ],
       },
       { text: '', width: '*' },
     ],
-    margin: [0, 12, 0, 0],
+    // Más separación de lo que quede arriba (la grilla de fotos, en el formato Compacto) — pedido
+    // del usuario con captura señalando que quedaban demasiado pegados.
+    margin: [0, 28, 0, 0],
   };
 }
 
@@ -702,12 +713,15 @@ export function generarReporteVisitas(
     content: [
       encabezado(),
       bloqueEncabezadoMemo(memo),
+      // "EBAR sin visitar" va ACÁ (antes del detalle de visitas) para que siempre quede antes de
+      // cualquier firma — pedido del usuario, que antes la veía después de la firma del último
+      // operador porque se agregaba al final del documento.
+      bloqueNoVisitadas(noVisitadas),
       ...visitas.flatMap((v) => [
         ...(formato === 'compacto' ? bloqueVisitaCompacto(v) : bloqueVisita(v)),
         bloqueFirma(v.operador_nombre, 'Firma del operador', v.firma_url),
         { text: '', pageBreak: visitas.indexOf(v) < visitas.length - 1 ? 'after' : undefined },
       ]),
-      bloqueNoVisitadas(noVisitadas),
     ].filter(Boolean),
     styles: ESTILOS,
     // 8 en vez de 9 — junto con los márgenes achicados de arriba, menos hojas al imprimir.
@@ -1097,6 +1111,9 @@ function filasFotosInforme(fotos: { url: string; descripcion: string | null }[])
     filas.push({
       columns: grupo.map((f, j) => ({
         width: '*',
+        // Ver comentario igual en bloqueFotos: sin esto, pdfmake puede dejar la foto en una hoja
+        // y su leyenda en la siguiente cuando la fila cae en el límite de página.
+        unbreakable: true,
         stack: [
           { image: f.url, fit: [110, 110], alignment: 'center' },
           {
