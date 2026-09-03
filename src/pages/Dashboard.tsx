@@ -38,7 +38,7 @@ type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona' | '
 type EstacionAsignadaHoy = EstacionSimple & { visitasHoy: number };
 /** Justificación de "por qué no se visitó" ya guardada para la fecha del Dashboard, por estación
  * — a lo sumo una por EBAR (ver migración 0055). */
-type MapaJustificaciones = Record<string, { motivo: string; creado_por_nombre: string }>;
+type MapaJustificaciones = Record<string, { motivo: string; creado_por: string; creado_por_nombre: string }>;
 type AsignacionBajoMinimo = {
   operador_id: string;
   operador_nombre: string;
@@ -48,8 +48,8 @@ type AsignacionBajoMinimo = {
   visitas: number;
 };
 
-/** Una de las 5 tarjetas de "Inicio" — al tocarla se abre ModalListaEstaciones con el detalle. */
-type TipoMetrica = 'visitas' | 'sin_visitar' | 'equipos_alerta' | 'problemas' | 'voltaje';
+/** Una de las 6 tarjetas de "Inicio" — al tocarla se abre ModalListaEstaciones con el detalle. */
+type TipoMetrica = 'visitas' | 'sin_visitar' | 'equipos_alerta' | 'problemas' | 'voltaje' | 'justificadas';
 /** Fila del detalle de una métrica: la estación + cuántas veces contribuyó al número de la
  * tarjeta (ej. 2 visitas en la misma EBAR) — 1 cuando la métrica ya es "una fila por estación"
  * de por sí (sin_visitar, problemas). `operador_id`/`operador_nombre`/`llegada`/`salida` solo
@@ -63,6 +63,8 @@ type FilaDetalleMetrica = EstacionSimple & {
   operador_nombre?: string;
   llegada?: string;
   salida?: string | null;
+  /** Solo en "justificadas": el motivo escrito para esa EBAR ese día. */
+  motivo?: string;
 };
 
 const TITULOS_METRICA: Record<TipoMetrica, string> = {
@@ -71,6 +73,7 @@ const TITULOS_METRICA: Record<TipoMetrica, string> = {
   equipos_alerta: 'Equipos con falla o por mantener',
   problemas: 'Estaciones con problemas',
   voltaje: 'Alertas de voltaje',
+  justificadas: 'EBAR justificadas (motivo de no visita)',
 };
 
 export function Dashboard() {
@@ -147,7 +150,7 @@ export function Dashboard() {
           .lte('fecha_hora_llegada', `${fecha}T23:59:59`),
         supabase.from('feriados_adicionales').select('fecha'),
         supabase.from('justificaciones_no_visita')
-          .select('estacion_id, motivo, usuarios ( nombre_completo )')
+          .select('estacion_id, motivo, creado_por, usuarios ( nombre_completo )')
           .eq('fecha', fecha),
       ]);
 
@@ -155,9 +158,12 @@ export function Dashboard() {
       setTodasEstacionesInfo((todasEstaciones as EstacionSimple[]) ?? []);
       const mapaJustificaciones: MapaJustificaciones = {};
       for (const j of (justificacionesDia as any[]) ?? []) {
-        mapaJustificaciones[j.estacion_id] = { motivo: j.motivo, creado_por_nombre: j.usuarios?.nombre_completo ?? '-' };
+        mapaJustificaciones[j.estacion_id] = {
+          motivo: j.motivo,
+          creado_por: j.creado_por,
+          creado_por_nombre: j.usuarios?.nombre_completo ?? '-',
+        };
       }
-      setJustificaciones(mapaJustificaciones);
 
       // Para operadores: sus EBAR asignadas hoy (por defecto o especial) filtran "Requieren
       // atención" y "Pendientes de visita", además de armar "Tus EBAR de hoy" más abajo. Si
@@ -180,6 +186,14 @@ export function Dashboard() {
           idsAsignadosHoy = new Set(estacionesAsignadasInfo.keys());
         }
       }
+
+      // Mismo filtro por asignación que el resto de secciones de operador — para admin/supervisor
+      // (idsAsignadosHoy null) queda el mapa completo, con todas las EBAR justificadas ese día.
+      setJustificaciones(
+        idsAsignadosHoy
+          ? Object.fromEntries(Object.entries(mapaJustificaciones).filter(([id]) => idsAsignadosHoy!.has(id)))
+          : mapaJustificaciones,
+      );
 
       const listaConProblemas = ((estaciones as EstacionEbar[]) ?? []).filter(
         (e) => !idsAsignadosHoy || idsAsignadosHoy.has(e.id),
@@ -486,6 +500,21 @@ export function Dashboard() {
       setDetalleMetrica(estacionesConProblemas.map((e) => ({ ...e, count: 1 })));
       return;
     }
+    // "justificadas": también ya está cargado (mismo estado que pinta el aviso en las tarjetas
+    // rojas de "Tus EBAR de hoy"/"Pendientes de visita"), agrupado por quien escribió el motivo —
+    // igual que "visitas" se agrupa por operador (ver agruparPorOperadorAqui en ModalListaEstaciones).
+    if (tipo === 'justificadas') {
+      const filas: FilaDetalleMetrica[] = Object.entries(justificaciones)
+        .map((entry): FilaDetalleMetrica | null => {
+          const [estacionId, j] = entry;
+          const estacion = estacionesPorId.get(estacionId);
+          if (!estacion) return null;
+          return { ...estacion, count: 1, operador_id: j.creado_por, operador_nombre: j.creado_por_nombre, motivo: j.motivo };
+        })
+        .filter((f): f is FilaDetalleMetrica => f !== null);
+      setDetalleMetrica(filas);
+      return;
+    }
     setCargandoDetalle(true);
     try {
       const filas =
@@ -549,7 +578,7 @@ export function Dashboard() {
     }
     setJustificaciones((prev) => ({
       ...prev,
-      [justificarEstacion.id]: { motivo, creado_por_nombre: usuario.nombre_completo },
+      [justificarEstacion.id]: { motivo, creado_por: usuario.id, creado_por_nombre: usuario.nombre_completo },
     }));
     setJustificarEstacion(null);
   }
@@ -587,6 +616,7 @@ export function Dashboard() {
           hoy={HOY}
           onCambiarFecha={cambiarFecha}
           resumen={resumen}
+          justificadasHoy={Object.keys(justificaciones).length}
           onAbrirDetalle={abrirDetalleMetrica}
         />
         {!esAdmin && (
@@ -637,6 +667,7 @@ export function Dashboard() {
                     hoy={HOY}
                     onCambiarFecha={cambiarFecha}
                     resumen={resumen}
+                    justificadasHoy={Object.keys(justificaciones).length}
                     onAbrirDetalle={abrirDetalleMetrica}
                   />
                 );
@@ -726,6 +757,7 @@ function BloqueResumenGeneral({
   hoy,
   onCambiarFecha,
   resumen,
+  justificadasHoy,
   onAbrirDetalle,
 }: {
   tituloFecha: string;
@@ -734,6 +766,7 @@ function BloqueResumenGeneral({
   hoy: string;
   onCambiarFecha: (fecha: string) => void;
   resumen: DashboardResumen | null;
+  justificadasHoy: number;
   onAbrirDetalle: (tipo: TipoMetrica) => void;
 }) {
   return (
@@ -753,15 +786,16 @@ function BloqueResumenGeneral({
           />
         )}
       </div>
-      {/* grid-metricas (ver index.css) acomoda las 5 tarjetas en 2/3/5 columnas según el ANCHO
+      {/* grid-metricas (ver index.css) acomoda las 6 tarjetas en 2/3/5 columnas según el ANCHO
           real del bloque (container query, no el de la pantalla) — con suficiente espacio entran
-          las 5 en una sola fila en vez de quedar apiladas en 2 columnas siempre. */}
+          varias en una sola fila en vez de quedar apiladas en 2 columnas siempre. */}
       <div className="grid-metricas lg:flex-1 lg:min-h-0">
         <Metrica label="Visitas registradas" valor={resumen?.total_visitas ?? 0} acento="ok" onClick={() => onAbrirDetalle('visitas')} />
         <Metrica label="Estaciones sin visitar" valor={resumen?.estaciones_sin_visitar ?? 0} acento="idle" onClick={() => onAbrirDetalle('sin_visitar')} />
         <Metrica label="Equipos con falla o por mantener" valor={resumen?.equipos_con_alerta ?? 0} acento="danger" onClick={() => onAbrirDetalle('equipos_alerta')} />
         <Metrica label="Estaciones con problemas" valor={resumen?.estaciones_con_problemas ?? 0} acento="warn" onClick={() => onAbrirDetalle('problemas')} />
         <Metrica label="Alertas de voltaje" valor={resumen?.alertas_voltaje ?? 0} acento="danger" onClick={() => onAbrirDetalle('voltaje')} />
+        <Metrica label="EBAR justificadas" valor={justificadasHoy} acento="idle" onClick={() => onAbrirDetalle('justificadas')} />
       </div>
     </div>
   );
@@ -1148,6 +1182,8 @@ function FilaEstacionDetalle({ estacion: e }: { estacion: FilaDetalleMetrica }) 
           <p className="text-xs text-slate-500 lectura uppercase tracking-wide truncate">{e.codigo}</p>
         )}
         {ubicacion && <p className="text-xs text-slate-500 truncate">{ubicacion}</p>}
+        {/* Solo "justificadas" trae motivo — el porqué de no haber visitado esa EBAR ese día. */}
+        {e.motivo && <p className="text-xs text-slate-600 italic mt-0.5">📝 {e.motivo}</p>}
       </div>
       <div className="flex flex-col items-end gap-1 flex-shrink-0">
         {e.llegada && (
@@ -1211,7 +1247,7 @@ function ModalListaEstaciones({
   onCerrar: () => void;
 }) {
   const [tam, setTam] = useState(tamano);
-  const agruparPorOperadorAqui = tipoMetrica === 'visitas';
+  const agruparPorOperadorAqui = tipoMetrica === 'visitas' || tipoMetrica === 'justificadas';
   const gruposOperador = useMemo(() => (agruparPorOperadorAqui ? agruparPorOperador(filas ?? []) : []), [filas, agruparPorOperadorAqui]);
   const gruposZona = useMemo(() => (agruparPorOperadorAqui ? [] : agruparPorZonaYTipo(filas ?? [])), [filas, agruparPorOperadorAqui]);
 
