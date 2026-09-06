@@ -641,7 +641,7 @@ function bloqueVisitaCompacto(v: VisitaParaReporte): any[] {
 // representativa por capítulo, 5 por fila) + firma del operador.
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface GrupoDiario {
+export interface GrupoDiario {
   estacion_nombre: string;
   estacion_codigo: string;
   estacion_ubicacion?: string | null;
@@ -656,13 +656,19 @@ interface GrupoDiario {
   visitas: VisitaParaReporte[];
 }
 
+/** Clave estable de un grupo (operador + estación + día) — para asociar el resumen editado en la
+ * vista previa de Reportes con el grupo correcto al generar el PDF. */
+export function claveGrupoDiario(g: Pick<GrupoDiario, 'operador_nombre' | 'estacion_codigo' | 'fecha'>): string {
+  return `${g.operador_nombre}|${g.estacion_codigo}|${g.fecha}`;
+}
+
 /** Agrupa las visitas por (operador + estación + día). Los grupos salen ordenados por fecha,
  * luego código de estación, luego operador; las visitas dentro de cada grupo, por hora. */
-function agruparVisitasPorDia(visitas: VisitaParaReporte[]): GrupoDiario[] {
+export function agruparVisitasPorDia(visitas: VisitaParaReporte[]): GrupoDiario[] {
   const mapa = new Map<string, GrupoDiario>();
   for (const v of visitas) {
     const fecha = v.fecha_hora_llegada.slice(0, 10);
-    const clave = `${v.operador_nombre}|${v.estacion_codigo}|${fecha}`;
+    const clave = claveGrupoDiario({ operador_nombre: v.operador_nombre, estacion_codigo: v.estacion_codigo, fecha });
     let g = mapa.get(clave);
     if (!g) {
       g = {
@@ -740,7 +746,7 @@ function peorEstadoEquipo(visitas: VisitaParaReporte[], clave: keyof VisitaParaR
 
 /** El párrafo de resumen (≤6 líneas): datos objetivos de la(s) visita(s) del día + las
  * observaciones que escribió el operador, todo seguido en un solo párrafo. */
-function parrafoResumenDia(g: GrupoDiario): string {
+export function parrafoResumenDia(g: GrupoDiario): string {
   const partes: string[] = [];
   const { visitas } = g;
   const horas = visitas.map((v) => formatHora(v.fecha_hora_llegada));
@@ -829,7 +835,7 @@ function categoriasGrupo(g: GrupoDiario): CategoriaVisita[] {
   return [...porLabel.values()];
 }
 
-function bloqueGrupoSuperCompacto(g: GrupoDiario): any[] {
+function bloqueGrupoSuperCompacto(g: GrupoDiario, resumenEditado?: string): any[] {
   const titulo = codigoYNombre({ codigo: g.estacion_codigo, nombre: g.estacion_nombre });
   return [
     {
@@ -848,7 +854,12 @@ function bloqueGrupoSuperCompacto(g: GrupoDiario): any[] {
       fontSize: 8,
       margin: [0, 0, 0, 4],
     },
-    { text: resumenARuns(parrafoResumenDia(g)), fontSize: 9, alignment: 'justify', margin: [0, 0, 0, 4] },
+    {
+      text: resumenARuns(resumenEditado?.trim() || parrafoResumenDia(g)),
+      fontSize: 9,
+      alignment: 'justify',
+      margin: [0, 0, 0, 4],
+    },
     ...filasFotosCompacto(fotosRepresentativas(categoriasGrupo(g))),
   ];
 }
@@ -950,6 +961,9 @@ export function generarReporteVisitas(
   memo: DatosEncabezadoMemo,
   noVisitadas: FilaNoVisitadaReporte[] = [],
   formato: 'extenso' | 'compacto' | 'super_compacto' = 'extenso',
+  /** Solo formato "super_compacto": resúmenes ya retocados por el operador en la vista previa de
+   * Reportes, por `claveGrupoDiario`. Los grupos sin entrada usan el resumen auto-generado. */
+  resumenesEditados: Record<string, string> = {},
 ): Promise<Blob> {
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
@@ -1001,7 +1015,7 @@ export function generarReporteVisitas(
       // entre bloques — la idea es que quepan varios por hoja; solo una raya fina los separa.
       ...(formato === 'super_compacto'
         ? agruparVisitasPorDia(visitas).flatMap((g, idx, arr) => [
-            ...bloqueGrupoSuperCompacto(g),
+            ...bloqueGrupoSuperCompacto(g, resumenesEditados[claveGrupoDiario(g)]),
             bloqueFirmaSuperCompacto(g.operador_nombre, g.operador_cargo, g.firma_url),
             idx < arr.length - 1 ? lineaCierreVisita() : null,
           ])

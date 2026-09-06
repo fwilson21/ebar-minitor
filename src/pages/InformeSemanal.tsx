@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,15 +7,8 @@ import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { abrirBlob, descargarBlob, etiquetaFoto, generarInformeSemanal } from '../lib/pdf';
 import { girarFotoSubida } from '../lib/fotos';
 import type { SentidoGiro } from '../lib/fotos';
-import {
-  cargarCorrectorEs,
-  revisarTexto,
-  reemplazarPalabra,
-  esEscritorio,
-  type PalabraMal,
-  type CorrectorMulti,
-} from '../lib/correctorEs';
-import { resumenAHtml } from '../lib/resumenFormato';
+import { reemplazarPalabra } from '../lib/correctorEs';
+import { ResumenEditable } from '../components/ResumenEditable';
 import { hoyLocal } from '../lib/fecha';
 import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
 import {
@@ -1235,8 +1228,11 @@ function BloqueEditor({
         <label className="etiqueta text-slate-800 font-bold">
           Resumen de la actividad (se arma solo con lo que reportó el operador — corrígelo si algo está mal escrito)
         </label>
-        <EditorResumen valor={bloque.resumen} onCambiar={(t) => onCambiar({ ...bloque, resumen: t })} />
-        {esEscritorio && <PanelCorrectorEs texto={bloque.resumen} onAplicar={onCorregirGlobal} />}
+        <ResumenEditable
+          valor={bloque.resumen}
+          onCambiar={(t) => onCambiar({ ...bloque, resumen: t })}
+          onCorregirGlobal={onCorregirGlobal}
+        />
       </div>
 
       {fotosDisponibles.length > 0 && (
@@ -1297,160 +1293,6 @@ function BloqueEditor({
           {errorGiro && <p className="text-xs text-gauge-danger mt-1">{errorGiro}</p>}
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * Cuadro de "Resumen de la actividad": `contentEditable` (no `<textarea>`) para poder mostrar los
- * nombres de capítulo ("Cerramiento y seguridad:", "Bomba 1:", …) en negrita — pedido del usuario.
- * Crece con el contenido, sin barra de scroll ni recorte. Mientras está enfocado NO se re-pinta el
- * HTML (para no mover el cursor); el dato siempre sale de `innerText` (texto plano), y al salir del
- * campo se vuelve a resaltar prolijo.
- */
-function EditorResumen({ valor, onCambiar }: { valor: string; onCambiar: (t: string) => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const enfocadoRef = useRef(false);
-
-  useEffect(() => {
-    if (!enfocadoRef.current && ref.current && ref.current.innerText !== valor) {
-      ref.current.innerHTML = resumenAHtml(valor);
-    }
-  }, [valor]);
-
-  return (
-    <div
-      ref={ref}
-      contentEditable
-      suppressContentEditableWarning
-      role="textbox"
-      aria-multiline="true"
-      spellCheck
-      lang="es"
-      className="campo w-full min-h-[7rem] whitespace-pre-wrap leading-relaxed"
-      onFocus={() => {
-        enfocadoRef.current = true;
-      }}
-      onInput={() => onCambiar(ref.current?.innerText ?? '')}
-      onBlur={() => {
-        enfocadoRef.current = false;
-        const t = ref.current?.innerText ?? '';
-        onCambiar(t);
-        if (ref.current) ref.current.innerHTML = resumenAHtml(t);
-      }}
-    />
-  );
-}
-
-/**
- * Corrector de ortografía debajo del cuadro de resumen (solo en computadoras — ver `esEscritorio`).
- * Lista las palabras que el diccionario de español no reconoce, 5 por fila, con su corrección al
- * lado; al tocar la corrección se reemplaza en el texto. Cuando no queda ninguna, el panel
- * desaparece y abajo quedan solo las fotos. El clic derecho "tipo Word" sobre el propio cuadro de
- * texto lo da el navegador (`spellCheck lang="es"`).
- */
-function PanelCorrectorEs({
-  texto,
-  onAplicar,
-}: {
-  texto: string;
-  /** Aplica la corrección en TODO el informe (todos los días y bloques que se estén editando),
-   * no solo en este bloque — pedido del usuario. */
-  onAplicar: (palabra: string, correccion: string) => void;
-}) {
-  const correctorRef = useRef<CorrectorMulti | null>(null);
-  const [cargado, setCargado] = useState(false);
-  const [fallo, setFallo] = useState(false);
-  const [errores, setErrores] = useState<PalabraMal[]>([]);
-  // Lo que la analista escribió a mano para cada palabra (arranca con la sugerencia automática).
-  const [correcciones, setCorrecciones] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    let vivo = true;
-    cargarCorrectorEs()
-      .then((c) => {
-        if (!vivo) return;
-        correctorRef.current = c;
-        setCargado(true);
-      })
-      .catch(() => vivo && setFallo(true));
-    return () => {
-      vivo = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!cargado || !correctorRef.current) return;
-    const t = setTimeout(() => setErrores(revisarTexto(correctorRef.current!, texto)), 300);
-    return () => clearTimeout(t);
-  }, [texto, cargado]);
-
-  if (fallo || !cargado || errores.length === 0) return null;
-
-  const aplicar = (palabra: string, valor: string) => {
-    const limpio = valor.trim();
-    if (!limpio || limpio === palabra) return;
-    onAplicar(palabra, limpio);
-    setErrores((prev) => prev.filter((e) => e.palabra !== palabra)); // saca la fila de una (el reanálisis la confirma)
-    setCorrecciones((prev) => {
-      const { [palabra]: _, ...resto } = prev;
-      return resto;
-    });
-  };
-
-  return (
-    <div className="mt-2 rounded-lg border border-gauge-warn/40 bg-gauge-warn/5 p-3">
-      <p className="text-xs font-semibold text-slate-700 mb-2">
-        Palabras que podrían estar mal escritas. Mirá la frase para decidir, corregí (o escribí a mano) y aplicá — se cambia en todo el informe.
-      </p>
-      {/* Grid: la frase de contexto ocupa la 1ª columna (flexible), y el "→ campo ✓" van SIEMPRE
-          en las mismas columnas — así todos los campos de corrección quedan alineados uno debajo
-          del otro (pedido del usuario). */}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_11rem_auto] items-center gap-x-2 gap-y-1.5">
-        {errores.map((e) => {
-          const valor = correcciones[e.palabra] ?? e.sugerencia ?? '';
-          return (
-            <Fragment key={e.palabra}>
-              <span className="min-w-0 text-xs text-slate-500 leading-snug">
-                {e.contexto.antes}
-                <span
-                  className="text-slate-900 font-semibold"
-                  style={{ textDecoration: 'underline wavy #dc2626', textUnderlineOffset: '3px' }}
-                >
-                  {e.palabra}
-                </span>
-                {e.contexto.despues}
-              </span>
-              <span className="text-slate-400">→</span>
-              <input
-                type="text"
-                value={valor}
-                spellCheck
-                lang="es"
-                onChange={(ev) => setCorrecciones((prev) => ({ ...prev, [e.palabra]: ev.target.value }))}
-                onKeyDown={(ev) => {
-                  if (ev.key === 'Enter') {
-                    ev.preventDefault();
-                    aplicar(e.palabra, valor);
-                  }
-                }}
-                className="w-full rounded border border-panel-600 bg-panel-900 px-1.5 py-1 text-sm"
-                placeholder="escribe la correcta"
-              />
-              <button
-                type="button"
-                onClick={() => aplicar(e.palabra, valor)}
-                disabled={!valor.trim() || valor.trim() === e.palabra}
-                className="text-base text-gauge-ok disabled:opacity-30"
-                title="Aplicar en todo el informe"
-                aria-label="Aplicar corrección"
-              >
-                ✓
-              </button>
-            </Fragment>
-          );
-        })}
-      </div>
     </div>
   );
 }

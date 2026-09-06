@@ -3,8 +3,20 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { abrirBlob, descargarBlob, generarReporteVisitas, type VisitaParaReporte, type FilaNoVisitadaReporte } from '../lib/pdf';
+import {
+  abrirBlob,
+  descargarBlob,
+  generarReporteVisitas,
+  agruparVisitasPorDia,
+  parrafoResumenDia,
+  claveGrupoDiario,
+  type VisitaParaReporte,
+  type FilaNoVisitadaReporte,
+  type GrupoDiario,
+} from '../lib/pdf';
 import { incrustarFotosVisitas } from '../lib/fotos';
+import { reemplazarPalabra, esEscritorio } from '../lib/correctorEs';
+import { ResumenEditable } from '../components/ResumenEditable';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
 import type { EstacionEbar, Usuario } from '../lib/types';
 import { codigoYNombre } from '../lib/agruparEstaciones';
@@ -70,6 +82,14 @@ export function Reports() {
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ultimoPdf, setUltimoPdf] = useState<Blob | null>(null);
   const [ultimoNombre, setUltimoNombre] = useState('');
+
+  // Vista previa de "Súper compacto" en computadora: el operador puede revisar y retocar el
+  // resumen auto-generado de cada visita (con el corrector de ortografía) antes de generar el PDF.
+  const [gruposPreview, setGruposPreview] = useState<GrupoDiario[]>([]);
+  const [cargandoPreview, setCargandoPreview] = useState(false);
+  // Resúmenes retocados a mano, por `claveGrupoDiario`. Los grupos sin entrada usan el auto.
+  const [resumenesEditados, setResumenesEditados] = useState<Record<string, string>>({});
+  const mostrarRevisionResumenes = esEscritorio && formato === 'super_compacto';
   // Caso puntual "no se pudo compartir directo, quedó descargado" — su propio aviso destacado con
   // la instrucción de qué hacer, no un renglón de texto plano más.
   const [avisoCompartirManual, setAvisoCompartirManual] = useState(false);
@@ -300,6 +320,49 @@ export function Reports() {
       .sort((a, b) => a.codigo.localeCompare(b.codigo));
   }
 
+  // Al cambiar cualquier filtro, la vista previa de resúmenes queda obsoleta — se limpia (y con
+  // ella los retoques) para no arrastrar un resumen editado a un reporte de otras visitas.
+  useEffect(() => {
+    setGruposPreview([]);
+    setResumenesEditados({});
+  }, [tipo, formato, fechaInicio, fechaFin, operadorId, estacionIds, diasEspecificos, soloFinSemanaFeriado, diasElegidos]);
+
+  async function abrirRevisionResumenes() {
+    setMensaje(null);
+    setCargandoPreview(true);
+    try {
+      const visitas = await obtenerVisitas();
+      if (visitas.length === 0) {
+        setMensaje('No hay visitas registradas para los filtros seleccionados.');
+        setGruposPreview([]);
+        return;
+      }
+      setGruposPreview(agruparVisitasPorDia(visitas));
+    } catch (err: any) {
+      setMensaje(`No se pudieron traer los resúmenes: ${err.message ?? err}`);
+    } finally {
+      setCargandoPreview(false);
+    }
+  }
+
+  // Corrige una palabra en el resumen de TODAS las visitas del reporte (pedido del usuario) — sobre
+  // el texto editado si ya se tocó, o sobre el auto-generado si no.
+  function corregirPalabraEnReporte(palabra: string, correccion: string) {
+    const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    const corregir = (t: string) =>
+      reemplazarPalabra(reemplazarPalabra(t, palabra, correccion), cap(palabra), cap(correccion));
+    setResumenesEditados((prev) => {
+      const siguiente = { ...prev };
+      for (const g of gruposPreview) {
+        const clave = claveGrupoDiario(g);
+        const actual = prev[clave] ?? parrafoResumenDia(g);
+        const corregido = corregir(actual);
+        if (corregido !== actual || prev[clave] !== undefined) siguiente[clave] = corregido;
+      }
+      return siguiente;
+    });
+  }
+
   async function manejarGenerar() {
     setMensaje(null);
     // Estas 2 validaciones van ANTES de setGenerando(true)/tocar la base — son puramente de
@@ -340,6 +403,7 @@ export function Reports() {
         },
         noVisitadas,
         formato,
+        resumenesEditados,
       );
       const nombreFechas =
         fechaInicioEfectiva === fechaFinEfectiva ? fechaInicioEfectiva : `${fechaInicioEfectiva}_a_${fechaFinEfectiva}`;
@@ -499,6 +563,70 @@ export function Reports() {
           ultimoNombre={ultimoNombre}
         />
       </div>
+
+      {mostrarRevisionResumenes && (
+        <BloqueRevisionResumenes
+          grupos={gruposPreview}
+          cargando={cargandoPreview}
+          resumenesEditados={resumenesEditados}
+          onAbrir={abrirRevisionResumenes}
+          onCambiarResumen={(clave, texto) => setResumenesEditados((prev) => ({ ...prev, [clave]: texto }))}
+          onCorregirGlobal={corregirPalabraEnReporte}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Vista previa (solo en computadora, formato Súper compacto) para revisar y retocar el resumen
+ * auto-generado de cada visita antes de generar el PDF — con el corrector de ortografía. */
+function BloqueRevisionResumenes({
+  grupos,
+  cargando,
+  resumenesEditados,
+  onAbrir,
+  onCambiarResumen,
+  onCorregirGlobal,
+}: {
+  grupos: GrupoDiario[];
+  cargando: boolean;
+  resumenesEditados: Record<string, string>;
+  onAbrir: () => void;
+  onCambiarResumen: (clave: string, texto: string) => void;
+  onCorregirGlobal: (palabra: string, correccion: string) => void;
+}) {
+  return (
+    <div className="tarjeta p-4 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <p className="etiqueta mb-0">Revisar resúmenes antes de generar</p>
+          <p className="text-xs text-slate-500">
+            Opcional. El texto de cada visita se arma solo con lo que reportó el operador — acá lo podés corregir.
+          </p>
+        </div>
+        <button type="button" onClick={onAbrir} disabled={cargando} className="boton-secundario text-sm py-2 px-3">
+          {cargando ? 'Cargando…' : grupos.length > 0 ? '🔄 Recargar' : '📝 Revisar resúmenes'}
+        </button>
+      </div>
+
+      {grupos.map((g) => {
+        const clave = claveGrupoDiario(g);
+        return (
+          <div key={clave} className="border-t border-panel-600/40 pt-3">
+            <p className="text-sm font-semibold text-slate-800">
+              {codigoYNombre({ codigo: g.estacion_codigo, nombre: g.estacion_nombre })}
+            </p>
+            <p className="text-xs text-slate-500 mb-1.5">
+              {g.operador_nombre} · {formatFechaCorta(g.fecha)}
+            </p>
+            <ResumenEditable
+              valor={resumenesEditados[clave] ?? parrafoResumenDia(g)}
+              onCambiar={(t) => onCambiarResumen(clave, t)}
+              onCorregirGlobal={onCorregirGlobal}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
