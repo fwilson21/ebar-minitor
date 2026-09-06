@@ -12,10 +12,11 @@ export const SELECT_VISITA_REPORTE = `id, fecha_hora_llegada, fecha_hora_salida,
    estaciones_ebar ( nombre, codigo, zona, tipo, direccion, parroquia ),
    usuarios ( nombre_completo, firma_url, cargo ),
    registros_bombas ( numero_bomba, estado, voltaje, amperaje, horas_operacion_acumuladas, observaciones, voltaje_fuera_rango ),
-   fotos ( url_publica, drive_file_id, descripcion )`;
+   fotos ( id, url_publica, drive_file_id, descripcion, tomada_en )`;
 
 export function mapearVisitaFila(v: any): VisitaParaReporte {
   return {
+    id: v.id,
     estacion_nombre: v.estaciones_ebar?.nombre ?? '-',
     estacion_codigo: v.estaciones_ebar?.codigo ?? '-',
     estacion_ubicacion: direccionOParroquia(v.estaciones_ebar ?? {}),
@@ -48,8 +49,13 @@ export function mapearVisitaFila(v: any): VisitaParaReporte {
     tuberia_600_uniones_elastomericas: v.tuberia_600_uniones_elastomericas ?? null,
     bombas: v.registros_bombas ?? [],
     fotos: (v.fotos ?? [])
-      .map((f: any) => ({ url: urlMiniaturaDrive(f.drive_file_id, f.url_publica), etiqueta: f.descripcion ?? null }))
-      .filter((f: { url: string | undefined }): f is { url: string; etiqueta: string | null } => Boolean(f.url)),
+      .map((f: any) => ({
+        url: urlMiniaturaDrive(f.drive_file_id, f.url_publica),
+        etiqueta: f.descripcion ?? null,
+        id: f.id as string,
+        tomada_en: f.tomada_en as string,
+      }))
+      .filter((f: { url: string | undefined }): f is NonNullable<VisitaParaReporte['fotos']>[number] => Boolean(f.url)),
   };
 }
 

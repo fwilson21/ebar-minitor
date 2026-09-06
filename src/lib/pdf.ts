@@ -16,6 +16,8 @@ export interface EquipoReporte {
 }
 
 export interface VisitaParaReporte {
+  /** id real de la visita — lo necesita la vista previa de Reportes para girar una foto ya subida. */
+  id?: string;
   estacion_nombre: string;
   estacion_codigo: string;
   estacion_ubicacion?: string | null;
@@ -56,7 +58,7 @@ export interface VisitaParaReporte {
   tuberia_400_uniones_elastomericas?: EquipoReporte | null;
   tuberia_600_valvulas_aire?: EquipoReporte | null;
   tuberia_600_uniones_elastomericas?: EquipoReporte | null;
-  fotos?: Array<{ url: string; etiqueta?: string | null }>;
+  fotos?: Array<{ url: string; etiqueta?: string | null; id?: string; tomada_en?: string }>;
   firma_url?: string | null;
 }
 
@@ -899,7 +901,7 @@ function bloqueFirmaSuperCompacto(nombre: string, cargo: string | null | undefin
     },
   };
   return {
-    // ~60pt (≈2 cm) de aire respecto a la última fila de fotos — pedido del usuario. Es un margen,
+    // ~60pt (≈2 cm) de aire respecto a lo que quede encima — pedido del usuario. Es un margen,
     // así que colapsa solo si justo acá cae un salto de página.
     margin: [0, 60, 0, 0],
     stack: [
@@ -909,6 +911,17 @@ function bloqueFirmaSuperCompacto(nombre: string, cargo: string | null | undefin
       rayaYNombre,
     ],
   };
+}
+
+/** Firmas al FINAL del reporte de visitas (los 3 formatos) — pedido del usuario (2026-09-06): la
+ * firma del operador ya no va después de cada visita/bloque, solo una vez al final. Una firma por
+ * operador distinto que aparezca en el reporte (por diario suele ser una sola). */
+function bloqueFirmasFinales(visitas: VisitaParaReporte[]): any[] {
+  const porOperador = new Map<string, VisitaParaReporte>();
+  for (const v of visitas) if (!porOperador.has(v.operador_nombre)) porOperador.set(v.operador_nombre, v);
+  return [...porOperador.values()].map((v) =>
+    bloqueFirmaSuperCompacto(v.operador_nombre, v.operador_cargo, v.firma_url),
+  );
 }
 
 // Compartido por los 3 generadores que firman (generarReporteVisitas, generarReporteTurnos,
@@ -1011,19 +1024,20 @@ export function generarReporteVisitas(
       // cualquier firma — pedido del usuario, que antes la veía después de la firma del último
       // operador porque se agregaba al final del documento.
       bloqueNoVisitadas(noVisitadas),
+      // La firma del operador va SOLO al final del documento (ver bloqueFirmasFinales), no después
+      // de cada visita/bloque — pedido del usuario (2026-09-06).
       // Súper compacto: un bloque por operador+EBAR+día (no por visita), sin salto de página
       // entre bloques — la idea es que quepan varios por hoja; solo una raya fina los separa.
       ...(formato === 'super_compacto'
         ? agruparVisitasPorDia(visitas).flatMap((g, idx, arr) => [
             ...bloqueGrupoSuperCompacto(g, resumenesEditados[claveGrupoDiario(g)]),
-            bloqueFirmaSuperCompacto(g.operador_nombre, g.operador_cargo, g.firma_url),
             idx < arr.length - 1 ? lineaCierreVisita() : null,
           ])
         : visitas.flatMap((v) => [
             ...(formato === 'compacto' ? bloqueVisitaCompacto(v) : bloqueVisita(v)),
-            bloqueFirma(v.operador_nombre, 'Firma del operador', v.firma_url),
             { text: '', pageBreak: visitas.indexOf(v) < visitas.length - 1 ? 'after' : undefined },
           ])),
+      ...bloqueFirmasFinales(visitas),
     ].filter(Boolean),
     styles: ESTILOS,
     // 8 en vez de 9 — junto con los márgenes achicados de arriba, menos hojas al imprimir.

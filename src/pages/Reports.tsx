@@ -17,6 +17,7 @@ import {
 import { incrustarFotosVisitas } from '../lib/fotos';
 import { reemplazarPalabra, esEscritorio } from '../lib/correctorEs';
 import { ResumenEditable } from '../components/ResumenEditable';
+import { FotosGirables } from '../components/FotosGirables';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
 import type { EstacionEbar, Usuario } from '../lib/types';
 import { codigoYNombre } from '../lib/agruparEstaciones';
@@ -345,6 +346,20 @@ export function Reports() {
     }
   }
 
+  // Una foto de la vista previa se giró (se reemplazó en Drive) — se apunta la URL nueva para que
+  // la miniatura y el PDF de esta sesión la muestren girada (la base ya quedó actualizada).
+  function reemplazarUrlFotoPreview(fotoId: string, nuevaUrl: string) {
+    setGruposPreview((prev) =>
+      prev.map((g) => ({
+        ...g,
+        visitas: g.visitas.map((v) => ({
+          ...v,
+          fotos: (v.fotos ?? []).map((f) => (f.id === fotoId ? { ...f, url: nuevaUrl } : f)),
+        })),
+      })),
+    );
+  }
+
   // Corrige una palabra en el resumen de TODAS las visitas del reporte (pedido del usuario) — sobre
   // el texto editado si ya se tocó, o sobre el auto-generado si no.
   function corregirPalabraEnReporte(palabra: string, correccion: string) {
@@ -363,9 +378,17 @@ export function Reports() {
     });
   }
 
-  async function manejarGenerar() {
+  // 2 confirmaciones seguidas para generar SIN pasar por la revisión de resúmenes (que en
+  // computadora es obligatoria — pedido del usuario, 2026-09-06).
+  function generarSinRevisar() {
+    if (!window.confirm('El reporte se va a generar SIN que hayas revisado los resúmenes de las visitas. ¿Continuar?')) return;
+    if (!window.confirm('Última confirmación: generar el reporte sin revisar. El texto puede tener errores del operador.')) return;
+    manejarGenerar({ omitirRevision: true });
+  }
+
+  async function manejarGenerar(opciones?: { omitirRevision?: boolean }) {
     setMensaje(null);
-    // Estas 2 validaciones van ANTES de setGenerando(true)/tocar la base — son puramente de
+    // Estas validaciones van ANTES de setGenerando(true)/tocar la base — son puramente de
     // formulario, no hace falta el ir-y-venir de "Generando…" para mostrarlas.
     if (diasEspecificos && diasElegidos.size === 0) {
       setMensaje('Elegí al menos un día en el calendario.');
@@ -373,6 +396,12 @@ export function Reports() {
     }
     if (soloFinSemanaFeriado && !numeroInforme.trim()) {
       setMensaje('El N.º de informe es obligatorio para un reporte de fin de semana/feriado.');
+      return;
+    }
+    // En computadora, Súper compacto: hay que revisar los resúmenes antes de generar (o usar
+    // "Generar sin revisar", que pide doble confirmación).
+    if (mostrarRevisionResumenes && gruposPreview.length === 0 && !opciones?.omitirRevision) {
+      setMensaje('Revisá los resúmenes de las visitas abajo antes de generar (o usá "Generar sin revisar").');
       return;
     }
     setGenerando(true);
@@ -572,14 +601,17 @@ export function Reports() {
           onAbrir={abrirRevisionResumenes}
           onCambiarResumen={(clave, texto) => setResumenesEditados((prev) => ({ ...prev, [clave]: texto }))}
           onCorregirGlobal={corregirPalabraEnReporte}
+          onFotoGirada={reemplazarUrlFotoPreview}
+          onGenerarSinRevisar={generarSinRevisar}
         />
       )}
     </div>
   );
 }
 
-/** Vista previa (solo en computadora, formato Súper compacto) para revisar y retocar el resumen
- * auto-generado de cada visita antes de generar el PDF — con el corrector de ortografía. */
+/** Vista previa (solo en computadora, formato Súper compacto) — OBLIGATORIA antes de generar (o
+ * usar "Generar sin revisar", con doble confirmación): revisar/retocar el resumen auto-generado de
+ * cada visita (con el corrector de ortografía) y girar sus fotos. */
 function BloqueRevisionResumenes({
   grupos,
   cargando,
@@ -587,6 +619,8 @@ function BloqueRevisionResumenes({
   onAbrir,
   onCambiarResumen,
   onCorregirGlobal,
+  onFotoGirada,
+  onGenerarSinRevisar,
 }: {
   grupos: GrupoDiario[];
   cargando: boolean;
@@ -594,23 +628,31 @@ function BloqueRevisionResumenes({
   onAbrir: () => void;
   onCambiarResumen: (clave: string, texto: string) => void;
   onCorregirGlobal: (palabra: string, correccion: string) => void;
+  onFotoGirada: (fotoId: string, nuevaUrl: string) => void;
+  onGenerarSinRevisar: () => void;
 }) {
+  const sinRevisar = grupos.length === 0;
   return (
     <div className="tarjeta p-4 space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <p className="etiqueta mb-0">Revisar resúmenes antes de generar</p>
+          <p className="etiqueta mb-0">Revisar antes de generar (obligatorio)</p>
           <p className="text-xs text-slate-500">
-            Opcional. El texto de cada visita se arma solo con lo que reportó el operador — acá lo podés corregir.
+            El texto de cada visita se arma solo con lo que reportó el operador — revisalo, corregilo y girá las fotos si hace falta.
           </p>
         </div>
         <button type="button" onClick={onAbrir} disabled={cargando} className="boton-secundario text-sm py-2 px-3">
-          {cargando ? 'Cargando…' : grupos.length > 0 ? '🔄 Recargar' : '📝 Revisar resúmenes'}
+          {cargando ? 'Cargando…' : sinRevisar ? '📝 Revisar resúmenes' : '🔄 Recargar'}
         </button>
       </div>
 
       {grupos.map((g) => {
         const clave = claveGrupoDiario(g);
+        const fotosGirables = g.visitas.flatMap((v) =>
+          (v.fotos ?? [])
+            .filter((f) => f.id && f.tomada_en && v.id)
+            .map((f) => ({ id: f.id!, visita_id: v.id!, url: f.url, etiqueta: f.etiqueta, tomada_en: f.tomada_en! })),
+        );
         return (
           <div key={clave} className="border-t border-panel-600/40 pt-3">
             <p className="text-sm font-semibold text-slate-800">
@@ -624,9 +666,22 @@ function BloqueRevisionResumenes({
               onCambiar={(t) => onCambiarResumen(clave, t)}
               onCorregirGlobal={onCorregirGlobal}
             />
+            <FotosGirables fotos={fotosGirables} onGirada={onFotoGirada} />
           </div>
         );
       })}
+
+      {sinRevisar && !cargando && (
+        <div className="border-t border-panel-600/40 pt-3">
+          <button
+            type="button"
+            onClick={onGenerarSinRevisar}
+            className="text-xs text-slate-500 underline hover:text-slate-800"
+          >
+            Generar sin revisar (pide confirmación dos veces)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -873,7 +928,7 @@ function BloqueFiltrosGenerar({
       </div>
 
       <button
-        onClick={manejarGenerar}
+        onClick={() => manejarGenerar()}
         disabled={generando || (tipo === 'individual_estacion' && (!estacionIds || estacionIds.size === 0))}
         className="boton-primario w-full"
       >
