@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,9 +7,15 @@ import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { abrirBlob, descargarBlob, etiquetaFoto, generarInformeSemanal } from '../lib/pdf';
 import { girarFotoSubida } from '../lib/fotos';
 import type { SentidoGiro } from '../lib/fotos';
-import { cargarCorrectorEs, revisarTexto, reemplazarPalabra, esEscritorio, type PalabraMal } from '../lib/correctorEs';
+import {
+  cargarCorrectorEs,
+  revisarTexto,
+  reemplazarPalabra,
+  esEscritorio,
+  type PalabraMal,
+  type CorrectorMulti,
+} from '../lib/correctorEs';
 import { resumenAHtml } from '../lib/resumenFormato';
-import type { Nspell } from 'nspell';
 import { hoyLocal } from '../lib/fecha';
 import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
 import {
@@ -1352,7 +1358,7 @@ function PanelCorrectorEs({
    * no solo en este bloque — pedido del usuario. */
   onAplicar: (palabra: string, correccion: string) => void;
 }) {
-  const correctorRef = useRef<Nspell | null>(null);
+  const correctorRef = useRef<CorrectorMulti | null>(null);
   const [cargado, setCargado] = useState(false);
   const [fallo, setFallo] = useState(false);
   const [errores, setErrores] = useState<PalabraMal[]>([]);
@@ -1397,12 +1403,15 @@ function PanelCorrectorEs({
       <p className="text-xs font-semibold text-slate-700 mb-2">
         Palabras que podrían estar mal escritas. Mirá la frase para decidir, corregí (o escribí a mano) y aplicá — se cambia en todo el informe.
       </p>
-      <div className="divide-y divide-panel-600/40">
+      {/* Grid: la frase de contexto ocupa la 1ª columna (flexible), y el "→ campo ✓" van SIEMPRE
+          en las mismas columnas — así todos los campos de corrección quedan alineados uno debajo
+          del otro (pedido del usuario). */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_11rem_auto] items-center gap-x-2 gap-y-1.5">
         {errores.map((e) => {
           const valor = correcciones[e.palabra] ?? e.sugerencia ?? '';
           return (
-            <div key={e.palabra} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5 text-sm">
-              <span className="min-w-0 lg:max-w-[58ch] text-xs text-slate-500 leading-snug">
+            <Fragment key={e.palabra}>
+              <span className="min-w-0 text-xs text-slate-500 leading-snug">
                 {e.contexto.antes}
                 <span
                   className="text-slate-900 font-semibold"
@@ -1412,7 +1421,7 @@ function PanelCorrectorEs({
                 </span>
                 {e.contexto.despues}
               </span>
-              <span className="text-slate-400 shrink-0">→</span>
+              <span className="text-slate-400">→</span>
               <input
                 type="text"
                 value={valor}
@@ -1425,20 +1434,20 @@ function PanelCorrectorEs({
                     aplicar(e.palabra, valor);
                   }
                 }}
-                className="w-44 shrink-0 rounded border border-panel-600 bg-panel-900 px-1.5 py-1 text-sm"
+                className="w-full rounded border border-panel-600 bg-panel-900 px-1.5 py-1 text-sm"
                 placeholder="escribe la correcta"
               />
               <button
                 type="button"
                 onClick={() => aplicar(e.palabra, valor)}
                 disabled={!valor.trim() || valor.trim() === e.palabra}
-                className="shrink-0 text-base text-gauge-ok disabled:opacity-30"
+                className="text-base text-gauge-ok disabled:opacity-30"
                 title="Aplicar en todo el informe"
                 aria-label="Aplicar corrección"
               >
                 ✓
               </button>
-            </div>
+            </Fragment>
           );
         })}
       </div>

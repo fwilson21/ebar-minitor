@@ -1,16 +1,25 @@
-// Corrector de ortografía en español para el cuadro "Resumen de la actividad" del Informe Semanal.
-// El diccionario Hunspell (`src/assets/dict/es.aff` + `es.dic`, ~870 KB, vendorizado del paquete
-// `dictionary-es@4` — no se puede importar directo porque su index.js usa `node:fs`) y la librería
-// `nspell` se traen con `fetch`/`import()` DIFERIDO: solo bajan cuando de verdad se abre el Informe
-// Semanal en una COMPUTADORA (ver `esEscritorio`) — en el celular no se descarga nunca, para no
-// hacer más pesada la app en campo (pedido del usuario).
+// Corrector de ortografía para los cuadros de texto libre (resumen del Informe Semanal, y —cuando
+// el operador trabaja en una computadora— las observaciones de la visita). Diccionarios Hunspell
+// ESPAÑOL + INGLÉS (`src/assets/dict/es.*` ~870 KB + `en.*` ~555 KB, vendorizados de `dictionary-es@4`
+// / `dictionary-en@3` — no se importan directo porque su index.js usa `node:fs`). Una palabra está
+// bien si CUALQUIERA de los dos idiomas la reconoce (así no marca términos técnicos en inglés).
+// Todo (`nspell` + los dos diccionarios) se trae con `fetch`/`import()` DIFERIDO: solo baja en
+// COMPUTADORA (ver `esEscritorio`); en el celular no se descarga nunca (pedido del usuario).
 
 import type { Nspell } from 'nspell';
-import affUrl from '../assets/dict/es.aff?url';
-import dicUrl from '../assets/dict/es.dic?url';
+import affEsUrl from '../assets/dict/es.aff?url';
+import dicEsUrl from '../assets/dict/es.dic?url';
+import affEnUrl from '../assets/dict/en.aff?url';
+import dicEnUrl from '../assets/dict/en.dic?url';
 
-let instancia: Nspell | null = null;
-let cargando: Promise<Nspell> | null = null;
+/** Chequeo de ortografía español+inglés combinado. */
+export interface CorrectorMulti {
+  correct(word: string): boolean;
+  suggest(word: string): string[];
+}
+
+let instancia: CorrectorMulti | null = null;
+let cargando: Promise<CorrectorMulti> | null = null;
 
 // Términos de EBAR (en minúscula) que el diccionario general de español no incluye.
 const TERMINOS_EBAR = [
@@ -26,20 +35,29 @@ export const esEscritorio =
   window.matchMedia('(pointer: fine)').matches &&
   window.matchMedia('(min-width: 1024px)').matches;
 
-export function cargarCorrectorEs(): Promise<Nspell> {
+export function cargarCorrectorEs(): Promise<CorrectorMulti> {
   if (instancia) return Promise.resolve(instancia);
   if (cargando) return cargando;
   cargando = (async () => {
-    const [nspellMod, aff, dic] = await Promise.all([
+    const [nspellMod, affEs, dicEs, affEn, dicEn] = await Promise.all([
       import('nspell'),
-      fetch(affUrl).then((r) => r.text()),
-      fetch(dicUrl).then((r) => r.text()),
+      fetch(affEsUrl).then((r) => r.text()),
+      fetch(dicEsUrl).then((r) => r.text()),
+      fetch(affEnUrl).then((r) => r.text()),
+      fetch(dicEnUrl).then((r) => r.text()),
     ]);
     const nspell = ((nspellMod as any).default ?? nspellMod) as (aff: string, dic: string) => Nspell;
-    instancia = nspell(aff, dic);
-    // Vocabulario de EBAR que el diccionario general no trae — para que no salgan marcados como
-    // error términos habituales del informe.
-    for (const termino of TERMINOS_EBAR) instancia.add(termino);
+    const es = nspell(affEs, dicEs);
+    // Vocabulario de EBAR que el diccionario general no trae.
+    for (const termino of TERMINOS_EBAR) es.add(termino);
+    const en = nspell(affEn, dicEn);
+    instancia = {
+      // Bien escrita si CUALQUIER idioma la reconoce (así no marca términos técnicos en inglés).
+      correct: (w) => es.correct(w) || en.correct(w),
+      // Las sugerencias salen del español (el texto es en español; un error suele ser de una
+      // palabra española).
+      suggest: (w) => es.suggest(w),
+    };
     return instancia;
   })();
   return cargando;
@@ -63,7 +81,7 @@ const VOCAL_ACENTUADA: Record<string, string> = { a: 'á', e: 'é', i: 'í', o: 
 /** El error de tilde es el más común en español: se prueba a acentuar cada vocal de a una y si el
  * resultado es una palabra válida, esa es casi seguro la corrección (nspell muchas veces NO la
  * sugiere — ej. "impulsion" → no propone "impulsión"). */
-function acentuarVocal(corrector: Nspell, palabra: string): string | null {
+function acentuarVocal(corrector: CorrectorMulti, palabra: string): string | null {
   const lower = palabra.toLowerCase();
   for (let i = 0; i < lower.length; i++) {
     const ac = VOCAL_ACENTUADA[lower[i]];
@@ -76,7 +94,7 @@ function acentuarVocal(corrector: Nspell, palabra: string): string | null {
 
 /** Mejor corrección para una palabra mal escrita: 1) acentuar una vocal, 2) una sugerencia de
  * nspell que solo difiera en tildes, 3) la primera sugerencia de nspell, 4) nada. */
-function mejorSugerencia(corrector: Nspell, palabra: string): string | null {
+function mejorSugerencia(corrector: CorrectorMulti, palabra: string): string | null {
   const porAcento = acentuarVocal(corrector, palabra);
   if (porAcento) return porAcento;
   const sugerencias = corrector.suggest(palabra);
@@ -88,7 +106,7 @@ function mejorSugerencia(corrector: Nspell, palabra: string): string | null {
  * sugerencia. Se saltan: palabras de 1-2 letras, con dígitos, TODO EN MAYÚSCULAS (siglas: EBAR,
  * PTAR, LC…) y las que empiezan con mayúscula (nombres propios / inicio de oración — para esas
  * queda el corrector del navegador con clic derecho). */
-export function revisarTexto(corrector: Nspell, texto: string): PalabraMal[] {
+export function revisarTexto(corrector: CorrectorMulti, texto: string): PalabraMal[] {
   const vistas = new Set<string>();
   const salida: PalabraMal[] = [];
   for (const m of texto.matchAll(PALABRA_RE)) {
