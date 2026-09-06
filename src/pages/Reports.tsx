@@ -966,7 +966,7 @@ function BloqueFiltrosGenerar({
       {/* Encabezado tipo memo del PDF (formato GADMFO) — siempre visible (pedido del usuario); ya
           viene precargado con valores por defecto razonables. */}
       <div className="tarjeta p-3">
-        <p className="text-sm font-medium text-slate-700">Encabezado del PDF (Para / De / Asunto)</p>
+        <p className="text-base font-bold text-slate-700">Encabezado del PDF (Para / De / Asunto)</p>
         <div className="space-y-3 mt-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
