@@ -48,10 +48,14 @@ export function cargarCorrectorEs(): Promise<Nspell> {
 export interface PalabraMal {
   palabra: string;
   sugerencia: string | null;
+  /** Texto alrededor de la primera aparición, para que la analista vea en qué frase está y decida
+   * si la sugerencia sirve o la escribe a mano. */
+  contexto: { antes: string; despues: string };
 }
 
-// Separadores de palabra: todo lo que no sea letra/número/apóstrofo/guion.
-const SEPARADOR = /[^\p{L}\p{N}'’-]+/u;
+// Una palabra: arranca con letra/número y sigue con letra/número/apóstrofo/guion.
+const PALABRA_RE = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
+const CTX = 32; // caracteres de contexto a cada lado
 
 const SIN_ACENTO = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 const VOCAL_ACENTUADA: Record<string, string> = { a: 'á', e: 'é', i: 'í', o: 'ó', u: 'ú' };
@@ -87,8 +91,8 @@ function mejorSugerencia(corrector: Nspell, palabra: string): string | null {
 export function revisarTexto(corrector: Nspell, texto: string): PalabraMal[] {
   const vistas = new Set<string>();
   const salida: PalabraMal[] = [];
-  for (const bruto of texto.split(SEPARADOR)) {
-    const palabra = bruto.replace(/^['’-]+|['’-]+$/g, '');
+  for (const m of texto.matchAll(PALABRA_RE)) {
+    const palabra = m[0].replace(/^['’-]+|['’-]+$/g, '');
     if (palabra.length < 3) continue;
     if (/\d/.test(palabra)) continue;
     if (palabra === palabra.toUpperCase()) continue;
@@ -97,7 +101,16 @@ export function revisarTexto(corrector: Nspell, texto: string): PalabraMal[] {
     if (vistas.has(clave)) continue;
     vistas.add(clave);
     if (corrector.correct(palabra) || corrector.correct(clave)) continue;
-    salida.push({ palabra, sugerencia: mejorSugerencia(corrector, palabra) });
+    const inicio = m.index ?? 0;
+    const fin = inicio + m[0].length;
+    salida.push({
+      palabra,
+      sugerencia: mejorSugerencia(corrector, palabra),
+      contexto: {
+        antes: (inicio > CTX ? '…' : '') + texto.slice(Math.max(0, inicio - CTX), inicio),
+        despues: texto.slice(fin, fin + CTX) + (fin + CTX < texto.length ? '…' : ''),
+      },
+    });
   }
   return salida;
 }

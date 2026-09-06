@@ -1361,19 +1361,22 @@ function PanelCorrectorEs({
   return (
     <div className="mt-2 rounded-lg border border-gauge-warn/40 bg-gauge-warn/5 p-3">
       <p className="text-xs font-semibold text-slate-700 mb-2">
-        Palabras que podrían estar mal escritas — corrige la de al lado (o escríbela a mano) y aplica; se cambia en todo el informe:
+        Palabras que podrían estar mal escritas. Mirá la frase para decidir, corregí (o escribí a mano) y aplicá — se cambia en todo el informe.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-x-3 gap-y-2 text-sm">
+      <div className="divide-y divide-panel-600/40">
         {errores.map((e) => {
           const valor = correcciones[e.palabra] ?? e.sugerencia ?? '';
           return (
-            <div key={e.palabra} className="flex items-center gap-1 min-w-0">
-              <span
-                className="text-slate-800 shrink-0 max-w-[9ch] truncate"
-                style={{ textDecoration: 'underline wavy #dc2626', textUnderlineOffset: '3px' }}
-                title={e.palabra}
-              >
-                {e.palabra}
+            <div key={e.palabra} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5 text-sm">
+              <span className="basis-full lg:basis-auto lg:flex-1 min-w-0 text-xs text-slate-500 leading-snug">
+                {e.contexto.antes}
+                <span
+                  className="text-slate-900 font-semibold"
+                  style={{ textDecoration: 'underline wavy #dc2626', textUnderlineOffset: '3px' }}
+                >
+                  {e.palabra}
+                </span>
+                {e.contexto.despues}
               </span>
               <span className="text-slate-400 shrink-0">→</span>
               <input
@@ -1388,14 +1391,14 @@ function PanelCorrectorEs({
                     aplicar(e.palabra, valor);
                   }
                 }}
-                className="min-w-0 flex-1 rounded border border-panel-600 bg-panel-900 px-1.5 py-1 text-sm"
+                className="w-40 shrink-0 rounded border border-panel-600 bg-panel-900 px-1.5 py-1 text-sm"
                 placeholder="escribe la correcta"
               />
               <button
                 type="button"
                 onClick={() => aplicar(e.palabra, valor)}
                 disabled={!valor.trim() || valor.trim() === e.palabra}
-                className="shrink-0 text-gauge-ok disabled:opacity-30"
+                className="shrink-0 text-base text-gauge-ok disabled:opacity-30"
                 title="Aplicar en todo el informe"
                 aria-label="Aplicar corrección"
               >
