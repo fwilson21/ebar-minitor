@@ -12,6 +12,14 @@ import dicUrl from '../assets/dict/es.dic?url';
 let instancia: Nspell | null = null;
 let cargando: Promise<Nspell> | null = null;
 
+// Términos de EBAR (en minúscula) que el diccionario general de español no incluye.
+const TERMINOS_EBAR = [
+  'impulsión', 'sumergible', 'sumergibles', 'cárcamo', 'cárcamos', 'variador', 'variadores',
+  'guardamotor', 'guardamotores', 'contactor', 'contactores', 'breaker', 'breakers', 'elastomérica',
+  'elastoméricas', 'elastomérico', 'izado', 'rejilla', 'rejillas', 'cerramiento', 'cerramientos',
+  'guaya', 'guayas', 'macho', 'check', 'ebar', 'ptar', 'caudalímetro', 'macromedidor',
+];
+
 /** true solo en pantallas de escritorio (mouse + ventana ancha) — el corrector no corre en celular. */
 export const esEscritorio =
   typeof window !== 'undefined' &&
@@ -29,6 +37,9 @@ export function cargarCorrectorEs(): Promise<Nspell> {
     ]);
     const nspell = ((nspellMod as any).default ?? nspellMod) as (aff: string, dic: string) => Nspell;
     instancia = nspell(aff, dic);
+    // Vocabulario de EBAR que el diccionario general no trae — para que no salgan marcados como
+    // error términos habituales del informe.
+    for (const termino of TERMINOS_EBAR) instancia.add(termino);
     return instancia;
   })();
   return cargando;
@@ -41,6 +52,33 @@ export interface PalabraMal {
 
 // Separadores de palabra: todo lo que no sea letra/número/apóstrofo/guion.
 const SEPARADOR = /[^\p{L}\p{N}'’-]+/u;
+
+const SIN_ACENTO = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+const VOCAL_ACENTUADA: Record<string, string> = { a: 'á', e: 'é', i: 'í', o: 'ó', u: 'ú' };
+
+/** El error de tilde es el más común en español: se prueba a acentuar cada vocal de a una y si el
+ * resultado es una palabra válida, esa es casi seguro la corrección (nspell muchas veces NO la
+ * sugiere — ej. "impulsion" → no propone "impulsión"). */
+function acentuarVocal(corrector: Nspell, palabra: string): string | null {
+  const lower = palabra.toLowerCase();
+  for (let i = 0; i < lower.length; i++) {
+    const ac = VOCAL_ACENTUADA[lower[i]];
+    if (ac && corrector.correct(lower.slice(0, i) + ac + lower.slice(i + 1))) {
+      return lower.slice(0, i) + ac + lower.slice(i + 1);
+    }
+  }
+  return null;
+}
+
+/** Mejor corrección para una palabra mal escrita: 1) acentuar una vocal, 2) una sugerencia de
+ * nspell que solo difiera en tildes, 3) la primera sugerencia de nspell, 4) nada. */
+function mejorSugerencia(corrector: Nspell, palabra: string): string | null {
+  const porAcento = acentuarVocal(corrector, palabra);
+  if (porAcento) return porAcento;
+  const sugerencias = corrector.suggest(palabra);
+  const sinTilde = SIN_ACENTO(palabra).toLowerCase();
+  return sugerencias.find((s) => SIN_ACENTO(s).toLowerCase() === sinTilde) ?? sugerencias[0] ?? null;
+}
 
 /** Devuelve las palabras del texto que el diccionario no reconoce, sin repetir, con su primera
  * sugerencia. Se saltan: palabras de 1-2 letras, con dígitos, TODO EN MAYÚSCULAS (siglas: EBAR,
@@ -59,8 +97,7 @@ export function revisarTexto(corrector: Nspell, texto: string): PalabraMal[] {
     if (vistas.has(clave)) continue;
     vistas.add(clave);
     if (corrector.correct(palabra) || corrector.correct(clave)) continue;
-    const sugerencias = corrector.suggest(palabra);
-    salida.push({ palabra, sugerencia: sugerencias[0] ?? null });
+    salida.push({ palabra, sugerencia: mejorSugerencia(corrector, palabra) });
   }
   return salida;
 }
