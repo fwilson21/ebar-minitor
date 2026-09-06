@@ -122,7 +122,7 @@ export function FotosGirables({
                   elegida ? 'bg-gauge-ok/15 text-gauge-ok' : 'text-slate-500 underline decoration-dotted hover:text-gauge-idle'
                 }`}
               >
-                {elegida ? '✓ Se usa en el informe' : `Usar esta (${label})`}
+                {elegida ? `✓ Se usa en el informe (${label})` : `Usar esta (${label})`}
               </button>
             ) : (
               <span className="block text-[10px] text-slate-500 mt-0.5 truncate" title={label}>
