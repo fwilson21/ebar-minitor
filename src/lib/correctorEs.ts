@@ -73,7 +73,7 @@ export interface PalabraMal {
 
 // Una palabra: arranca con letra/número y sigue con letra/número/apóstrofo/guion.
 const PALABRA_RE = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
-const CTX = 32; // caracteres de contexto a cada lado
+const CTX = 42; // caracteres de contexto a cada lado
 
 const SIN_ACENTO = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 const VOCAL_ACENTUADA: Record<string, string> = { a: 'á', e: 'é', i: 'í', o: 'ó', u: 'ú' };

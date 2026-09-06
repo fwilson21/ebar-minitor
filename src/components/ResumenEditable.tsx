@@ -117,27 +117,28 @@ function PanelCorrector({
 
   return (
     <div className="mt-2 rounded-lg border border-gauge-warn/40 bg-gauge-warn/5 p-3">
-      <p className="text-xs font-semibold text-slate-700 mb-2">
+      <p className="text-sm font-semibold text-slate-700 mb-2">
         Palabras que podrían estar mal escritas. Mirá la frase para decidir, corregí (o escribí a mano) y aplicá — se cambia en todo el documento.
       </p>
-      {/* Grid: la frase de contexto ocupa la 1ª columna (flexible), y el "→ campo ✓" van SIEMPRE en
-          las mismas columnas — así todos los campos de corrección quedan alineados uno debajo del otro. */}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_11rem_auto] items-center gap-x-2 gap-y-1.5">
+      {/* Grid: la frase de contexto llega como mucho a ~la mitad de la página (columna acotada,
+          no `1fr`), y JUSTO después va el "→ campo ✓" — así los campos quedan pegados a la frase y
+          alineados uno debajo del otro, sin el hueco grande de antes. */}
+      <div className="grid grid-cols-[minmax(0,40rem)_auto_14rem_auto] items-center gap-x-3 gap-y-2">
         {errores.map((e) => {
           const valor = correcciones[e.palabra] ?? e.sugerencia ?? '';
           return (
             <Fragment key={e.palabra}>
-              <span className="min-w-0 text-xs text-slate-500 leading-snug">
+              <span className="min-w-0 text-sm text-slate-600 leading-snug">
                 {e.contexto.antes}
                 <span
-                  className="text-slate-900 font-semibold"
+                  className="text-slate-900 font-bold"
                   style={{ textDecoration: 'underline wavy #dc2626', textUnderlineOffset: '3px' }}
                 >
                   {e.palabra}
                 </span>
                 {e.contexto.despues}
               </span>
-              <span className="text-slate-400">→</span>
+              <span className="text-slate-400 text-base">→</span>
               <input
                 type="text"
                 value={valor}
@@ -150,14 +151,14 @@ function PanelCorrector({
                     aplicar(e.palabra, valor);
                   }
                 }}
-                className="w-full rounded border border-panel-600 bg-panel-900 px-1.5 py-1 text-sm"
+                className="w-full rounded border border-panel-600 bg-panel-900 px-2 py-1 text-sm"
                 placeholder="escribe la correcta"
               />
               <button
                 type="button"
                 onClick={() => aplicar(e.palabra, valor)}
                 disabled={!valor.trim() || valor.trim() === e.palabra}
-                className="text-base text-gauge-ok disabled:opacity-30"
+                className="text-lg text-gauge-ok disabled:opacity-30"
                 title="Aplicar en todo el documento"
                 aria-label="Aplicar corrección"
               >
