@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,6 +7,8 @@ import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { abrirBlob, descargarBlob, etiquetaFoto, generarInformeSemanal } from '../lib/pdf';
 import { girarFotoSubida } from '../lib/fotos';
 import type { SentidoGiro } from '../lib/fotos';
+import { cargarCorrectorEs, revisarTexto, reemplazarPalabra, esEscritorio, type PalabraMal } from '../lib/correctorEs';
+import type { Nspell } from 'nspell';
 import { hoyLocal } from '../lib/fecha';
 import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
 import {
@@ -1196,10 +1198,15 @@ function BloqueEditor({
         <textarea
           className="campo w-full"
           rows={5}
+          spellCheck
+          lang="es"
           value={bloque.resumen}
           onChange={(e) => onCambiar({ ...bloque, resumen: e.target.value })}
           placeholder="Sin novedades reportadas por el operador."
         />
+        {esEscritorio && (
+          <PanelCorrectorEs texto={bloque.resumen} onCorregir={(t) => onCambiar({ ...bloque, resumen: t })} />
+        )}
       </div>
 
       {fotosDisponibles.length > 0 && (
@@ -1260,6 +1267,74 @@ function BloqueEditor({
           {errorGiro && <p className="text-xs text-gauge-danger mt-1">{errorGiro}</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Corrector de ortografía debajo del cuadro de resumen (solo en computadoras — ver `esEscritorio`).
+ * Lista las palabras que el diccionario de español no reconoce, 5 por fila, con su corrección al
+ * lado; al tocar la corrección se reemplaza en el texto. Cuando no queda ninguna, el panel
+ * desaparece y abajo quedan solo las fotos. El clic derecho "tipo Word" sobre el propio cuadro de
+ * texto lo da el navegador (`spellCheck lang="es"`).
+ */
+function PanelCorrectorEs({ texto, onCorregir }: { texto: string; onCorregir: (t: string) => void }) {
+  const correctorRef = useRef<Nspell | null>(null);
+  const [cargado, setCargado] = useState(false);
+  const [fallo, setFallo] = useState(false);
+  const [errores, setErrores] = useState<PalabraMal[]>([]);
+
+  useEffect(() => {
+    let vivo = true;
+    cargarCorrectorEs()
+      .then((c) => {
+        if (!vivo) return;
+        correctorRef.current = c;
+        setCargado(true);
+      })
+      .catch(() => vivo && setFallo(true));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cargado || !correctorRef.current) return;
+    const t = setTimeout(() => setErrores(revisarTexto(correctorRef.current!, texto)), 300);
+    return () => clearTimeout(t);
+  }, [texto, cargado]);
+
+  if (fallo || !cargado || errores.length === 0) return null;
+
+  return (
+    <div className="mt-2 rounded-lg border border-gauge-warn/40 bg-gauge-warn/5 p-3">
+      <p className="text-xs font-semibold text-slate-700 mb-2">
+        Palabras que podrían estar mal escritas — toca la corrección para aplicarla:
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-1.5 text-sm">
+        {errores.map((e) => (
+          <div key={e.palabra} className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="text-slate-800 shrink-0"
+              style={{ textDecoration: 'underline wavy #dc2626', textUnderlineOffset: '3px' }}
+            >
+              {e.palabra}
+            </span>
+            {e.sugerencia ? (
+              <button
+                type="button"
+                onClick={() => onCorregir(reemplazarPalabra(texto, e.palabra, e.sugerencia!))}
+                className="text-sky-700 hover:underline truncate"
+                title={`Reemplazar por "${e.sugerencia}"`}
+              >
+                → {e.sugerencia}
+              </button>
+            ) : (
+              <span className="text-slate-400 text-xs">sin sugerencia</span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
