@@ -31,6 +31,25 @@ function comparar(a: { zona: string; tipo: string }, b: { zona: string; tipo: st
   return (ORDEN_ZONA[a.zona] ?? 9) - (ORDEN_ZONA[b.zona] ?? 9) || (ORDEN_TIPO[a.tipo] ?? 9) - (ORDEN_TIPO[b.tipo] ?? 9);
 }
 
+// A diferencia de `comparar` (zona antes que tipo, así que una PTAR urbana queda mezclada entre
+// las EBAR urbanas y rurales), acá el tipo manda: EBAR y línea de conducción (urbanas Y rurales)
+// siempre antes que cualquier PTAR. Solo se usa en el orden de los reportes de visitas (pdf.ts) —
+// pedido explícito del usuario (2026-09-06): primero las EBAR que no se pudieron visitar (urbana o
+// rural, ver bloqueNoVisitadas), después las EBAR urbanas/rurales que sí tienen visita, y las PTAR
+// (si hay) al final de todo el documento.
+const ORDEN_TIPO_INFORME: Record<string, number> = { ebar: 0, linea_conduccion: 1, ptar: 2 };
+
+export function compararParaInforme(
+  a: { zona: string; tipo: string; codigo: string },
+  b: { zona: string; tipo: string; codigo: string },
+): number {
+  return (
+    (ORDEN_TIPO_INFORME[a.tipo] ?? 9) - (ORDEN_TIPO_INFORME[b.tipo] ?? 9) ||
+    (ORDEN_ZONA[a.zona] ?? 9) - (ORDEN_ZONA[b.zona] ?? 9) ||
+    a.codigo.localeCompare(b.codigo)
+  );
+}
+
 /** Misma lista, ordenada por zona+tipo (sin agrupar en secciones — para listas planas como los
  * botones de estación en Asignaciones). */
 export function ordenarPorZonaYTipo<T extends { zona: string; tipo: string }>(lista: T[]): T[] {

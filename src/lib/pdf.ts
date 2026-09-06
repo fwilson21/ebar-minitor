@@ -3,7 +3,7 @@ import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { MEMBRETE_FONDO_BASE64 } from '../assets/membrete/membreteData';
 import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, type BloqueInformePdf } from './informeSemanal';
-import { codigoYNombre } from './agruparEstaciones';
+import { codigoYNombre, compararParaInforme } from './agruparEstaciones';
 import { resumenARuns } from './resumenFormato';
 
 (pdfMake as any).vfs = (pdfFonts as any).vfs;
@@ -665,7 +665,9 @@ export function claveGrupoDiario(g: Pick<GrupoDiario, 'operador_nombre' | 'estac
 }
 
 /** Agrupa las visitas por (operador + estación + día). Los grupos salen ordenados por fecha,
- * luego código de estación, luego operador; las visitas dentro de cada grupo, por hora. */
+ * luego EBAR/línea de conducción antes que PTAR (urbana antes que rural dentro de cada una, ver
+ * compararParaInforme — pedido del usuario, 2026-09-06: las PTAR siempre al final del reporte),
+ * luego operador; las visitas dentro de cada grupo, por hora. */
 export function agruparVisitasPorDia(visitas: VisitaParaReporte[]): GrupoDiario[] {
   const mapa = new Map<string, GrupoDiario>();
   for (const v of visitas) {
@@ -694,7 +696,10 @@ export function agruparVisitasPorDia(visitas: VisitaParaReporte[]): GrupoDiario[
   grupos.sort(
     (a, b) =>
       a.fecha.localeCompare(b.fecha) ||
-      a.estacion_codigo.localeCompare(b.estacion_codigo) ||
+      compararParaInforme(
+        { zona: a.zona, tipo: a.estacion_tipo ?? '', codigo: a.estacion_codigo },
+        { zona: b.zona, tipo: b.estacion_tipo ?? '', codigo: b.estacion_codigo },
+      ) ||
       a.operador_nombre.localeCompare(b.operador_nombre),
   );
   return grupos;
@@ -1033,10 +1038,22 @@ export function generarReporteVisitas(
             ...bloqueGrupoSuperCompacto(g, resumenesEditados[claveGrupoDiario(g)]),
             idx < arr.length - 1 ? lineaCierreVisita() : null,
           ])
-        : visitas.flatMap((v) => [
-            ...(formato === 'compacto' ? bloqueVisitaCompacto(v) : bloqueVisita(v)),
-            { text: '', pageBreak: visitas.indexOf(v) < visitas.length - 1 ? 'after' : undefined },
-          ])),
+        : // Compacto/Extenso: mismo orden que Súper compacto — por fecha, luego EBAR/línea de
+          // conducción antes que PTAR (ver compararParaInforme), luego código de estación.
+          [...visitas]
+            .sort(
+              (a, b) =>
+                a.fecha_hora_llegada.slice(0, 10).localeCompare(b.fecha_hora_llegada.slice(0, 10)) ||
+                compararParaInforme(
+                  { zona: a.zona, tipo: a.estacion_tipo ?? '', codigo: a.estacion_codigo },
+                  { zona: b.zona, tipo: b.estacion_tipo ?? '', codigo: b.estacion_codigo },
+                ) ||
+                a.fecha_hora_llegada.localeCompare(b.fecha_hora_llegada),
+            )
+            .flatMap((v, idx, arr) => [
+              ...(formato === 'compacto' ? bloqueVisitaCompacto(v) : bloqueVisita(v)),
+              { text: '', pageBreak: idx < arr.length - 1 ? 'after' : undefined },
+            ])),
       ...bloqueFirmasFinales(visitas),
     ].filter(Boolean),
     styles: ESTILOS,
