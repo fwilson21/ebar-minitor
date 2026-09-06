@@ -96,21 +96,43 @@ export function FotosGirables({
       if (!grupos.has(label)) grupos.set(label, []);
       grupos.get(label)!.push(f);
     }
+    // Categorías con 1 sola foto: van TODAS juntas en una única grilla de 4 por fila (como
+    // cualquier grilla de fotos de la app) — cada una en su propio <div> las dejaba una por fila
+    // (el <div> de cada categoría cortaba la fila aunque la grilla interna fuera de 4 columnas),
+    // reportado por el usuario con captura (2026-09-06). Solo las categorías con MÁS de una
+    // candidata se separan en su propio bloque, porque necesitan el título "elegí cuál usar".
+    const simples: FotoGirable[] = [];
+    const multiples: Array<[string, FotoGirable[]]> = [];
+    for (const [label, lista] of grupos) {
+      if (lista.length > 1) multiples.push([label, lista]);
+      else simples.push(lista[0]);
+    }
     return (
       <div className="mt-2 space-y-3">
         <p className="text-xs text-slate-500">
           Fotos (↺ ↻ giran la foto y dejan la fecha horizontal) — el informe lleva 1 foto por capítulo; si hay más de una, elegí cuál usar.
         </p>
-        {[...grupos.entries()].map(([label, lista]) => {
-          const hayVarias = lista.length > 1;
+        {simples.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+            {simples.map((f) =>
+              tarjeta(
+                f,
+                <span className="block text-[10px] text-slate-500 mt-0.5 truncate" title={etiquetaFoto(f.etiqueta)}>
+                  {etiquetaFoto(f.etiqueta)}
+                </span>,
+              ),
+            )}
+          </div>
+        )}
+        {multiples.map(([label, lista]) => {
           const elegidaId = categorias.elegidaPorCategoria[label] ?? lista[0].id;
           return (
             <div key={label}>
-              {hayVarias && <p className="text-xs font-semibold text-slate-700 mb-1">{label} — elegí cuál va en el informe:</p>}
+              <p className="text-xs font-semibold text-slate-700 mb-1">{label} — elegí cuál va en el informe:</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                 {lista.map((f) => {
                   const elegida = f.id === elegidaId;
-                  const pie = hayVarias ? (
+                  const pie = (
                     <button
                       type="button"
                       onClick={() => categorias.onElegir(label, f.id)}
@@ -121,12 +143,8 @@ export function FotosGirables({
                     >
                       {elegida ? '✓ Se usa en el informe' : 'Usar esta'}
                     </button>
-                  ) : (
-                    <span className="block text-[10px] text-slate-500 mt-0.5 truncate" title={label}>
-                      {label}
-                    </span>
                   );
-                  return tarjeta(f, pie, hayVarias && !elegida);
+                  return tarjeta(f, pie, !elegida);
                 })}
               </div>
             </div>
