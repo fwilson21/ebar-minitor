@@ -887,12 +887,13 @@ function espacioFijo(alturaPt: number): any {
 
 /** Firma del formato "Súper compacto": la raya mide lo mismo que la línea de texto más ancha
  * (nombre o cargo del operador) — se logra con una tabla de ancho 'auto' (se encoge exacto al
- * contenido) cuyo único borde visible es el de arriba. Va separada 4cm (≈113pt) de lo que quede
+ * contenido) cuyo único borde visible es el de arriba. Va separada 2cm (≈57pt) de lo que quede
  * encima (la última fila de fotos, o el margen superior de la hoja si le toca sola al inicio de
  * una hoja nueva) — antes era un `margin`, que pdfmake recorta a 0 justo cuando el bloque cae al
  * inicio de una hoja (nada arriba de qué separarse), y la firma quedaba pegada al membrete
  * institucional. Con `espacioFijo` (contenido real, no margen) el espacio nunca se recorta —
- * pedido del usuario, con captura mostrando el caso pegado (2026-09-06). TODO el bloque (espacio +
+ * pedido del usuario, con captura mostrando el caso pegado (2026-09-06); probó 4cm y pidió bajarlo
+ * a 2cm (mismo día, con otra captura mostrando la firma "muy abajo"). TODO el bloque (espacio +
  * foto de firma + raya/nombre/cargo) va `unbreakable`: si no fuera así, pdfmake podía separar el
  * espacio (que sí entraba al pie de la hoja anterior) de la firma en sí (que no entraba y pasaba
  * sola a la hoja siguiente) — mismo problema de origen, solo que el espacio quedaba "gastado" en
@@ -928,7 +929,7 @@ function bloqueFirmaSuperCompacto(nombre: string, cargo: string | null | undefin
   return {
     unbreakable: true,
     stack: [
-      espacioFijo(113), // 4cm
+      espacioFijo(57), // 2cm
       firmaUrl
         ? { image: firmaUrl, fit: [150, 48], alignment: 'left', margin: [0, 0, 0, 2] }
         : { text: ' ', margin: [0, 0, 0, 14] },
