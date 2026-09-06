@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -830,6 +830,17 @@ function BloqueFiltrosGenerar({
    * la tarjeta de revisión (para no tentar a generar antes de revisar). */
   ocultarBotonGenerar: boolean;
 }) {
+  // El Asunto crece solo con el texto (sin scroll interno) — tanto si lo escribe la persona como
+  // si se autocompleta solo (ver el useEffect de asuntoSugerido más arriba) — pedido del usuario,
+  // con captura mostrando la caja con scroll y texto cortado.
+  const refAsunto = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = refAsunto.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [asunto]);
+
   return (
     <div className="tarjeta p-4 space-y-3">
       <div>
@@ -980,7 +991,8 @@ function BloqueFiltrosGenerar({
           <div>
             <label className="etiqueta">Asunto</label>
             <textarea
-              className="campo"
+              ref={refAsunto}
+              className="campo resize-none overflow-hidden"
               rows={2}
               value={asunto}
               onChange={(e) => {

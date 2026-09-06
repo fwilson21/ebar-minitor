@@ -2,11 +2,13 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   cargarCorrectorEs,
   revisarTexto,
+  marcarPalabraBienEscrita,
   esEscritorio,
   type PalabraMal,
   type CorrectorMulti,
 } from '../lib/correctorEs';
 import { resumenAHtml } from '../lib/resumenFormato';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Cuadro para editar un resumen ("Etiqueta: contenido. Otra etiqueta: contenido.") con:
@@ -76,11 +78,14 @@ function PanelCorrector({
   texto: string;
   onAplicar: (palabra: string, correccion: string) => void;
 }) {
+  const { usuario } = useAuth();
   const correctorRef = useRef<CorrectorMulti | null>(null);
   const [cargado, setCargado] = useState(false);
   const [fallo, setFallo] = useState(false);
   const [errores, setErrores] = useState<PalabraMal[]>([]);
   const [correcciones, setCorrecciones] = useState<Record<string, string>>({});
+  const [marcando, setMarcando] = useState<Set<string>>(new Set());
+  const [errorMarcar, setErrorMarcar] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -115,15 +120,36 @@ function PanelCorrector({
     });
   };
 
+  // "Está bien escrita": a diferencia de "Aplicar", no cambia nada del texto — solo guarda la
+  // palabra (diccionario_personalizado, migración 0059) para que el corrector deje de marcarla,
+  // en esta sesión y en cualquier computadora de acá en más.
+  const marcarBienEscrita = async (palabra: string) => {
+    if (!correctorRef.current || marcando.has(palabra)) return;
+    setErrorMarcar(null);
+    setMarcando((prev) => new Set(prev).add(palabra));
+    try {
+      await marcarPalabraBienEscrita(correctorRef.current, palabra, usuario?.id);
+      setErrores((prev) => prev.filter((e) => e.palabra !== palabra));
+    } catch (err: any) {
+      setErrorMarcar(`No se pudo guardar "${palabra}": ${err.message ?? err}`);
+    } finally {
+      setMarcando((prev) => {
+        const copia = new Set(prev);
+        copia.delete(palabra);
+        return copia;
+      });
+    }
+  };
+
   return (
     <div className="mt-2 rounded-lg border border-gauge-warn/40 bg-gauge-warn/5 p-3">
       <p className="text-sm font-semibold text-slate-700 mb-2">
         Palabras que podrían estar mal escritas. Mirá la frase para decidir, corregí (o escribí a mano) y aplicá — se cambia en todo el documento.
       </p>
       {/* Grid: la frase de contexto llega como mucho a ~la mitad de la página (columna acotada,
-          no `1fr`), y JUSTO después va el "→ campo ✓" — así los campos quedan pegados a la frase y
-          alineados uno debajo del otro, sin el hueco grande de antes. */}
-      <div className="grid grid-cols-[minmax(0,40rem)_auto_14rem_auto] items-center gap-x-3 gap-y-2">
+          no `1fr`), y JUSTO después va el "→ campo ✓ | está bien escrita" — así los campos quedan
+          pegados a la frase y alineados uno debajo del otro, sin el hueco grande de antes. */}
+      <div className="grid grid-cols-[minmax(0,40rem)_auto_14rem_auto_auto] items-center gap-x-3 gap-y-2">
         {errores.map((e) => {
           const valor = correcciones[e.palabra] ?? e.sugerencia ?? '';
           return (
@@ -164,10 +190,20 @@ function PanelCorrector({
               >
                 ✓
               </button>
+              <button
+                type="button"
+                onClick={() => marcarBienEscrita(e.palabra)}
+                disabled={marcando.has(e.palabra)}
+                className="text-xs font-medium text-gauge-idle underline decoration-dotted whitespace-nowrap disabled:opacity-30"
+                title="No es un error — dejar de marcarla siempre, en cualquier computadora"
+              >
+                {marcando.has(e.palabra) ? 'Guardando…' : 'Está bien escrita'}
+              </button>
             </Fragment>
           );
         })}
       </div>
+      {errorMarcar && <p className="text-xs text-gauge-danger mt-2">{errorMarcar}</p>}
     </div>
   );
 }

@@ -11,22 +11,30 @@ import affEsUrl from '../assets/dict/es.aff?url';
 import dicEsUrl from '../assets/dict/es.dic?url';
 import affEnUrl from '../assets/dict/en.aff?url';
 import dicEnUrl from '../assets/dict/en.dic?url';
+import { supabase } from './supabase';
 
 /** Chequeo de ortografía español+inglés combinado. */
 export interface CorrectorMulti {
   correct(word: string): boolean;
   suggest(word: string): string[];
+  /** Suma una palabra al vocabulario ACEPTADO de esta sesión (no persiste sola — ver
+   * `marcarPalabraBienEscrita`, que además la guarda en `diccionario_personalizado`). */
+  add(word: string): void;
 }
 
 let instancia: CorrectorMulti | null = null;
 let cargando: Promise<CorrectorMulti> | null = null;
 
-// Términos de EBAR (en minúscula) que el diccionario general de español no incluye.
+// Términos de EBAR (en minúscula) que el diccionario general de español no incluye. Para una
+// palabra puntual que solo hace falta agregar una vez, mejor usar el botón "Está bien escrita"
+// del corrector (guarda en `diccionario_personalizado`, sin tocar código) — esta lista es para
+// vocabulario de uso frecuente que conviene tener SIEMPRE, aunque la tabla esté vacía o sin red.
 const TERMINOS_EBAR = [
   'impulsión', 'sumergible', 'sumergibles', 'cárcamo', 'cárcamos', 'variador', 'variadores',
   'guardamotor', 'guardamotores', 'contactor', 'contactores', 'breaker', 'breakers', 'elastomérica',
   'elastoméricas', 'elastomérico', 'izado', 'rejilla', 'rejillas', 'cerramiento', 'cerramientos',
   'guaya', 'guayas', 'macho', 'check', 'ebar', 'ptar', 'caudalímetro', 'macromedidor',
+  'retrolavado', 'retrolavados', 'retrolavar',
 ];
 
 /** true solo en pantallas de escritorio (mouse + ventana ancha) — el corrector no corre en celular. */
@@ -39,24 +47,35 @@ export function cargarCorrectorEs(): Promise<CorrectorMulti> {
   if (instancia) return Promise.resolve(instancia);
   if (cargando) return cargando;
   cargando = (async () => {
-    const [nspellMod, affEs, dicEs, affEn, dicEn] = await Promise.all([
+    const [nspellMod, affEs, dicEs, affEn, dicEn, { data: extra }] = await Promise.all([
       import('nspell'),
       fetch(affEsUrl).then((r) => r.text()),
       fetch(dicEsUrl).then((r) => r.text()),
       fetch(affEnUrl).then((r) => r.text()),
       fetch(dicEnUrl).then((r) => r.text()),
+      // Palabras que alguien marcó "Está bien escrita" antes (ver marcarPalabraBienEscrita) — si
+      // falla (sin red, tabla vacía, etc.) sigue con el diccionario normal, no bloquea el corrector.
+      supabase.from('diccionario_personalizado').select('palabra').then(
+        (r) => r,
+        () => ({ data: null }),
+      ),
     ]);
     const nspell = ((nspellMod as any).default ?? nspellMod) as (aff: string, dic: string) => Nspell;
     const es = nspell(affEs, dicEs);
-    // Vocabulario de EBAR que el diccionario general no trae.
-    for (const termino of TERMINOS_EBAR) es.add(termino);
     const en = nspell(affEn, dicEn);
+    // Vocabulario de EBAR que el diccionario general no trae, + lo que se fue agregando a mano.
+    for (const termino of TERMINOS_EBAR) es.add(termino);
+    for (const fila of extra ?? []) es.add((fila as { palabra: string }).palabra);
     instancia = {
       // Bien escrita si CUALQUIER idioma la reconoce (así no marca términos técnicos en inglés).
       correct: (w) => es.correct(w) || en.correct(w),
       // Las sugerencias salen del español (el texto es en español; un error suele ser de una
       // palabra española).
       suggest: (w) => es.suggest(w),
+      add: (w) => {
+        es.add(w);
+        en.add(w);
+      },
     };
     return instancia;
   })();
@@ -138,4 +157,16 @@ export function reemplazarPalabra(texto: string, palabra: string, reemplazo: str
   const esc = palabra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`(^|[^\\p{L}\\p{N}])(${esc})(?![\\p{L}\\p{N}])`, 'gu');
   return texto.replace(re, (_m, previo) => `${previo}${reemplazo}`);
+}
+
+/** Botón "Está bien escrita" del corrector: guarda la palabra en `diccionario_personalizado`
+ * (migración 0059) para que deje de marcarse en CUALQUIER computadora de acá en más, y la suma al
+ * corrector ya cargado para que deje de marcarse en esta misma sesión sin recargar la página. Si
+ * ya estaba guardada (otra persona la agregó antes) el `unique` de la tabla lo avisa con un error
+ * "duplicate key" — se ignora, no es un problema real (la palabra ya iba a dejar de marcarse). */
+export async function marcarPalabraBienEscrita(corrector: CorrectorMulti, palabra: string, usuarioId?: string): Promise<void> {
+  const clave = palabra.toLowerCase();
+  corrector.add(clave);
+  const { error } = await supabase.from('diccionario_personalizado').insert({ palabra: clave, creado_por: usuarioId ?? null });
+  if (error && error.code !== '23505') throw error; // 23505 = unique_violation, ya estaba
 }

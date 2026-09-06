@@ -43,7 +43,7 @@ export function FotosGirables({
   return (
     <div className="mt-2">
       <p className="text-xs text-slate-500 mb-1">Fotos (↺ ↻ giran la foto y dejan la fecha horizontal):</p>
-      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
         {fotos.map((f) => {
           const estaGirando = girando.has(f.id);
           return (
