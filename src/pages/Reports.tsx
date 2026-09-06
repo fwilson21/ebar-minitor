@@ -21,14 +21,14 @@ export function Reports() {
   const esAdmin = usuario?.rol === 'administrador' || usuario?.rol === 'supervisor';
 
   const [tipo, setTipo] = useState<TipoReporte>('consolidado_fecha');
-  // Formato del PDF, independiente del tipo (se ofrece en los 3): Extenso = como siempre, una caja
-  // con borde por categoría y todas sus fotos. Compacto = las categorías listadas en texto, con
-  // una sola grilla de fotos al final (una representativa por categoría, 5 por fila) — pedido del
-  // usuario para un reporte de menos hojas. El encabezado/datos de la visita no cambian entre los 2.
-  // Arranca en "compacto" (pedido del usuario, 2026-09-03) — Extenso sigue disponible, solo deja
-  // de ser la opción por defecto. "super_compacto" (2026-09-05): un párrafo de resumen por
-  // operador/EBAR/día + una foto por capítulo (5 por fila) — ver generarReporteVisitas.
-  const [formato, setFormato] = useState<FormatoReporte>('compacto');
+  // Formato del PDF, independiente del tipo (se ofrece en los 3):
+  // - "super_compacto" (2026-09-05, opción por defecto a pedido del usuario): un párrafo de resumen
+  //   por operador/EBAR/día + una foto por capítulo (5 por fila) — ver generarReporteVisitas.
+  // - "compacto": las categorías listadas en texto, con una grilla de fotos al final (una
+  //   representativa por categoría, 5 por fila).
+  // - "extenso": como siempre, una caja con borde por categoría y todas sus fotos.
+  // El encabezado/datos de la visita no cambian entre formatos.
+  const [formato, setFormato] = useState<FormatoReporte>('super_compacto');
   // Filtro adicional, independiente del tipo (se ofrece en los 3): deja solo las visitas de fin de
   // semana o feriado dentro del rango elegido — automático, sin calendario (para eso está
   // diasEspecificos más abajo). Si en ese rango no hubo ninguna, no sale nada en el reporte (mismo
