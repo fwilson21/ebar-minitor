@@ -104,30 +104,39 @@ export async function estamparFechaEnFoto(
     const anchoFoto = Math.round(bitmap.width * escala);
     const altoFoto = Math.round(bitmap.height * escala);
 
-    // La cámara en vivo (CamaraFoto.tsx, getUserMedia + canvas) no lleva EXIF y en algunos
-    // celulares entrega el cuadro acostado (más ancho que alto) aunque el operador sostenga el
-    // celular en vertical — este forzado corrige ESE caso puntual. Solo debe aplicarse a fotos que
-    // vinieron de la cámara en vivo (`corregirVolteoCamaraViva=true`, ver `crearFotoLocal`): las
-    // fotos de la cámara nativa del celular (`<input capture>`) SÍ traen EXIF y ya quedaron bien
-    // orientadas por `imageOrientation: 'from-image'` de arriba, incluidas las tomadas realmente en
-    // horizontal a propósito — si a esas también se les aplicara este forzado, terminarían giradas
-    // de lado en el informe (bug reportado por los operadores, 2026-08-31).
-    // `dispositivoEnHorizontal` (leído en CamaraFoto.tsx al momento del disparo, con
-    // `matchMedia('(orientation: landscape)')`) distingue el bug de sensor (celular sostenido en
-    // vertical mientras el cuadro sale acostado) de una foto horizontal tomada a propósito
-    // (celular físicamente girado) — sin esto, TODA foto ancha de la cámara en vivo se forzaba a
-    // vertical, así el operador la hubiera tomado de lado a propósito (ej. un patio de maniobras
-    // ancho) — bug reportado 2026-09-03.
-    const esHorizontal = corregirVolteoCamaraViva && !dispositivoEnHorizontal && anchoFoto > altoFoto;
+    // La cámara en vivo (CamaraFoto.tsx, getUserMedia + canvas) no lleva EXIF, y el cuadro que
+    // entrega NO siempre tiene la forma que uno esperaría del celular físico en ese momento — en
+    // algunos casos sale acostado (más ancho que alto) aunque el celular esté en vertical; en
+    // otros (Android, reportado 2026-09-06 DESPUÉS de que el acelerómetro ya detectaba bien la
+    // orientación física — ver el indicador en vivo de CamaraFoto.tsx) el navegador entrega el
+    // cuadro YA "corregido" a la forma vertical de siempre (como si el celular no se hubiera
+    // movido de su orientación normal) aunque el celular esté de costado a propósito — así, una
+    // foto horizontal de verdad terminaba guardada de costado en el reporte. Los 2 casos son el
+    // mismo problema en espejo: el cuadro que entrega la cámara no calza con la orientación física
+    // real, y hay que rotarlo para que sí calce. Solo debe aplicarse a fotos que vinieron de la
+    // cámara en vivo (`corregirVolteoCamaraViva=true`, ver `crearFotoLocal`): las fotos de la
+    // cámara nativa (`<input capture>`) SÍ traen EXIF y ya quedaron bien orientadas por
+    // `imageOrientation: 'from-image'` de arriba.
+    // `dispositivoEnHorizontal` (leído en CamaraFoto.tsx al momento del disparo, del acelerómetro)
+    // dice qué forma FINAL debería tener la foto (más ancha que alta si es horizontal, más alta
+    // que ancha si no). `necesitaRotar` compara esa forma deseada contra la forma real del cuadro
+    // que entregó la cámara — si no calzan (en cualquiera de los 2 sentidos), hay que rotar 90°.
+    // Fotos cuadradas (ancho === alto) no entran acá: rotar no cambiaría nada de forma y podría
+    // rotar mal el contenido de una foto que ya estaba bien.
+    const necesitaRotar =
+      corregirVolteoCamaraViva && anchoFoto !== altoFoto && anchoFoto > altoFoto !== dispositivoEnHorizontal;
     const canvas = document.createElement('canvas');
-    canvas.width = esHorizontal ? altoFoto : anchoFoto;
-    canvas.height = esHorizontal ? anchoFoto : altoFoto;
+    canvas.width = necesitaRotar ? altoFoto : anchoFoto;
+    canvas.height = necesitaRotar ? anchoFoto : altoFoto;
     const ctx = canvas.getContext('2d');
     if (!ctx) return archivo;
-    if (esHorizontal) {
-      // Antihorario (-90°): en las fotos donde se detectó este problema, el lado derecho del
-      // cuadro acostado era el que debía terminar arriba. Si alguna vez sale al revés, cambiar el
-      // signo de este ángulo (y el translate de abajo) es todo lo que hay que tocar.
+    if (necesitaRotar) {
+      // Antihorario (-90°): en las fotos donde se detectó el primer caso (celular vertical, cuadro
+      // acostado), el lado derecho del cuadro era el que debía terminar arriba, y con eso alcanzó.
+      // Si en el caso nuevo (celular de costado, cuadro que llega "vertical de siempre") la foto
+      // sale al revés, cambiar el signo de este ángulo (y el translate de abajo) es todo lo que
+      // hay que tocar — mientras tanto, los botones ↺/↻ ya sirven de rescate inmediato en la
+      // vista previa si a alguien le sale girada 90° al revés.
       ctx.translate(0, canvas.height);
       ctx.rotate(-Math.PI / 2);
     }
