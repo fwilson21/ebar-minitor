@@ -42,6 +42,24 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Se puede fallar al cargar una pantalla si esta pestaña quedó abierta desde ANTES de un
+// despliegue nuevo: el código en memoria intenta bajar un archivo por su nombre viejo (Vite le
+// cambia el nombre a cada archivo en cada despliegue) que el servidor ya no tiene — "Failed to
+// fetch dynamically imported module", pantalla de error fea. Vite dispara este evento a propósito
+// para este caso puntual; recargar la página sola (una sola vez, con el aviso guardado para no
+// recargar en bucle si el problema fuera otro) baja el código nuevo y arregla solo, sin que el
+// usuario tenga que entender ni describir el error.
+window.addEventListener('vite:preloadError', () => {
+  if (sessionStorage.getItem('recarga-por-modulo-viejo')) return;
+  sessionStorage.setItem('recarga-por-modulo-viejo', '1');
+  window.location.reload();
+});
+// Si la recarga de arriba funcionó, la app sigue andando bien pasados unos segundos — se limpia el
+// aviso para que un despliegue nuevo, más adelante, en esta misma pestaña, también se pueda
+// resolver solo (si no, después de la primera vez se dejaba de recargar automático el resto del
+// día, aunque el motivo fuera genuinamente otro despliegue).
+setTimeout(() => sessionStorage.removeItem('recarga-por-modulo-viejo'), 8000);
+
 const router = createBrowserRouter(routes)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
