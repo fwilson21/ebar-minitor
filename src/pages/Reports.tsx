@@ -583,27 +583,65 @@ export function Reports() {
           setAsuntoTocado={setAsuntoTocado}
           generando={generando}
           manejarGenerar={manejarGenerar}
+          ocultarBotonGenerar={mostrarRevisionResumenes}
         />
-        <BloqueCompartir
-          enviando={enviando}
-          manejarCompartir={manejarCompartir}
-          mensaje={mensaje}
-          avisoCompartirManual={avisoCompartirManual}
-          ultimoNombre={ultimoNombre}
-        />
+        {!mostrarRevisionResumenes && (
+          <BloqueCompartir
+            enviando={enviando}
+            manejarCompartir={manejarCompartir}
+            mensaje={mensaje}
+            avisoCompartirManual={avisoCompartirManual}
+            ultimoNombre={ultimoNombre}
+          />
+        )}
       </div>
 
       {mostrarRevisionResumenes && (
-        <BloqueRevisionResumenes
-          grupos={gruposPreview}
-          cargando={cargandoPreview}
-          resumenesEditados={resumenesEditados}
-          onAbrir={abrirRevisionResumenes}
-          onCambiarResumen={(clave, texto) => setResumenesEditados((prev) => ({ ...prev, [clave]: texto }))}
-          onCorregirGlobal={corregirPalabraEnReporte}
-          onFotoGirada={reemplazarUrlFotoPreview}
-          onGenerarSinRevisar={generarSinRevisar}
-        />
+        <>
+          <BloqueRevisionResumenes
+            grupos={gruposPreview}
+            cargando={cargandoPreview}
+            resumenesEditados={resumenesEditados}
+            onAbrir={abrirRevisionResumenes}
+            onCambiarResumen={(clave, texto) => setResumenesEditados((prev) => ({ ...prev, [clave]: texto }))}
+            onCorregirGlobal={corregirPalabraEnReporte}
+            onFotoGirada={reemplazarUrlFotoPreview}
+          />
+
+          {/* Botones DEBAJO de la revisión (pedido del usuario: que no tiente generar antes de
+              revisar). "Generar sin revisar" solo mientras no se haya abierto la revisión. */}
+          <div className="tarjeta p-4 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => manejarGenerar()}
+                disabled={generando || (tipo === 'individual_estacion' && (!estacionIds || estacionIds.size === 0))}
+                className="boton-primario"
+              >
+                {generando ? 'Generando…' : '📄 Generar PDF'}
+              </button>
+              {gruposPreview.length === 0 && (
+                <button onClick={generarSinRevisar} disabled={generando} className="boton-secundario">
+                  ⚠️ Generar sin revisar
+                </button>
+              )}
+              <button onClick={manejarCompartir} disabled={enviando} className="boton-secundario">
+                📤 Descargar y compartir
+              </button>
+            </div>
+            {avisoCompartirManual ? (
+              <div className="rounded-lg border-2 border-gauge-warn/40 bg-gauge-warn/10 p-3 space-y-1">
+                <p className="text-sm font-bold text-gauge-warn">📥 El PDF ya está en tu carpeta de Descargas</p>
+                <p className="text-xs text-slate-700">
+                  Tu navegador no dejó enviarlo directo (suele ser por el tamaño del archivo, con muchas fotos). Para
+                  mandarlo: abre WhatsApp, correo o la app que prefieras y <b>adjúntalo a mano desde Descargas</b> — ya
+                  tiene el nombre "{ultimoNombre}".
+                </p>
+              </div>
+            ) : (
+              mensaje && <p className="text-sm text-slate-700">{mensaje}</p>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
@@ -620,7 +658,6 @@ function BloqueRevisionResumenes({
   onCambiarResumen,
   onCorregirGlobal,
   onFotoGirada,
-  onGenerarSinRevisar,
 }: {
   grupos: GrupoDiario[];
   cargando: boolean;
@@ -629,7 +666,6 @@ function BloqueRevisionResumenes({
   onCambiarResumen: (clave: string, texto: string) => void;
   onCorregirGlobal: (palabra: string, correccion: string) => void;
   onFotoGirada: (fotoId: string, nuevaUrl: string) => void;
-  onGenerarSinRevisar: () => void;
 }) {
   const sinRevisar = grupos.length === 0;
   return (
@@ -672,15 +708,9 @@ function BloqueRevisionResumenes({
       })}
 
       {sinRevisar && !cargando && (
-        <div className="border-t border-panel-600/40 pt-3">
-          <button
-            type="button"
-            onClick={onGenerarSinRevisar}
-            className="text-xs text-slate-500 underline hover:text-slate-800"
-          >
-            Generar sin revisar (pide confirmación dos veces)
-          </button>
-        </div>
+        <p className="text-xs text-slate-500 border-t border-panel-600/40 pt-3">
+          Tocá "Revisar resúmenes" para ver y corregir el texto de cada visita. Los botones de generar están abajo.
+        </p>
       )}
     </div>
   );
@@ -725,6 +755,7 @@ function BloqueFiltrosGenerar({
   setAsuntoTocado,
   generando,
   manejarGenerar,
+  ocultarBotonGenerar,
 }: {
   tipo: TipoReporte;
   onCambiarTipo: (t: TipoReporte) => void;
@@ -764,6 +795,9 @@ function BloqueFiltrosGenerar({
   setAsuntoTocado: (v: boolean) => void;
   generando: boolean;
   manejarGenerar: () => void;
+  /** Con la revisión obligatoria activa, el botón "Generar PDF" no va acá sino abajo, después de
+   * la tarjeta de revisión (para no tentar a generar antes de revisar). */
+  ocultarBotonGenerar: boolean;
 }) {
   return (
     <div className="tarjeta p-4 space-y-3">
@@ -927,13 +961,15 @@ function BloqueFiltrosGenerar({
         </div>
       </div>
 
-      <button
-        onClick={() => manejarGenerar()}
-        disabled={generando || (tipo === 'individual_estacion' && (!estacionIds || estacionIds.size === 0))}
-        className="boton-primario w-full"
-      >
-        {generando ? 'Generando…' : '📄 Generar PDF'}
-      </button>
+      {!ocultarBotonGenerar && (
+        <button
+          onClick={() => manejarGenerar()}
+          disabled={generando || (tipo === 'individual_estacion' && (!estacionIds || estacionIds.size === 0))}
+          className="boton-primario w-full"
+        >
+          {generando ? 'Generando…' : '📄 Generar PDF'}
+        </button>
+      )}
     </div>
   );
 }
