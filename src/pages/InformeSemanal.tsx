@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
-import { abrirBlob, descargarBlob, generarInformeSemanal } from '../lib/pdf';
+import { abrirBlob, descargarBlob, etiquetaFoto, generarInformeSemanal } from '../lib/pdf';
 import { hoyLocal } from '../lib/fecha';
 import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
 import {
@@ -23,7 +23,7 @@ import {
   construirSnapshotDia,
   detectarCambioDia,
   incrustarFotosBloques,
-  separarLabelVineta,
+  normalizarBloque,
   codigoAsistenciaSugerido,
   CODIGOS_ASISTENCIA,
   LEYENDA_CODIGOS_ASISTENCIA,
@@ -249,6 +249,12 @@ export function InformeSemanal() {
     return edicion[fecha] ?? construirBloquesDia(visitasDelDia(fecha));
   }
 
+  // Los días guardados antes del cambio a "resumen" traen `vinetas` pero no `resumen` — al traerlos
+  // para editar se les arma el resumen desde las viñetas para que la analista no vea el cuadro vacío.
+  function contenidoParaEditar(contenido: BloqueInforme[]): BloqueInforme[] {
+    return contenido.map(normalizarBloque);
+  }
+
   function actualizarBloques(fecha: string, nuevos: BloqueInforme[]) {
     setEdicion((prev) => ({ ...prev, [fecha]: nuevos }));
   }
@@ -297,7 +303,7 @@ export function InformeSemanal() {
   function editarDiaAprobado(fecha: string) {
     const fila = diasDB[fecha];
     if (!fila) return;
-    setEdicion((prev) => ({ ...prev, [fecha]: fila.contenido }));
+    setEdicion((prev) => ({ ...prev, [fecha]: contenidoParaEditar(fila.contenido) }));
     setForzarEdicion((prev) => new Set(prev).add(fecha));
   }
 
@@ -1146,51 +1152,23 @@ function BloqueEditor({
       </div>
 
       <div>
-        <label className="etiqueta text-slate-800 font-bold">Actividad (viñetas editables, sacadas de las observaciones del operador)</label>
-        <div className="space-y-2">
-          {bloque.vinetas.map((v, i) => {
-            const { label, resto } = separarLabelVineta(v);
-            return (
-              <div key={i} className="flex gap-2 items-start">
-                <span className="mt-3 w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0" />
-                <div className="flex-1">
-                  {label && <p className="text-xs font-bold text-gauge-idle mb-1">{label}</p>}
-                  <textarea
-                    className="campo w-full"
-                    rows={2}
-                    value={resto}
-                    onChange={(e) => {
-                      const nuevas = [...bloque.vinetas];
-                      nuevas[i] = label ? `${label}: ${e.target.value}` : e.target.value;
-                      onCambiar({ ...bloque, vinetas: nuevas });
-                    }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onCambiar({ ...bloque, vinetas: bloque.vinetas.filter((_, j) => j !== i) })}
-                  className="text-slate-400 hover:text-gauge-danger text-sm mt-2"
-                >
-                  ✕
-                </button>
-              </div>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          onClick={() => onCambiar({ ...bloque, vinetas: [...bloque.vinetas, ''] })}
-          className="text-xs text-slate-600 hover:text-slate-900 underline mt-1"
-        >
-          + Agregar viñeta
-        </button>
+        <label className="etiqueta text-slate-800 font-bold">
+          Resumen de la actividad (se arma solo con lo que reportó el operador — corrígelo si algo está mal escrito)
+        </label>
+        <textarea
+          className="campo w-full"
+          rows={5}
+          value={bloque.resumen}
+          onChange={(e) => onCambiar({ ...bloque, resumen: e.target.value })}
+          placeholder="Sin novedades reportadas por el operador."
+        />
       </div>
 
       {fotosDisponibles.length > 0 && (
         <div>
-          <label className="etiqueta">Fotos a incluir en el PDF</label>
+          <label className="etiqueta">Fotos a incluir en el PDF (salen 5 por fila con el nombre del capítulo)</label>
           <div className="grid grid-cols-4 gap-2">
-            {fotosDisponibles.map((f, i) => {
+            {fotosDisponibles.map((f) => {
               const marcada = bloque.fotos_seleccionadas.includes(f.id);
               return (
                 <label key={f.id} className="relative cursor-pointer">
@@ -1212,7 +1190,7 @@ function BloqueEditor({
                     className={`w-full aspect-square object-cover rounded-md ${marcada ? '' : 'opacity-40'}`}
                     alt=""
                   />
-                  <span className="block text-[10px] text-slate-500 mt-0.5">Foto {i + 1}</span>
+                  <span className="block text-[10px] text-slate-500 mt-0.5">{etiquetaFoto(f.descripcion)}</span>
                 </label>
               );
             })}

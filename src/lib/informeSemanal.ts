@@ -334,11 +334,36 @@ export interface BloqueInforme {
   responsable: string;
   hora_inicio: string | null;
   hora_fin: string | null;
+  /** Resumen de la actividad en UN párrafo (como el reporte "Súper compacto"): se arma solo con lo
+   * que reportó el operador y la analista lo puede corregir si algo está mal escrito o no tiene
+   * coherencia. Reemplaza a la lista de viñetas editables de antes. */
+  resumen: string;
+  /** Se mantiene para compatibilidad con días ya aprobados antes del cambio a `resumen`, y como
+   * respaldo para rearmar `resumen` si viene vacío (ver `normalizarBloque`). Ya no se edita. */
   vinetas: string[];
   /** ids de las visitas que aportaron viñetas, en el mismo orden que `vinetas` — permite
    * reconstruir el snapshot al aprobar sin tener que re-consultar la base. */
   vinetas_visita_ids: string[];
   fotos_seleccionadas: string[];
+}
+
+/** Une las viñetas (cada campo que el operador reportó) en un solo párrafo, cada una como una
+ * oración terminada en punto — es el texto automático que arranca en el editor del Informe Semanal
+ * y que la analista puede retocar. */
+export function resumenDesdeVinetas(vinetas: string[]): string {
+  return vinetas
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .map((v) => (/[.!?…:]$/.test(v) ? v : `${v}.`))
+    .join(' ');
+}
+
+/** Días aprobados ANTES de este cambio guardaron `contenido` con `vinetas` pero sin `resumen`. Al
+ * leerlos (para editar o para el PDF) se les arma el `resumen` a partir de las viñetas para no
+ * perder nada. Un bloque que ya trae `resumen` se devuelve igual. */
+export function normalizarBloque(b: BloqueInforme): BloqueInforme {
+  if (typeof b.resumen === 'string') return b;
+  return { ...b, resumen: resumenDesdeVinetas(b.vinetas ?? []) };
 }
 
 /** Arma los bloques (uno por cada par estación+operador con al menos una visita) de un día,
@@ -376,6 +401,7 @@ export function construirBloquesDia(visitasDia: VisitaCruda[]): BloqueInforme[] 
       responsable: primera.operador_nombre,
       hora_inicio: formatHora(ordenadas[0].fecha_hora_llegada),
       hora_fin: conSalida.length ? formatHora(conSalida[conSalida.length - 1].fecha_hora_salida!) : null,
+      resumen: resumenDesdeVinetas(vinetas),
       vinetas,
       vinetas_visita_ids: vinetaVisitaIds,
       fotos_seleccionadas: todasLasFotos.map((f) => f.id),
@@ -482,7 +508,7 @@ export interface BloqueInformePdf {
   responsable: string;
   hora_inicio: string | null;
   hora_fin: string | null;
-  vinetas: string[];
+  resumen: string;
   fotos: { url: string; descripcion: string | null }[];
 }
 
@@ -495,7 +521,8 @@ export async function incrustarFotosBloques(
 ): Promise<BloqueInformePdf[]> {
   const porId = new Map(fotosDisponibles.map((f) => [f.id, f]));
   return Promise.all(
-    bloques.map(async (b) => {
+    bloques.map(async (bloqueCrudo) => {
+      const b = normalizarBloque(bloqueCrudo);
       const seleccionadas = b.fotos_seleccionadas.map((id) => porId.get(id)).filter((f): f is FotoInforme => !!f);
       const fotos = await Promise.all(
         seleccionadas.map(async (f) => ({ url: (await urlAImagenBase64(f.url)) ?? f.url, descripcion: f.descripcion })),
@@ -506,7 +533,7 @@ export async function incrustarFotosBloques(
         responsable: b.responsable,
         hora_inicio: b.hora_inicio,
         hora_fin: b.hora_fin,
-        vinetas: b.vinetas,
+        resumen: b.resumen,
         fotos,
       };
     }),

@@ -2,7 +2,7 @@ import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { MEMBRETE_FONDO_BASE64 } from '../assets/membrete/membreteData';
-import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, separarLabelVineta, type BloqueInformePdf } from './informeSemanal';
+import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, type BloqueInformePdf } from './informeSemanal';
 import { codigoYNombre } from './agruparEstaciones';
 
 (pdfMake as any).vfs = (pdfFonts as any).vfs;
@@ -114,7 +114,7 @@ const ETIQUETA_FOTO: Record<string, string> = {
   patios_maniobras: 'Patios de maniobras',
 };
 
-function etiquetaFoto(etiqueta?: string | null): string {
+export function etiquetaFoto(etiqueta?: string | null): string {
   if (!etiqueta) return 'Foto general';
   const bomba = etiqueta.match(/^bomba_(\d+)$/);
   if (bomba) return `Bomba ${bomba[1]}`;
@@ -1390,21 +1390,24 @@ export interface DatosInformeSemanal {
   diasTabla: string[];
 }
 
+// Grilla de fotos del Informe Semanal: 5 por fila con el nombre del capítulo debajo (Bomba 1,
+// Válvula de aire, …) — mismo formato que el reporte "Súper compacto" (pedido del usuario,
+// 2026-09-05; antes eran 4 por fila con la leyenda "Foto N: bomba_1", que no se entendía).
 function filasFotosInforme(fotos: { url: string; descripcion: string | null }[]): any[] {
   if (!fotos.length) return [];
   const filas: any[] = [];
-  for (let i = 0; i < fotos.length; i += 4) {
-    const grupo = fotos.slice(i, i + 4);
+  for (let i = 0; i < fotos.length; i += 5) {
+    const grupo = fotos.slice(i, i + 5);
     filas.push({
-      columns: grupo.map((f, j) => ({
+      columns: grupo.map((f) => ({
         width: '*',
         // Ver comentario igual en bloqueFotos: sin esto, pdfmake puede dejar la foto en una hoja
         // y su leyenda en la siguiente cuando la fila cae en el límite de página.
         unbreakable: true,
         stack: [
-          { image: f.url, fit: [110, 110], alignment: 'center' },
+          { image: f.url, fit: [90, 90], alignment: 'center' },
           {
-            text: `Foto ${i + j + 1}${f.descripcion ? `: ${f.descripcion}` : ''}`,
+            text: etiquetaFoto(f.descripcion),
             fontSize: 6.5,
             alignment: 'center',
             color: '#5B7184',
@@ -1426,13 +1429,9 @@ function bloqueOperadorInforme(b: BloqueInformePdf): any[] {
     { text: `${b.estacion_nombre}${ubicacion}${horario}`, bold: true, fontSize: 10, margin: [0, 5, 0, 1] },
     { text: [{ text: 'Responsable: ', bold: true }, b.responsable], fontSize: 9, margin: [0, 0, 0, 3] },
     {
-      ul: b.vinetas.length
-        ? b.vinetas.map((v) => {
-            const { label, resto } = separarLabelVineta(v);
-            return label ? { text: [{ text: `${label}: `, bold: true }, resto] } : v;
-          })
-        : ['Sin observaciones registradas.'],
+      text: b.resumen?.trim() || 'Sin observaciones registradas.',
       fontSize: 9,
+      alignment: 'justify',
       margin: [0, 0, 0, 2],
     },
     ...filasFotosInforme(b.fotos),
