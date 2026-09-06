@@ -107,24 +107,26 @@ export async function estamparFechaEnFoto(
     // La cámara en vivo (CamaraFoto.tsx, getUserMedia + canvas) no lleva EXIF, y el cuadro que
     // entrega NO siempre tiene la forma que uno esperaría del celular físico en ese momento — en
     // algunos casos sale acostado (más ancho que alto) aunque el celular esté en vertical; en
-    // otros (Android, reportado 2026-09-06 DESPUÉS de que el acelerómetro ya detectaba bien la
-    // orientación física — ver el indicador en vivo de CamaraFoto.tsx) el navegador entrega el
-    // cuadro YA "corregido" a la forma vertical de siempre (como si el celular no se hubiera
-    // movido de su orientación normal) aunque el celular esté de costado a propósito — así, una
-    // foto horizontal de verdad terminaba guardada de costado en el reporte. Los 2 casos son el
-    // mismo problema en espejo: el cuadro que entrega la cámara no calza con la orientación física
-    // real, y hay que rotarlo para que sí calce. Solo debe aplicarse a fotos que vinieron de la
-    // cámara en vivo (`corregirVolteoCamaraViva=true`, ver `crearFotoLocal`): las fotos de la
-    // cámara nativa (`<input capture>`) SÍ traen EXIF y ya quedaron bien orientadas por
+    // otros (Android, reportado 2026-09-06) el cuadro sale directamente CUADRADO (1600×1600,
+    // confirmado con el indicador de tamaño en vivo de CamaraFoto.tsx — el pedido de la cámara usa
+    // `width/height: {ideal: 1600}` para las 2, así que en algunos celulares el navegador recorta
+    // un cuadrado del sensor en vez de mandar un cuadro rectangular) — y ese cuadrado sale SIEMPRE
+    // igual, sin importar cómo esté el celular. El contenido adentro sí queda girado si el celular
+    // estaba de costado (el recorte cuadrado sigue al sensor, no a la orientación física), pero
+    // como el cuadro en sí no cambia de FORMA, comparar ancho contra alto (como se hacía hasta la
+    // 7ma vuelta) nunca detectaba nada acá. Solo debe aplicarse a fotos que vinieron de la cámara
+    // en vivo (`corregirVolteoCamaraViva=true`, ver `crearFotoLocal`): las fotos de la cámara
+    // nativa (`<input capture>`) SÍ traen EXIF y ya quedaron bien orientadas por
     // `imageOrientation: 'from-image'` de arriba.
-    // `dispositivoEnHorizontal` (leído en CamaraFoto.tsx al momento del disparo, del acelerómetro)
-    // dice qué forma FINAL debería tener la foto (más ancha que alta si es horizontal, más alta
-    // que ancha si no). `necesitaRotar` compara esa forma deseada contra la forma real del cuadro
-    // que entregó la cámara — si no calzan (en cualquiera de los 2 sentidos), hay que rotar 90°.
-    // Fotos cuadradas (ancho === alto) no entran acá: rotar no cambiaría nada de forma y podría
-    // rotar mal el contenido de una foto que ya estaba bien.
+    // `dispositivoEnHorizontal` (leído en CamaraFoto.tsx al momento del disparo, del acelerómetro):
+    // - Cuadro CUADRADO: se rota SIEMPRE que el celular esté de costado (el contenido queda girado
+    //   ahí sin importar el ancho/alto del cuadro — confirmado 2026-09-06 con capturas reales
+    //   mostrando 1600×1600 tanto vertical como de costado).
+    // - Cuadro NO cuadrado (otros celulares): se compara la forma deseada contra la forma real del
+    //   cuadro (criterio de la 7ma vuelta) — si no calzan, se rota.
     const necesitaRotar =
-      corregirVolteoCamaraViva && anchoFoto !== altoFoto && anchoFoto > altoFoto !== dispositivoEnHorizontal;
+      corregirVolteoCamaraViva &&
+      (anchoFoto === altoFoto ? dispositivoEnHorizontal : anchoFoto > altoFoto !== dispositivoEnHorizontal);
     const canvas = document.createElement('canvas');
     canvas.width = necesitaRotar ? altoFoto : anchoFoto;
     canvas.height = necesitaRotar ? anchoFoto : altoFoto;
