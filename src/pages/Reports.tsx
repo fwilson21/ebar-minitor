@@ -91,6 +91,10 @@ export function Reports() {
   // Resúmenes retocados a mano, por `claveGrupoDiario`. Los grupos sin entrada usan el auto.
   const [resumenesEditados, setResumenesEditados] = useState<Record<string, string>>({});
   const mostrarRevisionResumenes = esEscritorio && formato === 'super_compacto';
+  // Resaltados rojos que guían a dónde ir: "Revisar resúmenes" cuando se intentó generar sin
+  // revisar; "Generar PDF" cuando se tocó "Descargar y compartir" sin haber generado nada.
+  const [resaltarRevisar, setResaltarRevisar] = useState(false);
+  const [resaltarGenerar, setResaltarGenerar] = useState(false);
   // Caso puntual "no se pudo compartir directo, quedó descargado" — su propio aviso destacado con
   // la instrucción de qué hacer, no un renglón de texto plano más.
   const [avisoCompartirManual, setAvisoCompartirManual] = useState(false);
@@ -326,6 +330,8 @@ export function Reports() {
   useEffect(() => {
     setGruposPreview([]);
     setResumenesEditados({});
+    setResaltarRevisar(false);
+    setResaltarGenerar(false);
   }, [tipo, formato, fechaInicio, fechaFin, operadorId, estacionIds, diasEspecificos, soloFinSemanaFeriado, diasElegidos]);
 
   async function abrirRevisionResumenes() {
@@ -339,6 +345,7 @@ export function Reports() {
         return;
       }
       setGruposPreview(agruparVisitasPorDia(visitas));
+      setResaltarRevisar(false); // ya fue: se saca el resaltado rojo
     } catch (err: any) {
       setMensaje(`No se pudieron traer los resúmenes: ${err.message ?? err}`);
     } finally {
@@ -388,6 +395,7 @@ export function Reports() {
 
   async function manejarGenerar(opciones?: { omitirRevision?: boolean }) {
     setMensaje(null);
+    setResaltarGenerar(false); // tocar "Generar PDF" borra su propio resaltado rojo
     // Estas validaciones van ANTES de setGenerando(true)/tocar la base — son puramente de
     // formulario, no hace falta el ir-y-venir de "Generando…" para mostrarlas.
     if (diasEspecificos && diasElegidos.size === 0) {
@@ -399,11 +407,15 @@ export function Reports() {
       return;
     }
     // En computadora, Súper compacto: hay que revisar los resúmenes antes de generar (o usar
-    // "Generar sin revisar", que pide doble confirmación).
+    // "Generar sin revisar", que pide doble confirmación). Se resalta en rojo el botón "Revisar
+    // resúmenes" y se hace scroll hasta él.
     if (mostrarRevisionResumenes && gruposPreview.length === 0 && !opciones?.omitirRevision) {
-      setMensaje('Revisá los resúmenes de las visitas abajo antes de generar (o usá "Generar sin revisar").');
+      setMensaje('Revisá los resúmenes de las visitas antes de generar (o usá "Generar sin revisar").');
+      setResaltarRevisar(true);
+      document.getElementById('boton-revisar-resumenes')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
+    setResaltarRevisar(false);
     setGenerando(true);
     setAvisoCompartirManual(false);
     try {
@@ -464,7 +476,8 @@ export function Reports() {
 
   async function manejarCompartir() {
     if (!ultimoPdf) {
-      setMensaje('Primero genera el reporte en PDF.');
+      setMensaje('Primero generá el reporte en PDF.');
+      setResaltarGenerar(true); // se pinta rojo "Generar PDF" para mandar ahí primero
       return;
     }
     setEnviando(true);
@@ -602,6 +615,7 @@ export function Reports() {
             grupos={gruposPreview}
             cargando={cargandoPreview}
             resumenesEditados={resumenesEditados}
+            resaltar={resaltarRevisar}
             onAbrir={abrirRevisionResumenes}
             onCambiarResumen={(clave, texto) => setResumenesEditados((prev) => ({ ...prev, [clave]: texto }))}
             onCorregirGlobal={corregirPalabraEnReporte}
@@ -615,7 +629,11 @@ export function Reports() {
               <button
                 onClick={() => manejarGenerar()}
                 disabled={generando || (tipo === 'individual_estacion' && (!estacionIds || estacionIds.size === 0))}
-                className="boton-primario"
+                className={
+                  resaltarGenerar
+                    ? 'rounded-lg px-4 py-2.5 text-sm font-bold bg-gauge-danger text-white'
+                    : 'boton-primario'
+                }
               >
                 {generando ? 'Generando…' : '📄 Generar PDF'}
               </button>
@@ -654,6 +672,7 @@ function BloqueRevisionResumenes({
   grupos,
   cargando,
   resumenesEditados,
+  resaltar,
   onAbrir,
   onCambiarResumen,
   onCorregirGlobal,
@@ -662,6 +681,8 @@ function BloqueRevisionResumenes({
   grupos: GrupoDiario[];
   cargando: boolean;
   resumenesEditados: Record<string, string>;
+  /** Rojo + negrita cuando el usuario intentó generar sin revisar — para mandarlo acá primero. */
+  resaltar: boolean;
   onAbrir: () => void;
   onCambiarResumen: (clave: string, texto: string) => void;
   onCorregirGlobal: (palabra: string, correccion: string) => void;
@@ -677,7 +698,17 @@ function BloqueRevisionResumenes({
             El texto de cada visita se arma solo con lo que reportó el operador — revisalo, corregilo y girá las fotos si hace falta.
           </p>
         </div>
-        <button type="button" onClick={onAbrir} disabled={cargando} className="boton-secundario text-sm py-2 px-3">
+        <button
+          id="boton-revisar-resumenes"
+          type="button"
+          onClick={onAbrir}
+          disabled={cargando}
+          className={
+            resaltar && sinRevisar
+              ? 'rounded-lg px-3 py-2 text-sm font-bold bg-gauge-danger text-white'
+              : 'boton-secundario text-sm py-2 px-3'
+          }
+        >
           {cargando ? 'Cargando…' : sinRevisar ? '📝 Revisar resúmenes' : '🔄 Recargar'}
         </button>
       </div>
@@ -912,9 +943,9 @@ function BloqueFiltrosGenerar({
         </label>
         <input
           type="text"
-          // Sombreado en rojo mientras el casillero esté marcado (no solo cuando está vacío) —
-          // pedido explícito del usuario, para que salte a la vista que ese campo ahora importa.
-          className={`campo ${soloFinSemanaFeriado ? 'border-gauge-danger bg-gauge-danger/10' : ''}`}
+          // Rojo solo mientras es obligatorio y sigue vacío; apenas se escribe algo, vuelve a
+          // blanco (pedido del usuario, 2026-09-06).
+          className={`campo ${soloFinSemanaFeriado && !numeroInforme.trim() ? 'border-gauge-danger bg-gauge-danger/10' : ''}`}
           placeholder="ej. 020-GADMFO-DAPA-2026"
           value={numeroInforme}
           onChange={(e) => setNumeroInforme(e.target.value)}
