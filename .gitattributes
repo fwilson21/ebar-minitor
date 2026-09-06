@@ -1,0 +1,4 @@
+# Diccionario Hunspell del corrector de ortografía (src/lib/correctorEs.ts): se deja con saltos
+# de línea LF siempre, en cualquier sistema — nspell parte por \n y un \r suelto le mete ruido.
+*.aff text eol=lf
+*.dic text eol=lf
