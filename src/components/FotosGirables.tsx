@@ -96,18 +96,21 @@ export function FotosGirables({
       if (!grupos.has(label)) grupos.set(label, []);
       grupos.get(label)!.push(f);
     }
-    // UNA sola grilla con TODAS las fotos, en el orden en que vienen — sin cortar por capítulo
-    // (pedido explícito del usuario, 2026-09-06: "4 fotos en la misma línea sin importar su grupo
-    // ni capítulo"). Cuando una foto pertenece a un capítulo con más de una candidata, su pie
-    // cambia por el botón de elegir cuál usar — eso ya alcanza para distinguirla, no hace falta
-    // separarla en su propio bloque.
+    // UNA sola grilla con TODAS las fotos (sin cortar en bloques separados por capítulo — pedido
+    // explícito del usuario, 2026-09-06: "4 fotos en la misma línea sin importar su grupo ni
+    // capítulo"), pero ORDENADAS para que las de un mismo capítulo queden una al lado de la otra
+    // (antes iban en el orden en que llegaban de la base, mezclando capítulos sin ningún criterio
+    // — el usuario no podía comparar 2 candidatas del mismo capítulo por estar lejos en la
+    // grilla). El orden de los capítulos entre sí es el de su primera aparición; `grupos` ya
+    // los tiene juntos (Map, agrupados al armarlo más arriba), alcanza con aplanarlo.
+    const fotosOrdenadas = [...grupos.values()].flat();
     return (
       <div className="mt-2">
         <p className="text-xs text-slate-500 mb-1">
           Fotos (↺ ↻ giran la foto y dejan la fecha horizontal) — el informe lleva 1 foto por capítulo; si hay más de una, elegí cuál usar.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {fotos.map((f) => {
+          {fotosOrdenadas.map((f) => {
             const label = etiquetaFoto(f.etiqueta);
             const lista = grupos.get(label)!;
             const hayVarias = lista.length > 1;
