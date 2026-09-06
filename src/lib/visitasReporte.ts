@@ -10,7 +10,7 @@ export const SELECT_VISITA_REPORTE = `id, fecha_hora_llegada, fecha_hora_salida,
    tuberia_400_valvulas_aire, tuberia_400_uniones_elastomericas,
    tuberia_600_valvulas_aire, tuberia_600_uniones_elastomericas,
    estaciones_ebar ( nombre, codigo, zona, tipo, direccion, parroquia ),
-   usuarios ( nombre_completo, firma_url ),
+   usuarios ( nombre_completo, firma_url, cargo ),
    registros_bombas ( numero_bomba, estado, voltaje, amperaje, horas_operacion_acumuladas, observaciones, voltaje_fuera_rango ),
    fotos ( url_publica, drive_file_id, descripcion )`;
 
@@ -24,6 +24,7 @@ export function mapearVisitaFila(v: any): VisitaParaReporte {
     fecha_hora_llegada: v.fecha_hora_llegada,
     fecha_hora_salida: v.fecha_hora_salida,
     operador_nombre: v.usuarios?.nombre_completo ?? '-',
+    operador_cargo: v.usuarios?.cargo ?? null,
     firma_url: v.usuarios?.firma_url ?? null,
     estado_estacion: v.estado_estacion,
     nivel_tanque: v.nivel_tanque,

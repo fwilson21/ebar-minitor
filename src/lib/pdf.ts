@@ -23,6 +23,9 @@ export interface VisitaParaReporte {
   fecha_hora_llegada: string;
   fecha_hora_salida?: string | null;
   operador_nombre: string;
+  /** Cargo del operador (tabla usuarios) — usado solo por el formato "Súper compacto" para
+   * rotular la firma; los otros formatos rotulan "Firma del operador" a secas. */
+  operador_cargo?: string | null;
   estado_estacion: string;
   nivel_tanque: string;
   cerramiento_observaciones?: string | null;
@@ -620,6 +623,264 @@ function bloqueVisitaCompacto(v: VisitaParaReporte): any[] {
   ].filter(Boolean);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Formato "Súper compacto" (selector "Formato" en Reports.tsx) — pedido del usuario (2026-09-05).
+// A diferencia de Extenso/Compacto (un bloque por visita), acá va UN bloque por
+// operador + EBAR + DÍA: si el mismo operador visitó la misma EBAR dos veces el
+// mismo día, se arma un solo resumen que menciona las dos horas. Cada bloque:
+// encabezado corto + UN párrafo de resumen (≤6 líneas: datos objetivos de la visita
+// + las observaciones que escribió el operador) + grilla de fotos (una
+// representativa por capítulo, 5 por fila) + firma del operador.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface GrupoDiario {
+  estacion_nombre: string;
+  estacion_codigo: string;
+  estacion_ubicacion?: string | null;
+  estacion_tipo?: string;
+  zona: string;
+  operador_nombre: string;
+  operador_cargo?: string | null;
+  firma_url?: string | null;
+  /** YYYY-MM-DD */
+  fecha: string;
+  /** Ordenadas por hora de llegada. */
+  visitas: VisitaParaReporte[];
+}
+
+/** Agrupa las visitas por (operador + estación + día). Los grupos salen ordenados por fecha,
+ * luego código de estación, luego operador; las visitas dentro de cada grupo, por hora. */
+function agruparVisitasPorDia(visitas: VisitaParaReporte[]): GrupoDiario[] {
+  const mapa = new Map<string, GrupoDiario>();
+  for (const v of visitas) {
+    const fecha = v.fecha_hora_llegada.slice(0, 10);
+    const clave = `${v.operador_nombre}|${v.estacion_codigo}|${fecha}`;
+    let g = mapa.get(clave);
+    if (!g) {
+      g = {
+        estacion_nombre: v.estacion_nombre,
+        estacion_codigo: v.estacion_codigo,
+        estacion_ubicacion: v.estacion_ubicacion,
+        estacion_tipo: v.estacion_tipo,
+        zona: v.zona,
+        operador_nombre: v.operador_nombre,
+        operador_cargo: v.operador_cargo,
+        firma_url: v.firma_url,
+        fecha,
+        visitas: [],
+      };
+      mapa.set(clave, g);
+    }
+    g.visitas.push(v);
+  }
+  const grupos = [...mapa.values()];
+  for (const g of grupos) g.visitas.sort((a, b) => a.fecha_hora_llegada.localeCompare(b.fecha_hora_llegada));
+  grupos.sort(
+    (a, b) =>
+      a.fecha.localeCompare(b.fecha) ||
+      a.estacion_codigo.localeCompare(b.estacion_codigo) ||
+      a.operador_nombre.localeCompare(b.operador_nombre),
+  );
+  return grupos;
+}
+
+function formatHora(fechaISO: string): string {
+  const d = new Date(fechaISO);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Corta un texto largo en el último espacio antes de `max` y le agrega "…" — para que el párrafo
+ * de resumen no pase de ~6 líneas por más larga que sea la observación del operador. */
+function recortarTexto(texto: string, max: number): string {
+  if (texto.length <= max) return texto;
+  const cortado = texto.slice(0, max);
+  const ultimoEspacio = cortado.lastIndexOf(' ');
+  return `${(ultimoEspacio > max * 0.6 ? cortado.slice(0, ultimoEspacio) : cortado).trimEnd()}…`;
+}
+
+const EQUIPOS_RESUMEN: Array<{ clave: keyof VisitaParaReporte; label: string }> = [
+  { clave: 'lineas_impulsion', label: 'líneas de impulsión' },
+  { clave: 'guias_izado', label: 'guías de izado' },
+  { clave: 'valvulas_compuerta', label: 'válvulas de compuerta' },
+  { clave: 'valvulas_check', label: 'válvulas check' },
+  { clave: 'valvula_aire', label: 'válvula de aire' },
+  { clave: 'camara_rejilla', label: 'cámara de llegada (rejilla)' },
+  { clave: 'camara_valvula_compuerta', label: 'cámara de llegada (compuerta)' },
+  { clave: 'tablero_distribucion', label: 'tablero de distribución' },
+  { clave: 'variador', label: 'variadores de frecuencia' },
+  { clave: 'descarga_emergencia', label: 'descarga de emergencia' },
+];
+
+const TUBERIAS_RESUMEN: Array<{ clave: keyof VisitaParaReporte; label: string }> = [
+  { clave: 'tuberia_400_valvulas_aire', label: '400mm válvulas de aire' },
+  { clave: 'tuberia_400_uniones_elastomericas', label: '400mm uniones elastoméricas' },
+  { clave: 'tuberia_600_valvulas_aire', label: '600mm válvulas de aire' },
+  { clave: 'tuberia_600_uniones_elastomericas', label: '600mm uniones elastoméricas' },
+];
+
+/** Peor estado observado para un equipo a lo largo de las visitas del día ('en_falla' pesa más
+ * que 'requiere_mantenimiento'; 'operativo' no es novedad). null = sin novedad. */
+function peorEstadoEquipo(visitas: VisitaParaReporte[], clave: keyof VisitaParaReporte): string | null {
+  let peor: string | null = null;
+  for (const v of visitas) {
+    const estado = (v[clave] as EquipoReporte | null | undefined)?.estado;
+    if (estado === 'en_falla') return 'en_falla';
+    if (estado === 'requiere_mantenimiento') peor = 'requiere_mantenimiento';
+  }
+  return peor;
+}
+
+/** El párrafo de resumen (≤6 líneas): datos objetivos de la(s) visita(s) del día + las
+ * observaciones que escribió el operador, todo seguido en un solo párrafo. */
+function parrafoResumenDia(g: GrupoDiario): string {
+  const partes: string[] = [];
+  const { visitas } = g;
+  const horas = visitas.map((v) => formatHora(v.fecha_hora_llegada));
+  const esLC = g.estacion_tipo === 'linea_conduccion';
+
+  if (visitas.length === 1) {
+    const v = visitas[0];
+    partes.push(`Visita a las ${horas[0]}${v.fecha_hora_salida ? `, salida ${formatHora(v.fecha_hora_salida)}` : ''}.`);
+  } else {
+    partes.push(`${visitas.length} visitas en el día (${horas.join(', ')}).`);
+  }
+
+  const ultima = visitas[visitas.length - 1];
+  partes.push(`Estado general: ${(ESTADO_LABEL[ultima.estado_estacion] ?? ultima.estado_estacion).toLowerCase()}.`);
+  if (!esLC && ultima.nivel_tanque) partes.push(`Nivel de tanque ${ultima.nivel_tanque}.`);
+
+  if (!esLC) {
+    const porEstado = new Map<string, Set<number>>();
+    const voltajeFuera = new Set<number>();
+    for (const v of visitas)
+      for (const b of v.bombas) {
+        if (!porEstado.has(b.estado)) porEstado.set(b.estado, new Set());
+        porEstado.get(b.estado)!.add(b.numero_bomba);
+        if (b.voltaje_fuera_rango) voltajeFuera.add(b.numero_bomba);
+      }
+    const trozos = [...porEstado.entries()].map(([estado, nums]) => {
+      const lista = [...nums].sort((a, b) => a - b).join(', ');
+      return `${nums.size > 1 ? 'bombas' : 'bomba'} ${lista} ${(ESTADO_BOMBA_LABEL[estado] ?? estado).toLowerCase()}`;
+    });
+    if (trozos.length) partes.push(`Bombas: ${trozos.join('; ')}.`);
+    if (voltajeFuera.size)
+      partes.push(
+        `Voltaje fuera de rango en ${voltajeFuera.size > 1 ? 'las bombas' : 'la bomba'} ${[...voltajeFuera]
+          .sort((a, b) => a - b)
+          .join(', ')}.`,
+      );
+  }
+
+  const catalogo = esLC ? TUBERIAS_RESUMEN : EQUIPOS_RESUMEN;
+  const novedades = catalogo
+    .map(({ clave, label }) => {
+      const peor = peorEstadoEquipo(visitas, clave);
+      return peor ? `${label} (${(ESTADO_EQUIPO_LABEL[peor] ?? peor).toLowerCase()})` : null;
+    })
+    .filter(Boolean);
+  partes.push(novedades.length ? `Novedades en equipos: ${novedades.join(', ')}.` : 'Equipos sin novedad.');
+
+  const obs: string[] = [];
+  for (const v of visitas)
+    for (const t of [
+      v.cerramiento_observaciones,
+      v.jardineras_observaciones,
+      v.patios_maniobras_observaciones,
+      v.observaciones_generales,
+    ])
+      if (t && t.trim()) obs.push(t.trim());
+  if (obs.length) partes.push(`Observaciones: ${obs.join(' / ')}`);
+
+  return recortarTexto(partes.join(' '), 560);
+}
+
+/** Categorías del día combinando todas las visitas del grupo: para cada capítulo, la primera
+ * versión que tenga alguna foto — así la grilla lleva una foto representativa por capítulo aunque
+ * la foto se haya tomado en la primera visita del día y el resto de datos vengan de la segunda. */
+function categoriasGrupo(g: GrupoDiario): CategoriaVisita[] {
+  const esLC = g.estacion_tipo === 'linea_conduccion';
+  const todas = g.visitas.flatMap((v) =>
+    esLC ? categoriasTuberias(v) : [...categoriasBombas(v), ...categoriasEquipos(v), ...categoriasExtra(v)],
+  );
+  const porLabel = new Map<string, CategoriaVisita>();
+  for (const c of todas) {
+    const prev = porLabel.get(c.label);
+    if (!prev || (prev.fotos.length === 0 && c.fotos.length > 0)) porLabel.set(c.label, c);
+  }
+  return [...porLabel.values()];
+}
+
+function bloqueGrupoSuperCompacto(g: GrupoDiario): any[] {
+  const titulo = codigoYNombre({ codigo: g.estacion_codigo, nombre: g.estacion_nombre });
+  return [
+    {
+      text: g.estacion_ubicacion ? `${titulo} — ${g.estacion_ubicacion}` : titulo,
+      style: 'estacionTitulo',
+      margin: [0, 4, 0, 3],
+    },
+    {
+      text: [
+        { text: 'Operador: ', bold: true },
+        g.operador_nombre,
+        { text: '     Fecha: ', bold: true },
+        formatFechaDMY(g.fecha),
+        { text: `     Zona: ${g.zona}`, color: '#5B7184' },
+      ],
+      fontSize: 8,
+      margin: [0, 0, 0, 4],
+    },
+    { text: parrafoResumenDia(g), fontSize: 9, alignment: 'justify', margin: [0, 0, 0, 4] },
+    ...filasFotosCompacto(fotosRepresentativas(categoriasGrupo(g))),
+  ];
+}
+
+/** Firma del formato "Súper compacto": la raya mide lo mismo que la línea de texto más ancha
+ * (nombre o cargo del operador) — se logra con una tabla de ancho 'auto' (se encoge exacto al
+ * contenido) cuyo único borde visible es el de arriba. Va separada ~60pt de lo que quede encima
+ * (la última fila de fotos) — pedido explícito del usuario (2026-09-05). Solo la raya+nombre+cargo
+ * van `unbreakable` (una firma nunca debe partirse entre hojas); la foto de firma y el aire de
+ * arriba sí pueden quedar al pie de una hoja si el bloque no entra entero. */
+function bloqueFirmaSuperCompacto(nombre: string, cargo: string | null | undefined, firmaUrl?: string | null): any {
+  const rotulo = (cargo && cargo.trim() ? cargo : 'OPERADOR').toUpperCase();
+  const rayaYNombre = {
+    unbreakable: true,
+    table: {
+      widths: ['auto'],
+      body: [
+        [
+          {
+            margin: [0, 3, 0, 0],
+            stack: [
+              { text: nombre, bold: true, fontSize: 9 },
+              { text: rotulo, fontSize: 7, color: '#5B7184' },
+            ],
+          },
+        ],
+      ],
+    },
+    layout: {
+      hLineWidth: (i: number) => (i === 0 ? 0.75 : 0),
+      vLineWidth: () => 0,
+      hLineColor: () => '#16303F',
+      paddingLeft: () => 0,
+      paddingRight: () => 0,
+      paddingTop: () => 0,
+      paddingBottom: () => 0,
+    },
+  };
+  return {
+    // ~60pt (≈2 cm) de aire respecto a la última fila de fotos — pedido del usuario. Es un margen,
+    // así que colapsa solo si justo acá cae un salto de página.
+    margin: [0, 60, 0, 0],
+    stack: [
+      firmaUrl
+        ? { image: firmaUrl, fit: [150, 48], alignment: 'left', margin: [0, 0, 0, 2] }
+        : { text: ' ', margin: [0, 0, 0, 14] },
+      rayaYNombre,
+    ],
+  };
+}
+
 // Compartido por los 3 generadores que firman (generarReporteVisitas, generarReporteTurnos,
 // generarInformeSemanal) — pedido explícito del usuario (2026-09-03, con captura señalando el
 // espacio vacío a la derecha de la firma): el bloque de firma era angosto (200pt de ancho fijo,
@@ -669,7 +930,7 @@ export function generarReporteVisitas(
   visitas: VisitaParaReporte[],
   memo: DatosEncabezadoMemo,
   noVisitadas: FilaNoVisitadaReporte[] = [],
-  formato: 'extenso' | 'compacto' = 'extenso',
+  formato: 'extenso' | 'compacto' | 'super_compacto' = 'extenso',
 ): Promise<Blob> {
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
@@ -717,11 +978,19 @@ export function generarReporteVisitas(
       // cualquier firma — pedido del usuario, que antes la veía después de la firma del último
       // operador porque se agregaba al final del documento.
       bloqueNoVisitadas(noVisitadas),
-      ...visitas.flatMap((v) => [
-        ...(formato === 'compacto' ? bloqueVisitaCompacto(v) : bloqueVisita(v)),
-        bloqueFirma(v.operador_nombre, 'Firma del operador', v.firma_url),
-        { text: '', pageBreak: visitas.indexOf(v) < visitas.length - 1 ? 'after' : undefined },
-      ]),
+      // Súper compacto: un bloque por operador+EBAR+día (no por visita), sin salto de página
+      // entre bloques — la idea es que quepan varios por hoja; solo una raya fina los separa.
+      ...(formato === 'super_compacto'
+        ? agruparVisitasPorDia(visitas).flatMap((g, idx, arr) => [
+            ...bloqueGrupoSuperCompacto(g),
+            bloqueFirmaSuperCompacto(g.operador_nombre, g.operador_cargo, g.firma_url),
+            idx < arr.length - 1 ? lineaCierreVisita() : null,
+          ])
+        : visitas.flatMap((v) => [
+            ...(formato === 'compacto' ? bloqueVisitaCompacto(v) : bloqueVisita(v)),
+            bloqueFirma(v.operador_nombre, 'Firma del operador', v.firma_url),
+            { text: '', pageBreak: visitas.indexOf(v) < visitas.length - 1 ? 'after' : undefined },
+          ])),
     ].filter(Boolean),
     styles: ESTILOS,
     // 8 en vez de 9 — junto con los márgenes achicados de arriba, menos hojas al imprimir.

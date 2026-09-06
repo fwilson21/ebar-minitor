@@ -14,6 +14,7 @@ import { esDiaNoRegular } from '../lib/feriadosEcuador';
 import { SelectorDiasReporte } from '../components/SelectorDiasReporte';
 
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
+type FormatoReporte = 'extenso' | 'compacto' | 'super_compacto';
 
 export function Reports() {
   const { usuario } = useAuth();
@@ -25,8 +26,9 @@ export function Reports() {
   // una sola grilla de fotos al final (una representativa por categoría, 5 por fila) — pedido del
   // usuario para un reporte de menos hojas. El encabezado/datos de la visita no cambian entre los 2.
   // Arranca en "compacto" (pedido del usuario, 2026-09-03) — Extenso sigue disponible, solo deja
-  // de ser la opción por defecto.
-  const [formato, setFormato] = useState<'extenso' | 'compacto'>('compacto');
+  // de ser la opción por defecto. "super_compacto" (2026-09-05): un párrafo de resumen por
+  // operador/EBAR/día + una foto por capítulo (5 por fila) — ver generarReporteVisitas.
+  const [formato, setFormato] = useState<FormatoReporte>('compacto');
   // Filtro adicional, independiente del tipo (se ofrece en los 3): deja solo las visitas de fin de
   // semana o feriado dentro del rango elegido — automático, sin calendario (para eso está
   // diasEspecificos más abajo). Si en ese rango no hubo ninguna, no sale nada en el reporte (mismo
@@ -543,8 +545,8 @@ function BloqueFiltrosGenerar({
 }: {
   tipo: TipoReporte;
   onCambiarTipo: (t: TipoReporte) => void;
-  formato: 'extenso' | 'compacto';
-  setFormato: (f: 'extenso' | 'compacto') => void;
+  formato: FormatoReporte;
+  setFormato: (f: FormatoReporte) => void;
   soloFinSemanaFeriado: boolean;
   setSoloFinSemanaFeriado: (v: boolean) => void;
   diasEspecificos: boolean;
@@ -593,7 +595,8 @@ function BloqueFiltrosGenerar({
 
       <div>
         <label className="etiqueta">Formato</label>
-        <select className="campo" value={formato} onChange={(e) => setFormato(e.target.value as 'extenso' | 'compacto')}>
+        <select className="campo" value={formato} onChange={(e) => setFormato(e.target.value as FormatoReporte)}>
+          <option value="super_compacto">Súper compacto — un párrafo de resumen por operador/día + 1 foto por capítulo (5 por fila)</option>
           <option value="compacto">Compacto — actividades en lista, 1 foto por categoría (5 por fila)</option>
           <option value="extenso">Extenso — una caja con todas las fotos por categoría</option>
         </select>
