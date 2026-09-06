@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { FotoLocal } from '../lib/types';
-import { crearFotoLocal, eliminarFotoGuardada, rotarFotoLocal } from '../lib/fotos';
+import { crearFotoLocal, eliminarFotoGuardada, rotarFotoLocal, type SentidoGiro } from '../lib/fotos';
 import { useObjectUrls } from '../lib/useObjectUrls';
 import { FotoLightbox } from './FotoLightbox';
 import { CamaraFoto } from './CamaraFoto';
@@ -40,8 +40,8 @@ export function PhotoCapture({ fotos, onChange, max = Infinity }: Props) {
     onChange([...fotosRef.current, nueva]);
   }
 
-  async function rotar(foto: FotoLocal) {
-    const girada = await rotarFotoLocal(foto);
+  async function rotar(foto: FotoLocal, sentido: SentidoGiro) {
+    const girada = await rotarFotoLocal(foto, sentido);
     onChange(fotosRef.current.map((f) => (f.id === foto.id ? girada : f)));
   }
 
@@ -110,14 +110,24 @@ export function PhotoCapture({ fotos, onChange, max = Infinity }: Props) {
                   ✕
                 </button>
                 {foto.blob && (
-                  <button
-                    type="button"
-                    onClick={() => rotar(foto)}
-                    className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/60 text-white text-sm flex items-center justify-center"
-                    aria-label="Girar foto 90 grados"
-                  >
-                    ↻
-                  </button>
+                  <div className="absolute top-1 left-1 flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => rotar(foto, 'izquierda')}
+                      className="w-6 h-6 rounded-full bg-black/60 text-white text-sm flex items-center justify-center"
+                      aria-label="Girar foto a la izquierda"
+                    >
+                      ↺
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => rotar(foto, 'derecha')}
+                      className="w-6 h-6 rounded-full bg-black/60 text-white text-sm flex items-center justify-center"
+                      aria-label="Girar foto a la derecha"
+                    >
+                      ↻
+                    </button>
+                  </div>
                 )}
                 {foto.estado_subida === 'pendiente' && (
                   <span className="absolute bottom-1 left-1 text-[10px] bg-gauge-warn/90 text-white px-1.5 rounded">

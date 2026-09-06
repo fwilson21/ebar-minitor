@@ -135,26 +135,92 @@ export async function estamparFechaEnFoto(
     // El sello se dibuja DESPUÉS de rotar, ya sobre el lienzo vertical final (canvas.width/height
     // de acá abajo son los de la foto ya derecha) — así el texto queda horizontal y pegado a la
     // esquina inferior derecha tal como se ve la foto, no de lado.
-    const fontSize = Math.max(16, Math.round(canvas.width * 0.035));
     ctx.setTransform(1, 0, 0, 1, 0, 0); // deshace la rotación de arriba: el sello no debe rotar
-    ctx.font = `bold ${fontSize}px sans-serif`;
-    const paddingX = fontSize * 0.6;
-    const paddingY = fontSize * 0.5;
-    const anchoTexto = ctx.measureText(texto).width;
-    const cajaAncho = anchoTexto + paddingX * 2;
-    const cajaAlto = fontSize + paddingY * 2;
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx.fillRect(canvas.width - cajaAncho, canvas.height - cajaAlto, cajaAncho, cajaAlto);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(texto, canvas.width - cajaAncho + paddingX, canvas.height - cajaAlto / 2);
+    dibujarSelloFecha(ctx, canvas.width, canvas.height, texto);
 
     return await new Promise<Blob>((resolve) => {
       canvas.toBlob((b) => resolve(b ?? archivo), 'image/jpeg', 0.9);
     });
   } catch {
     return archivo;
+  }
+}
+
+/** Dibuja el recuadro con la fecha/hora en la esquina inferior derecha del lienzo, horizontal.
+ * Extraído de `estamparFechaEnFoto` para reusarlo también al girar una foto (redibujar el sello
+ * derecho, ver `rotarBlobConSello`). */
+function dibujarSelloFecha(ctx: CanvasRenderingContext2D, ancho: number, alto: number, texto: string) {
+  const fontSize = Math.max(16, Math.round(ancho * 0.035));
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const paddingX = fontSize * 0.6;
+  const paddingY = fontSize * 0.5;
+  const cajaAncho = ctx.measureText(texto).width + paddingX * 2;
+  const cajaAlto = fontSize + paddingY * 2;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.fillRect(ancho - cajaAncho, alto - cajaAlto, cajaAncho, cajaAlto);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(texto, ancho - cajaAncho + paddingX, alto - cajaAlto / 2);
+}
+
+export type SentidoGiro = 'izquierda' | 'derecha';
+
+/**
+ * Gira una foto 90° a la izquierda o a la derecha y VUELVE A DIBUJAR el sello de fecha/hora
+ * horizontal en la esquina — con la misma fecha/hora de la foto (`tomadaEn`). El sello anterior
+ * quedó "quemado" en los píxeles, así que antes de girar se tapa con un recuadro opaco un poco
+ * más grande; si se gira varias veces la misma foto pueden quedar varios recuadros (el usuario
+ * lo aceptó explícitamente). Sirve tanto para fotos nuevas (blob local) como para las ya subidas
+ * (se baja la imagen primero, ver `rotarFotoSubida`).
+ */
+export async function rotarBlobConSello(blob: Blob, tomadaEn: string, sentido: SentidoGiro): Promise<Blob> {
+  try {
+    const texto = formatearFechaHoraFoto(tomadaEn);
+    const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    const w = bitmap.width;
+    const h = bitmap.height;
+
+    // Paso 1: dibujar la foto en su orientación actual y tapar el sello viejo (esquina inferior
+    // derecha) con un recuadro opaco algo más grande que el sello.
+    const previo = document.createElement('canvas');
+    previo.width = w;
+    previo.height = h;
+    const pctx = previo.getContext('2d');
+    if (!pctx) return blob;
+    pctx.drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+    const fontSize = Math.max(16, Math.round(w * 0.035));
+    pctx.font = `bold ${fontSize}px sans-serif`;
+    const tapaAncho = Math.min(w, pctx.measureText(texto).width + fontSize * 2.6);
+    const tapaAlto = fontSize * 2.6;
+    pctx.fillStyle = '#111111';
+    pctx.fillRect(w - tapaAncho, h - tapaAlto, tapaAncho, tapaAlto);
+
+    // Paso 2: girar a un lienzo nuevo con los lados intercambiados.
+    const final = document.createElement('canvas');
+    final.width = h;
+    final.height = w;
+    const fctx = final.getContext('2d');
+    if (!fctx) return blob;
+    if (sentido === 'derecha') {
+      fctx.translate(final.width, 0);
+      fctx.rotate(Math.PI / 2);
+    } else {
+      fctx.translate(0, final.height);
+      fctx.rotate(-Math.PI / 2);
+    }
+    fctx.drawImage(previo, 0, 0);
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Paso 3: sello nuevo, horizontal, en la esquina inferior derecha del lienzo ya girado.
+    dibujarSelloFecha(fctx, final.width, final.height, texto);
+
+    return await new Promise<Blob>((resolve) => {
+      final.toBlob((b) => resolve(b ?? blob), 'image/jpeg', 0.9);
+    });
+  } catch {
+    return blob;
   }
 }
 
@@ -177,43 +243,28 @@ export async function crearFotoLocal(archivo: Blob, fechaISO: string, dispositiv
 }
 
 /**
- * Gira una foto 90° en sentido horario. Lo usa el botón ↻ de las miniaturas para enderezar a mano
- * una foto que quedó de lado — la corrección automática de `estamparFechaEnFoto` no es infalible:
- * depende de saber la orientación FÍSICA del celular, y si el operador tiene el giro de pantalla
- * bloqueado el navegador igual reporta "vertical" (por eso hay respaldo manual). El sello de fecha
- * ya está "quemado" en los píxeles, así que gira junto con la imagen: queda en otro borde y de
- * costado pero se sigue leyendo — es una herramienta de rescate, no el camino normal.
+ * Copia de `foto` girada 90° (izquierda/derecha) con un `id` NUEVO — el id nuevo hace que
+ * `useObjectUrls` suelte la URL vieja y arme una con el blob girado (si no, la miniatura seguiría
+ * mostrando la foto sin girar). Solo aplica a fotos que todavía tienen `blob` (no subidas);
+ * las ya subidas van por `rotarFotoSubida`.
  */
-export async function rotarBlob90(blob: Blob): Promise<Blob> {
-  try {
-    const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.height;
-    canvas.height = bitmap.width;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return blob;
-    // 90° horario: el origen se lleva al borde derecho del lienzo nuevo y se rota +90°.
-    ctx.translate(canvas.width, 0);
-    ctx.rotate(Math.PI / 2);
-    ctx.drawImage(bitmap, 0, 0);
-    bitmap.close?.();
-    return await new Promise<Blob>((resolve) => {
-      canvas.toBlob((b) => resolve(b ?? blob), 'image/jpeg', 0.9);
-    });
-  } catch {
-    return blob;
-  }
+export async function rotarFotoLocal(foto: FotoLocal, sentido: SentidoGiro): Promise<FotoLocal> {
+  if (!foto.blob) return foto;
+  return { ...foto, id: generarUUID(), blob: await rotarBlobConSello(foto.blob, foto.tomada_en, sentido) };
 }
 
-/**
- * Copia de `foto` con la imagen girada 90° horario y un `id` NUEVO — el id nuevo hace que
- * `useObjectUrls` suelte la URL vieja y arme una con el blob girado (si no, la miniatura seguiría
- * mostrando la foto sin girar). Solo aplica a fotos que todavía tienen `blob` (no subidas); las ya
- * subidas se devuelven igual.
- */
-export async function rotarFotoLocal(foto: FotoLocal): Promise<FotoLocal> {
-  if (!foto.blob) return foto;
-  return { ...foto, id: generarUUID(), blob: await rotarBlob90(foto.blob) };
+/** Baja una foto ya subida a Drive, la gira (redibujando el sello con la misma fecha/hora) y
+ * devuelve el blob girado listo para volver a subir. Requiere conexión. `null` si no se pudo
+ * bajar la imagen. */
+export async function rotarFotoSubida(url: string, tomadaEn: string, sentido: SentidoGiro): Promise<Blob | null> {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return await rotarBlobConSello(blob, tomadaEn, sentido);
+  } catch {
+    return null;
+  }
 }
 
 /**
