@@ -272,6 +272,33 @@ export function InformeSemanal() {
     );
   }
 
+  // Corrige una palabra mal escrita en el resumen de TODOS los bloques del informe que se estén
+  // editando (días sin aprobar + días aprobados abiertos con "✏️ Editar") — pedido del usuario:
+  // aceptar una corrección la aplica en todo el informe, no solo en el bloque donde se vio.
+  // Los días aprobados y cerrados no se tocan (habría que abrirlos primero).
+  function corregirPalabraEnInforme(palabra: string, correccion: string) {
+    const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    const corregir = (texto: string) =>
+      reemplazarPalabra(reemplazarPalabra(texto, palabra, correccion), cap(palabra), cap(correccion));
+    setEdicion((prev) => {
+      const siguiente = { ...prev };
+      for (const fecha of dias) {
+        if (diasDB[fecha]?.aprobado && !forzarEdicion.has(fecha)) continue; // aprobado y cerrado
+        const actuales =
+          prev[fecha] ??
+          (forzarEdicion.has(fecha) && diasDB[fecha]
+            ? contenidoParaEditar(diasDB[fecha].contenido)
+            : construirBloquesDia(visitasDelDia(fecha)));
+        const corregidos = actuales.map((b) => {
+          const nuevoResumen = corregir(b.resumen);
+          return nuevoResumen === b.resumen ? b : { ...b, resumen: nuevoResumen };
+        });
+        if (prev[fecha] || corregidos.some((b, i) => b !== actuales[i])) siguiente[fecha] = corregidos;
+      }
+      return siguiente;
+    });
+  }
+
   async function aprobarDia(fecha: string) {
     if (!informe) return;
     const vDia = visitasDelDia(fecha);
@@ -635,6 +662,7 @@ export function InformeSemanal() {
               estaForzado={forzarEdicion.has(fecha)}
               onCambiarBloques={(nuevos) => actualizarBloques(fecha, nuevos)}
               onFotoGirada={reemplazarUrlFoto}
+              onCorregirGlobal={corregirPalabraEnInforme}
               onAprobar={() => aprobarDia(fecha)}
               onActualizarConCambio={() => actualizarDiaConCambio(fecha)}
               onMantener={() => mantenerDiaComoEsta(fecha)}
@@ -980,6 +1008,7 @@ function DiaCard({
   estaForzado,
   onCambiarBloques,
   onFotoGirada,
+  onCorregirGlobal,
   onAprobar,
   onActualizarConCambio,
   onMantener,
@@ -994,6 +1023,7 @@ function DiaCard({
   estaForzado: boolean;
   onCambiarBloques: (nuevos: BloqueInforme[]) => void;
   onFotoGirada: (fotoId: string, nuevaUrl: string) => void;
+  onCorregirGlobal: (palabra: string, correccion: string) => void;
   onAprobar: () => void;
   onActualizarConCambio: () => void;
   onMantener: () => void;
@@ -1104,6 +1134,7 @@ function DiaCard({
                 .filter((v) => v.estacion_id === b.estacion_id && v.operador_id === b.operador_id)
                 .flatMap((v) => v.fotos)}
               onFotoGirada={onFotoGirada}
+              onCorregirGlobal={onCorregirGlobal}
               onCambiar={(nuevo) => {
                 const copia = [...bloques];
                 copia[i] = nuevo;
@@ -1139,11 +1170,13 @@ function BloqueEditor({
   bloque,
   fotosDisponibles,
   onFotoGirada,
+  onCorregirGlobal,
   onCambiar,
 }: {
   bloque: BloqueInforme;
   fotosDisponibles: { id: string; visita_id: string; url: string; descripcion: string | null; tomada_en: string }[];
   onFotoGirada: (fotoId: string, nuevaUrl: string) => void;
+  onCorregirGlobal: (palabra: string, correccion: string) => void;
   onCambiar: (nuevo: BloqueInforme) => void;
 }) {
   const [girando, setGirando] = useState<Set<string>>(new Set());
@@ -1204,9 +1237,7 @@ function BloqueEditor({
           onChange={(e) => onCambiar({ ...bloque, resumen: e.target.value })}
           placeholder="Sin novedades reportadas por el operador."
         />
-        {esEscritorio && (
-          <PanelCorrectorEs texto={bloque.resumen} onCorregir={(t) => onCambiar({ ...bloque, resumen: t })} />
-        )}
+        {esEscritorio && <PanelCorrectorEs texto={bloque.resumen} onAplicar={onCorregirGlobal} />}
       </div>
 
       {fotosDisponibles.length > 0 && (
@@ -1278,11 +1309,21 @@ function BloqueEditor({
  * desaparece y abajo quedan solo las fotos. El clic derecho "tipo Word" sobre el propio cuadro de
  * texto lo da el navegador (`spellCheck lang="es"`).
  */
-function PanelCorrectorEs({ texto, onCorregir }: { texto: string; onCorregir: (t: string) => void }) {
+function PanelCorrectorEs({
+  texto,
+  onAplicar,
+}: {
+  texto: string;
+  /** Aplica la corrección en TODO el informe (todos los días y bloques que se estén editando),
+   * no solo en este bloque — pedido del usuario. */
+  onAplicar: (palabra: string, correccion: string) => void;
+}) {
   const correctorRef = useRef<Nspell | null>(null);
   const [cargado, setCargado] = useState(false);
   const [fallo, setFallo] = useState(false);
   const [errores, setErrores] = useState<PalabraMal[]>([]);
+  // Lo que la analista escribió a mano para cada palabra (arranca con la sugerencia automática).
+  const [correcciones, setCorrecciones] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let vivo = true;
@@ -1306,34 +1347,63 @@ function PanelCorrectorEs({ texto, onCorregir }: { texto: string; onCorregir: (t
 
   if (fallo || !cargado || errores.length === 0) return null;
 
+  const aplicar = (palabra: string, valor: string) => {
+    const limpio = valor.trim();
+    if (!limpio || limpio === palabra) return;
+    onAplicar(palabra, limpio);
+    setErrores((prev) => prev.filter((e) => e.palabra !== palabra)); // saca la fila de una (el reanálisis la confirma)
+    setCorrecciones((prev) => {
+      const { [palabra]: _, ...resto } = prev;
+      return resto;
+    });
+  };
+
   return (
     <div className="mt-2 rounded-lg border border-gauge-warn/40 bg-gauge-warn/5 p-3">
       <p className="text-xs font-semibold text-slate-700 mb-2">
-        Palabras que podrían estar mal escritas — toca la corrección para aplicarla:
+        Palabras que podrían estar mal escritas — corrige la de al lado (o escríbela a mano) y aplica; se cambia en todo el informe:
       </p>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-1.5 text-sm">
-        {errores.map((e) => (
-          <div key={e.palabra} className="flex items-center gap-1.5 min-w-0">
-            <span
-              className="text-slate-800 shrink-0"
-              style={{ textDecoration: 'underline wavy #dc2626', textUnderlineOffset: '3px' }}
-            >
-              {e.palabra}
-            </span>
-            {e.sugerencia ? (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-x-3 gap-y-2 text-sm">
+        {errores.map((e) => {
+          const valor = correcciones[e.palabra] ?? e.sugerencia ?? '';
+          return (
+            <div key={e.palabra} className="flex items-center gap-1 min-w-0">
+              <span
+                className="text-slate-800 shrink-0 max-w-[9ch] truncate"
+                style={{ textDecoration: 'underline wavy #dc2626', textUnderlineOffset: '3px' }}
+                title={e.palabra}
+              >
+                {e.palabra}
+              </span>
+              <span className="text-slate-400 shrink-0">→</span>
+              <input
+                type="text"
+                value={valor}
+                spellCheck
+                lang="es"
+                onChange={(ev) => setCorrecciones((prev) => ({ ...prev, [e.palabra]: ev.target.value }))}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    aplicar(e.palabra, valor);
+                  }
+                }}
+                className="min-w-0 flex-1 rounded border border-panel-600 bg-panel-900 px-1.5 py-1 text-sm"
+                placeholder="escribe la correcta"
+              />
               <button
                 type="button"
-                onClick={() => onCorregir(reemplazarPalabra(texto, e.palabra, e.sugerencia!))}
-                className="text-sky-700 hover:underline truncate"
-                title={`Reemplazar por "${e.sugerencia}"`}
+                onClick={() => aplicar(e.palabra, valor)}
+                disabled={!valor.trim() || valor.trim() === e.palabra}
+                className="shrink-0 text-gauge-ok disabled:opacity-30"
+                title="Aplicar en todo el informe"
+                aria-label="Aplicar corrección"
               >
-                → {e.sugerencia}
+                ✓
               </button>
-            ) : (
-              <span className="text-slate-400 text-xs">sin sugerencia</span>
-            )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
