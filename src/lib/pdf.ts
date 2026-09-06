@@ -871,16 +871,36 @@ function bloqueGrupoSuperCompacto(g: GrupoDiario, resumenEditado?: string): any[
   ];
 }
 
+/** Espacio vertical fijo que NO se recorta ni siquiera si cae justo al inicio de una hoja nueva —
+ * a diferencia de un `margin` (que sí se recorta ahí, ver bloqueFirmaSuperCompacto), esto es
+ * contenido real (pdfmake calcula el alto de un `canvas` a partir de la geometría del rectángulo,
+ * sin importar si algo se llega a pintar) cuya altura pdfmake respeta siempre. `fillOpacity: 0` es
+ * a propósito y NO se puede sacar: sin `color`, pdfmake dibuja el rectángulo con un TRAZO NEGRO por
+ * defecto (`vector.lineColor || 'black'` en su código), y `lineWidth: 0` no lo evita (usa
+ * `vector.lineWidth || 1`, y 0 es falsy en JS) — comprobado generando un PDF de prueba real y
+ * viendo el operador `S` (stroke) en el resultado antes de este ajuste. Dándole un `color` con
+ * opacidad 0 entra por la rama de relleno (invisible) en vez de la de trazo. `alturaPt` en puntos
+ * (72pt = 1 pulgada = 2.54cm). */
+function espacioFijo(alturaPt: number): any {
+  return { canvas: [{ type: 'rect', x: 0, y: 0, w: 1, h: alturaPt, color: '#ffffff', fillOpacity: 0 }] };
+}
+
 /** Firma del formato "Súper compacto": la raya mide lo mismo que la línea de texto más ancha
  * (nombre o cargo del operador) — se logra con una tabla de ancho 'auto' (se encoge exacto al
- * contenido) cuyo único borde visible es el de arriba. Va separada ~60pt de lo que quede encima
- * (la última fila de fotos) — pedido explícito del usuario (2026-09-05). Solo la raya+nombre+cargo
- * van `unbreakable` (una firma nunca debe partirse entre hojas); la foto de firma y el aire de
- * arriba sí pueden quedar al pie de una hoja si el bloque no entra entero. */
+ * contenido) cuyo único borde visible es el de arriba. Va separada 4cm (≈113pt) de lo que quede
+ * encima (la última fila de fotos, o el margen superior de la hoja si le toca sola al inicio de
+ * una hoja nueva) — antes era un `margin`, que pdfmake recorta a 0 justo cuando el bloque cae al
+ * inicio de una hoja (nada arriba de qué separarse), y la firma quedaba pegada al membrete
+ * institucional. Con `espacioFijo` (contenido real, no margen) el espacio nunca se recorta —
+ * pedido del usuario, con captura mostrando el caso pegado (2026-09-06). TODO el bloque (espacio +
+ * foto de firma + raya/nombre/cargo) va `unbreakable`: si no fuera así, pdfmake podía separar el
+ * espacio (que sí entraba al pie de la hoja anterior) de la firma en sí (que no entraba y pasaba
+ * sola a la hoja siguiente) — mismo problema de origen, solo que el espacio quedaba "gastado" en
+ * la hoja de atrás en vez de viajar junto con la firma. Comprobado generando un PDF de prueba e
+ * inspeccionando las coordenadas reales del texto en el resultado. */
 function bloqueFirmaSuperCompacto(nombre: string, cargo: string | null | undefined, firmaUrl?: string | null): any {
   const rotulo = (cargo && cargo.trim() ? cargo : 'OPERADOR').toUpperCase();
   const rayaYNombre = {
-    unbreakable: true,
     table: {
       widths: ['auto'],
       body: [
@@ -906,10 +926,9 @@ function bloqueFirmaSuperCompacto(nombre: string, cargo: string | null | undefin
     },
   };
   return {
-    // ~60pt (≈2 cm) de aire respecto a lo que quede encima — pedido del usuario. Es un margen,
-    // así que colapsa solo si justo acá cae un salto de página.
-    margin: [0, 60, 0, 0],
+    unbreakable: true,
     stack: [
+      espacioFijo(113), // 4cm
       firmaUrl
         ? { image: firmaUrl, fit: [150, 48], alignment: 'left', margin: [0, 0, 0, 2] }
         : { text: ' ', margin: [0, 0, 0, 14] },
