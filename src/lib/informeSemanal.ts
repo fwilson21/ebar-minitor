@@ -514,7 +514,9 @@ export interface BloqueInformePdf {
 
 /** Convierte las fotos marcadas (`fotos_seleccionadas`, solo ids) de cada bloque a data URI
  * base64 — igual que `incrustarFotosVisitas` en fotos.ts hace para los otros reportes, pdfmake no
- * puede usar directo una URL remota de Drive como `image`. */
+ * puede usar directo una URL remota de Drive como `image`. Solo entra UNA foto por capítulo
+ * (`descripcion`) — la primera marcada de cada uno — igual que el reporte "Súper compacto" (pedido
+ * del usuario, 2026-09-05). */
 export async function incrustarFotosBloques(
   bloques: BloqueInforme[],
   fotosDisponibles: FotoInforme[],
@@ -524,8 +526,16 @@ export async function incrustarFotosBloques(
     bloques.map(async (bloqueCrudo) => {
       const b = normalizarBloque(bloqueCrudo);
       const seleccionadas = b.fotos_seleccionadas.map((id) => porId.get(id)).filter((f): f is FotoInforme => !!f);
+      const unaPorCapitulo: FotoInforme[] = [];
+      const capitulosVistos = new Set<string>();
+      for (const f of seleccionadas) {
+        const capitulo = f.descripcion ?? '__general__';
+        if (capitulosVistos.has(capitulo)) continue;
+        capitulosVistos.add(capitulo);
+        unaPorCapitulo.push(f);
+      }
       const fotos = await Promise.all(
-        seleccionadas.map(async (f) => ({ url: (await urlAImagenBase64(f.url)) ?? f.url, descripcion: f.descripcion })),
+        unaPorCapitulo.map(async (f) => ({ url: (await urlAImagenBase64(f.url)) ?? f.url, descripcion: f.descripcion })),
       );
       return {
         estacion_nombre: b.estacion_nombre,
