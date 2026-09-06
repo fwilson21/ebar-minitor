@@ -293,9 +293,18 @@ export function CamaraFoto({
           un interruptor para avisar a mano. El tamaño del cuadro (ancho x alto) es diagnóstico
           temporal (ver comentario en tamanoVideo) — se puede sacar una vez resuelto el bug. */}
       {listo && !sensorSinRespuesta && orientacionVisible && (
-        <div className="absolute top-3 left-3 bg-black/60 text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5">
-          <span className={orientacionVisible === 'horizontal' ? 'inline-block rotate-90' : 'inline-block'}>📱</span>
-          {orientacionVisible === 'horizontal' ? 'De costado' : 'Vertical'}
+        // Con el celular de costado, el badge ENTERO gira 90° con él — así el texto se lee derecho
+        // desde el punto de vista de la persona que tiene el celular horizontal (la pantalla no
+        // gira sola porque el giro automático está bloqueado; sin esto, el texto quedaba de
+        // costado justo cuando más hace falta leerlo). Mismo aviso de siempre: si gira para el
+        // lado que no es, cambiar el signo (rotate-90 → -rotate-90) es todo lo que hay que tocar.
+        <div
+          className={`absolute top-3 left-3 bg-black/60 text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5 transition-transform ${
+            orientacionVisible === 'horizontal' ? 'rotate-90' : ''
+          }`}
+        >
+          <span className="inline-block">📱</span>
+          {orientacionVisible === 'horizontal' ? 'Horizontal' : 'Vertical'}
           {tamanoVideo && <span className="opacity-70">· {tamanoVideo.w}×{tamanoVideo.h}</span>}
         </div>
       )}
