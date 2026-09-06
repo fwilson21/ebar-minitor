@@ -68,37 +68,78 @@ export function CamaraFoto({
   // operador tiene el giro de pantalla bloqueado (lo habitual) aunque tenga el celular de costado.
   // Ese era el motivo de que las fotos tomadas a propósito en horizontal salieran giradas de lado en
   // el informe. `null` mientras no haya lectura clara (sin sensor, permiso denegado en iPhone, o
-  // celular casi plano) → en `disparar` se cae al chequeo viejo de matchMedia.
+  // celular casi plano) → en `disparar` se cae al chequeo viejo de matchMedia (o al interruptor
+  // manual de abajo, si el sensor nunca respondió).
   const orientacionFisicaRef = useRef<'vertical' | 'horizontal' | null>(null);
+  // Reportado de nuevo (2026-09-06, Android) después del arreglo del acelerómetro — así que ahora
+  // se ve EN PANTALLA en vivo, para poder confirmar de un vistazo si el sensor está leyendo bien
+  // en vez de esperar a revisar el informe ya generado.
+  const [orientacionVisible, setOrientacionVisible] = useState<'vertical' | 'horizontal' | null>(null);
+  // Últimas clasificaciones (ignorando lecturas ambiguas cerca de los 45°) — se exige que se
+  // repita para confirmar, en vez de fiarse de una sola lectura suelta que puede ser ruido del
+  // sensor (más robusto que la zona muerta de una sola muestra que usaba la vuelta anterior).
+  const historialRef = useRef<Array<'vertical' | 'horizontal'>>([]);
+  // Si a los 1.5s de haber arrancado el sensor todavía no llegó NINGUNA lectura (permiso denegado
+  // sin avisar, navegador sin soporte, o el celular no lo expone) el acelerómetro no sirve en este
+  // dispositivo — se muestra un interruptor manual de respaldo en vez de quedarse con el chequeo
+  // viejo de matchMedia (que es el que originó el bug).
+  const [sensorSinRespuesta, setSensorSinRespuesta] = useState(false);
+  const [horizontalManual, setHorizontalManual] = useState(false);
 
   useEffect(() => {
     let activo = true;
+    let huboLectura = false;
     function alMover(e: DeviceMotionEvent) {
       const g = e.accelerationIncludingGravity;
       if (!g || g.x == null || g.y == null) return;
+      huboLectura = true;
       // Si la gravedad tira más sobre el eje X del dispositivo que sobre el Y, está acostado de
-      // lado. Zona muerta de 2 m/s² para no oscilar cuando está cerca de los 45°.
+      // lado. Se ignoran lecturas ambiguas (diferencia chica, cerca de los 45°) en vez de forzar
+      // una clasificación con poco margen.
       const diff = Math.abs(g.x) - Math.abs(g.y);
-      if (diff > 2) orientacionFisicaRef.current = 'horizontal';
-      else if (diff < -2) orientacionFisicaRef.current = 'vertical';
+      if (Math.abs(diff) < 1.5) return;
+      const clasificacion = diff > 0 ? 'horizontal' : 'vertical';
+      const historial = historialRef.current;
+      historial.push(clasificacion);
+      if (historial.length > 5) historial.shift();
+      // Recién se da por buena una orientación cuando la mayoría de las últimas lecturas coincide
+      // — filtra el ruido de una lectura suelta rara (temblor de la mano, golpe al tocar la
+      // pantalla) sin depender de acertarle a un único número de zona muerta.
+      const horizontales = historial.filter((h) => h === 'horizontal').length;
+      const nueva: 'vertical' | 'horizontal' = horizontales > historial.length / 2 ? 'horizontal' : 'vertical';
+      if (orientacionFisicaRef.current !== nueva) {
+        orientacionFisicaRef.current = nueva;
+        setOrientacionVisible(nueva);
+      }
     }
     async function iniciar() {
+      if (!('DeviceMotionEvent' in window)) {
+        setSensorSinRespuesta(true);
+        return;
+      }
       try {
         const DME = window.DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
         if (DME && typeof DME.requestPermission === 'function') {
           // iPhone: pide permiso una vez (el `setCamaraAbierta(true)` que montó este componente
           // fue un toque del operador, así que todavía estamos dentro de la ventana de gesto).
           const permiso = await DME.requestPermission();
-          if (permiso !== 'granted' || !activo) return;
+          if (permiso !== 'granted' || !activo) {
+            if (activo) setSensorSinRespuesta(true);
+            return;
+          }
         }
         window.addEventListener('devicemotion', alMover);
       } catch {
-        // sin sensor / permiso denegado → se usa el fallback de matchMedia en `disparar`
+        if (activo) setSensorSinRespuesta(true);
       }
     }
     iniciar();
+    const timeoutSinRespuesta = window.setTimeout(() => {
+      if (activo && !huboLectura) setSensorSinRespuesta(true);
+    }, 1500);
     return () => {
       activo = false;
+      window.clearTimeout(timeoutSinRespuesta);
       window.removeEventListener('devicemotion', alMover);
     };
   }, []);
@@ -149,12 +190,16 @@ export function CamaraFoto({
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
     // Se lee justo acá, en el instante del disparo — no en `onCapturar` ni más tarde, porque el
-    // operador puede seguir moviendo el celular después de tocar el botón. La lectura del
-    // acelerómetro (si la hay) manda; si no, el fallback de siempre.
+    // operador puede seguir moviendo el celular después de tocar el botón. Orden: acelerómetro (si
+    // dio una lectura confiable) → interruptor manual (solo aparece si el sensor nunca respondió,
+    // ver `sensorSinRespuesta`) → el fallback viejo de matchMedia como última red, por si el
+    // interruptor manual todavía no se pintó en pantalla en este primer instante.
     const dispositivoEnHorizontal =
       orientacionFisicaRef.current !== null
         ? orientacionFisicaRef.current === 'horizontal'
-        : window.matchMedia('(orientation: landscape)').matches;
+        : sensorSinRespuesta
+          ? horizontalManual
+          : window.matchMedia('(orientation: landscape)').matches;
     canvas.toBlob(
       (blob) => {
         if (blob) {
@@ -210,6 +255,28 @@ export function CamaraFoto({
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
       <video ref={videoRef} autoPlay playsInline muted className="flex-1 w-full h-full object-cover" />
       {!listo && <p className="absolute inset-0 flex items-center justify-center text-white text-sm">Abriendo cámara…</p>}
+
+      {/* Orientación detectada por el sensor, EN VIVO — para poder confirmar de un vistazo (girando
+          el celular) que la app se está dando cuenta bien, en vez de enterarse recién al ver el
+          informe generado. Si el sensor nunca respondió (ver sensorSinRespuesta), en su lugar sale
+          un interruptor para avisar a mano. */}
+      {listo && !sensorSinRespuesta && orientacionVisible && (
+        <div className="absolute top-3 left-3 bg-black/60 text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5">
+          <span className={orientacionVisible === 'horizontal' ? 'inline-block rotate-90' : 'inline-block'}>📱</span>
+          {orientacionVisible === 'horizontal' ? 'De costado' : 'Vertical'}
+        </div>
+      )}
+      {listo && sensorSinRespuesta && (
+        <button
+          type="button"
+          onClick={() => setHorizontalManual((v) => !v)}
+          className={`absolute top-3 left-3 text-xs px-3 py-1.5 rounded-full font-medium ${
+            horizontalManual ? 'bg-gauge-warn text-white' : 'bg-black/60 text-white'
+          }`}
+        >
+          {horizontalManual ? '📱 Foto de costado ✓' : 'Toco de costado esta foto'}
+        </button>
+      )}
 
       {/* Aviso de éxito pegado al disparo — ver comentario en el estado `aviso` de arriba. */}
       <div
