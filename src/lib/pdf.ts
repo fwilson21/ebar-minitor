@@ -787,16 +787,27 @@ function parrafoResumenDia(g: GrupoDiario): string {
     .filter(Boolean);
   partes.push(novedades.length ? `Novedades en equipos: ${novedades.join(', ')}.` : 'Equipos sin novedad.');
 
+  // Cada observación va con su etiqueta ("Jardineras: …") — sin eso, en el párrafo quedaban
+  // varias frases sueltas ("Se requiere mantenimiento / Se requiere mantenimiento") sin decir de
+  // qué hablaban (reportado por el usuario). Se sacan duplicados por si el mismo texto se repite
+  // entre varias visitas del día.
   const obs: string[] = [];
-  for (const v of visitas)
-    for (const t of [
-      v.cerramiento_observaciones,
-      v.jardineras_observaciones,
-      v.patios_maniobras_observaciones,
-      v.observaciones_generales,
-    ])
-      if (t && t.trim()) obs.push(t.trim());
-  if (obs.length) partes.push(`Observaciones: ${obs.join(' / ')}`);
+  for (const v of visitas) {
+    const etiquetadas: Array<[string, string | null | undefined]> = [
+      ['Cerramiento', v.cerramiento_observaciones],
+      ['Jardineras', v.jardineras_observaciones],
+      ['Patios de maniobras', v.patios_maniobras_observaciones],
+      ['Observaciones generales', v.observaciones_generales],
+    ];
+    for (const [etiqueta, texto] of etiquetadas) {
+      const limpio = texto?.trim();
+      if (limpio) {
+        const frase = `${etiqueta}: ${limpio}`;
+        if (!obs.includes(frase)) obs.push(frase);
+      }
+    }
+  }
+  if (obs.length) partes.push(obs.join('. ') + '.');
 
   return recortarTexto(partes.join(' '), 560);
 }
