@@ -251,7 +251,19 @@ export function VisitForm() {
 
   async function pausarYSalir(salir: () => void) {
     if (!estacionId) return;
-    await guardarBorradorVisita(claveBorrador(), estacionId, visitaId, construirBorrador());
+    try {
+      await guardarBorradorVisita(claveBorrador(), estacionId, visitaId, construirBorrador());
+    } catch (err) {
+      // Si el borrador no se pudo guardar (ej. el navegador no deja meter las fotos en su
+      // almacenamiento local), NO dejamos al operador atrapado en la pantalla — pero le avisamos
+      // que el avance no quedó guardado antes de salir.
+      console.error('No se pudo guardar el borrador de la visita:', err);
+      const salirIgual = window.confirm(
+        'No se pudo guardar el avance para continuar luego (problema del almacenamiento del navegador). ' +
+          'Si sales ahora se pierde lo registrado en esta visita. ¿Salir de todas formas?',
+      );
+      if (!salirIgual) return;
+    }
     guardadoRef.current = true; // ya quedó a salvo como borrador: no mostrar el aviso de "salir sin guardar"
     salir();
   }
@@ -351,7 +363,14 @@ export function VisitForm() {
   }, [hayCambios, snapshotActual]);
 
   const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) => hayCambios && currentLocation.pathname !== nextLocation.pathname
+    ({ currentLocation, nextLocation }) =>
+      // `guardadoRef.current` se lee ACÁ (fresco), no a través de `hayCambios`: cuando "Pausar y
+      // continuar luego" / "Descartar" / guardar setean el ref y navegan en el mismo tick, React
+      // todavía no volvió a registrar esta función en el router — así que sin esta lectura fresca
+      // el bloqueador seguía usando el `hayCambios` del render anterior (true) y abría el modal
+      // "datos sin guardar" igual. Ese era el motivo de que "Pausar" no pareciera funcionar (y de
+      // que el operador terminara tocando "Descartar" en el modal y perdiera la visita).
+      !guardadoRef.current && hayCambios && currentLocation.pathname !== nextLocation.pathname,
   );
 
   useEffect(() => {
