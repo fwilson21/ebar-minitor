@@ -312,15 +312,22 @@ function parrafoTieneConEstado(label: string, equipo?: EquipoReporte | null): an
   return parrafoEquipo(label, equipo);
 }
 
+// Margen izquierdo más ancho que el derecho: deja aire para perforar la hoja y archivarla sin
+// perder texto — pedido del usuario (2026-09-05). Arriba/abajo 100pt para no encimar el logo ni
+// el pie del membrete institucional (fondo de página). Compartido por los 3 reportes verticales
+// (visitas, turnos, informe semanal); la planilla de horas extras es apaisada y lleva los suyos.
+const MARGENES_PAGINA: [number, number, number, number] = [60, 100, 40, 100];
+// Ancho útil del contenido en A4 vertical (595.28pt − margen izq − margen der) — contra esto se
+// calculan todas las líneas y cajas de ancho fijo del reporte.
+const ANCHO_CONTENIDO = 595.28 - MARGENES_PAGINA[0] - MARGENES_PAGINA[2];
+const GAP_CAJAS = 8;
+
 /** Línea horizontal fina para separar visualmente cada día en el Informe Semanal (bloqueDiaInforme).
  * En el Reporte consolidado ya no se usa: ahí cada categoría queda en su propia caja con borde
  * (ver cajaCategoria), que ya las separa. */
 function lineaDivisoria(): any {
-  return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#E2E8F0' }], margin: [0, 2, 0, 2] };
+  return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: ANCHO_CONTENIDO, y2: 0, lineWidth: 0.5, lineColor: '#E2E8F0' }], margin: [0, 2, 0, 2] };
 }
-
-const ANCHO_CONTENIDO = 515;
-const GAP_CAJAS = 8;
 
 /** Envuelve una categoría (párrafo + sus fotos) en una caja con borde fino — para que varias
  * categorías compactas (pocas fotos) puedan compartir la misma fila sin mezclarse visualmente
@@ -476,7 +483,7 @@ function bloqueTuberias(v: VisitaParaReporte): any {
 }
 
 function lineaCierreVisita(): any {
-  return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 2, 0, 6] };
+  return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: ANCHO_CONTENIDO, y2: 0, lineWidth: 0.5, lineColor: '#CBD5E1' }], margin: [0, 2, 0, 6] };
 }
 
 /** Tabla de datos de la visita (estación/zona/llegada/salida/operador/estado/...) — idéntica para
@@ -938,7 +945,7 @@ export function generarReporteVisitas(
     // Márgenes generosos arriba/abajo para no encimarse con el logo y las
     // franjas de color del membrete institucional (fondo de página) ni con
     // el texto del pie de página.
-    pageMargins: [40, 100, 40, 100],
+    pageMargins: MARGENES_PAGINA,
     background: (_currentPage, pageSize) => ({
       image: MEMBRETE_FONDO_BASE64,
       width: pageSize.width,
@@ -1080,7 +1087,7 @@ export function generarReporteTurnos(
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
     pageOrientation: 'portrait',
-    pageMargins: [40, 100, 40, 100],
+    pageMargins: MARGENES_PAGINA,
     background: (_currentPage, pageSize) => ({
       image: MEMBRETE_FONDO_BASE64,
       width: pageSize.width,
@@ -1491,7 +1498,7 @@ export function generarInformeSemanal(datos: DatosInformeSemanal): Promise<Blob>
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
     pageOrientation: 'portrait',
-    pageMargins: [40, 100, 40, 100],
+    pageMargins: MARGENES_PAGINA,
     background: (_currentPage, pageSize) => ({
       image: MEMBRETE_FONDO_BASE64,
       width: pageSize.width,
