@@ -1242,9 +1242,14 @@ function BloqueCompartir({
   );
 }
 
+// Mismo formato "05-sep-2026" que ya usa el resto de la app (ej. el sello de fecha de las fotos,
+// ver MESES_ABREV en fotos.ts) — el Asunto sugerido lo mostraba en numérico ("05-09-2026"), pedido
+// del usuario para que sea consistente.
+const MESES_ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
 function formatFechaCorta(fechaISO: string): string {
   const [anio, mes, dia] = fechaISO.split('-');
-  return `${dia}-${mes}-${anio}`;
+  return `${dia}-${MESES_ABREV[Number(mes) - 1]}-${anio}`;
 }
 
 /** Un día calendario después de la fecha dada (YYYY-MM-DD) — para recorrer un rango día por día
