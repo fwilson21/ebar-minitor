@@ -24,8 +24,10 @@ interface Payload {
   content_type: string;
   descripcion?: string | null;
   /** Si viene, no se crea una fila nueva en `fotos`: se REEMPLAZAN los datos de Drive de esa fila
-   * existente (para "girar" una foto ya subida desde el Informe Semanal). Solo admin/supervisor.
-   * El archivo viejo de Drive queda huérfano (mismo criterio que borrar una foto suelta). */
+   * existente (para "girar" una foto ya subida desde el Informe Semanal o la vista previa de
+   * Reportes). Admin/supervisor pueden girar cualquier foto; un operador solo la de una visita
+   * suya (revisando su informe desde una computadora — ver "modo consulta"). El archivo viejo de
+   * Drive queda huérfano (mismo criterio que borrar una foto suelta). */
   reemplazar_foto_id?: string | null;
 }
 
@@ -48,9 +50,12 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAdmin = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-    // "Girar una foto ya subida" (reemplazar_foto_id) es una operación de supervisor/administrador
-    // desde el Informe Semanal — a diferencia de la subida normal, que la hace el operador al
-    // sincronizar. Se valida el rol del que llama antes de tocar una fila existente.
+    // "Girar una foto ya subida" (reemplazar_foto_id) reemplaza un archivo existente en Drive —
+    // a diferencia de la subida normal (una fila nueva), acá se valida el rol del que llama antes
+    // de tocar la fila. Admin/supervisor pueden girar cualquier foto (Informe Semanal). Un operador
+    // solo puede girar una foto de SU PROPIA visita (revisando/generando su informe desde una
+    // computadora — pedido del usuario, 2026-09-06) — se confirma contra la base con el service
+    // role (no lo que mande el cliente en `visita_id`) quién es el dueño real.
     if (reemplazarFotoId) {
       const authHeader = req.headers.get('Authorization');
       if (!authHeader) return json({ error: 'No autorizado.' }, 401);
@@ -60,8 +65,18 @@ Deno.serve(async (req) => {
       const { data: { user } } = await supabaseCaller.auth.getUser();
       if (!user) return json({ error: 'No autorizado.' }, 401);
       const { data: perfil } = await supabaseCaller.from('usuarios').select('rol').eq('id', user.id).single();
-      if (perfil?.rol !== 'administrador' && perfil?.rol !== 'supervisor') {
-        return json({ error: 'Solo un administrador o supervisor puede girar una foto ya guardada.' }, 403);
+      const esAdminOSupervisor = perfil?.rol === 'administrador' || perfil?.rol === 'supervisor';
+      if (!esAdminOSupervisor) {
+        if (perfil?.rol !== 'operador') return json({ error: 'No autorizado.' }, 403);
+        const { data: fotoDueña } = await supabaseAdmin
+          .from('fotos')
+          .select('visitas ( operador_id )')
+          .eq('id', reemplazarFotoId)
+          .single();
+        const operadorDeLaVisita = (fotoDueña as any)?.visitas?.operador_id;
+        if (!operadorDeLaVisita || operadorDeLaVisita !== user.id) {
+          return json({ error: 'Solo podés girar fotos de tus propias visitas.' }, 403);
+        }
       }
     }
 

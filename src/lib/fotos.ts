@@ -272,8 +272,8 @@ async function rotarFotoSubida(url: string, tomadaEn: string, sentido: SentidoGi
 /**
  * Gira una foto YA SUBIDA a Drive: la baja, la gira (redibujando el sello horizontal con la misma
  * fecha/hora), y la vuelve a subir REEMPLAZANDO la misma fila de `fotos` (la Edge Function valida
- * que quien llama sea admin/supervisor). El archivo viejo de Drive queda huérfano. Devuelve la
- * nueva URL de miniatura, lista para `<img>`. Requiere conexión.
+ * que quien llama sea admin/supervisor, o el operador dueño de esa visita). El archivo viejo de
+ * Drive queda huérfano. Devuelve la nueva URL de miniatura, lista para `<img>`. Requiere conexión.
  */
 export async function girarFotoSubida(
   foto: { id: string; visita_id: string; url: string; tomada_en: string },
