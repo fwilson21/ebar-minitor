@@ -177,6 +177,46 @@ export async function crearFotoLocal(archivo: Blob, fechaISO: string, dispositiv
 }
 
 /**
+ * Gira una foto 90° en sentido horario. Lo usa el botón ↻ de las miniaturas para enderezar a mano
+ * una foto que quedó de lado — la corrección automática de `estamparFechaEnFoto` no es infalible:
+ * depende de saber la orientación FÍSICA del celular, y si el operador tiene el giro de pantalla
+ * bloqueado el navegador igual reporta "vertical" (por eso hay respaldo manual). El sello de fecha
+ * ya está "quemado" en los píxeles, así que gira junto con la imagen: queda en otro borde y de
+ * costado pero se sigue leyendo — es una herramienta de rescate, no el camino normal.
+ */
+export async function rotarBlob90(blob: Blob): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.height;
+    canvas.height = bitmap.width;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return blob;
+    // 90° horario: el origen se lleva al borde derecho del lienzo nuevo y se rota +90°.
+    ctx.translate(canvas.width, 0);
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+    return await new Promise<Blob>((resolve) => {
+      canvas.toBlob((b) => resolve(b ?? blob), 'image/jpeg', 0.9);
+    });
+  } catch {
+    return blob;
+  }
+}
+
+/**
+ * Copia de `foto` con la imagen girada 90° horario y un `id` NUEVO — el id nuevo hace que
+ * `useObjectUrls` suelte la URL vieja y arme una con el blob girado (si no, la miniatura seguiría
+ * mostrando la foto sin girar). Solo aplica a fotos que todavía tienen `blob` (no subidas); las ya
+ * subidas se devuelven igual.
+ */
+export async function rotarFotoLocal(foto: FotoLocal): Promise<FotoLocal> {
+  if (!foto.blob) return foto;
+  return { ...foto, id: generarUUID(), blob: await rotarBlob90(foto.blob) };
+}
+
+/**
  * Ejecuta `tarea` sobre cada elemento de `items` con un máximo de `concurrencia` a la vez
  * (ni todo secuencial —muy lento— ni todo en paralelo —satura el CDN de Google y dispara 429—).
  */

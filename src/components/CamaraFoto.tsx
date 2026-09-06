@@ -63,6 +63,46 @@ export function CamaraFoto({
   const [avisoVisible, setAvisoVisible] = useState(false);
   const timeoutAvisoRef = useRef<number | null>(null);
 
+  // Orientación FÍSICA del celular al momento del disparo, leída del acelerómetro — NO de
+  // matchMedia('(orientation: landscape)') ni screen.orientation, que devuelven "vertical" cuando el
+  // operador tiene el giro de pantalla bloqueado (lo habitual) aunque tenga el celular de costado.
+  // Ese era el motivo de que las fotos tomadas a propósito en horizontal salieran giradas de lado en
+  // el informe. `null` mientras no haya lectura clara (sin sensor, permiso denegado en iPhone, o
+  // celular casi plano) → en `disparar` se cae al chequeo viejo de matchMedia.
+  const orientacionFisicaRef = useRef<'vertical' | 'horizontal' | null>(null);
+
+  useEffect(() => {
+    let activo = true;
+    function alMover(e: DeviceMotionEvent) {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x == null || g.y == null) return;
+      // Si la gravedad tira más sobre el eje X del dispositivo que sobre el Y, está acostado de
+      // lado. Zona muerta de 2 m/s² para no oscilar cuando está cerca de los 45°.
+      const diff = Math.abs(g.x) - Math.abs(g.y);
+      if (diff > 2) orientacionFisicaRef.current = 'horizontal';
+      else if (diff < -2) orientacionFisicaRef.current = 'vertical';
+    }
+    async function iniciar() {
+      try {
+        const DME = window.DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> };
+        if (DME && typeof DME.requestPermission === 'function') {
+          // iPhone: pide permiso una vez (el `setCamaraAbierta(true)` que montó este componente
+          // fue un toque del operador, así que todavía estamos dentro de la ventana de gesto).
+          const permiso = await DME.requestPermission();
+          if (permiso !== 'granted' || !activo) return;
+        }
+        window.addEventListener('devicemotion', alMover);
+      } catch {
+        // sin sensor / permiso denegado → se usa el fallback de matchMedia en `disparar`
+      }
+    }
+    iniciar();
+    return () => {
+      activo = false;
+      window.removeEventListener('devicemotion', alMover);
+    };
+  }, []);
+
   useEffect(() => {
     let cancelado = false;
     setError(false);
@@ -109,8 +149,12 @@ export function CamaraFoto({
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
     // Se lee justo acá, en el instante del disparo — no en `onCapturar` ni más tarde, porque el
-    // operador puede seguir moviendo el celular después de tocar el botón.
-    const dispositivoEnHorizontal = window.matchMedia('(orientation: landscape)').matches;
+    // operador puede seguir moviendo el celular después de tocar el botón. La lectura del
+    // acelerómetro (si la hay) manda; si no, el fallback de siempre.
+    const dispositivoEnHorizontal =
+      orientacionFisicaRef.current !== null
+        ? orientacionFisicaRef.current === 'horizontal'
+        : window.matchMedia('(orientation: landscape)').matches;
     canvas.toBlob(
       (blob) => {
         if (blob) {

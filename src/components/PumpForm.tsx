@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Bomba, EstadoBomba, FotoLocal, RegistroBombaInput } from '../lib/types';
 import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
-import { crearFotoLocal, eliminarFotoGuardada } from '../lib/fotos';
+import { crearFotoLocal, eliminarFotoGuardada, rotarFotoLocal } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { useObjectUrls } from '../lib/useObjectUrls';
 import { FotoLightbox } from './FotoLightbox';
@@ -52,6 +52,11 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
   async function agregarFotoDesdeCamara(blob: Blob, dispositivoEnHorizontal: boolean) {
     const nueva = await crearFotoLocal(blob, new Date().toISOString(), dispositivoEnHorizontal);
     onChange({ ...valorRef.current, fotos: [...valorRef.current.fotos, nueva] });
+  }
+
+  async function rotarFoto(foto: FotoLocal) {
+    const girada = await rotarFotoLocal(foto);
+    onChange({ ...valorRef.current, fotos: valorRef.current.fotos.map((f) => (f.id === foto.id ? girada : f)) });
   }
 
   async function manejarEliminarFoto(foto: FotoLocal) {
@@ -207,9 +212,20 @@ export function PumpForm({ bomba, valor, onChange }: Props) {
                       type="button"
                       onClick={() => manejarEliminarFoto(foto)}
                       className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center"
+                      aria-label="Eliminar foto"
                     >
                       ✕
                     </button>
+                    {foto.blob && (
+                      <button
+                        type="button"
+                        onClick={() => rotarFoto(foto)}
+                        className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/60 text-white text-sm flex items-center justify-center"
+                        aria-label="Girar foto 90 grados"
+                      >
+                        ↻
+                      </button>
+                    )}
                     {foto.estado_subida === 'pendiente' && (
                       <span className="absolute bottom-1 left-1 text-[10px] bg-gauge-warn/90 text-white px-1.5 rounded">
                         Pendiente

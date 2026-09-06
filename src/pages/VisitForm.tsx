@@ -1165,7 +1165,7 @@ export function VisitForm() {
                   </div>
                 </div>
 
-                <PhotoCapture fotos={fotos} onChange={setFotos} />
+                <PhotoCapture fotos={fotos} onChange={setFotos} max={3} />
               </div>
 
               <EquipoSection

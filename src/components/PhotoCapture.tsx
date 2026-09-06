@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { FotoLocal } from '../lib/types';
-import { crearFotoLocal, eliminarFotoGuardada } from '../lib/fotos';
+import { crearFotoLocal, eliminarFotoGuardada, rotarFotoLocal } from '../lib/fotos';
 import { useObjectUrls } from '../lib/useObjectUrls';
 import { FotoLightbox } from './FotoLightbox';
 import { CamaraFoto } from './CamaraFoto';
@@ -8,6 +8,8 @@ import { CamaraFoto } from './CamaraFoto';
 interface Props {
   fotos: FotoLocal[];
   onChange: (fotos: FotoLocal[]) => void;
+  /** Tope de fotos de esta sección. Por defecto sin tope. */
+  max?: number;
 }
 
 /**
@@ -17,12 +19,18 @@ interface Props {
  * visitas tienen que ser del momento. Quedan como Blob en memoria/IndexedDB hasta que
  * `offline.ts` las sube a Google Drive a través de la Edge Function `upload-to-drive`.
  */
-export function PhotoCapture({ fotos, onChange }: Props) {
+export function PhotoCapture({ fotos, onChange, max = Infinity }: Props) {
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
   const [camaraAbierta, setCamaraAbierta] = useState(false);
+  // Cupo fijado al ABRIR la cámara (no recalculado en cada foto) — ver el mismo comentario en
+  // EquipoSection.tsx: CamaraFoto ya lleva su propio contador de disparos de la sesión.
+  const [cupoCamara, setCupoCamara] = useState(0);
   const fotosRef = useRef(fotos);
   fotosRef.current = fotos;
   const urls = useObjectUrls(fotos);
+
+  const conTope = Number.isFinite(max);
+  const puedeAgregar = fotos.length < max;
 
   // Cada captura de CamaraFoto llega una por una (mientras el operador sigue disparando con la
   // cámara todavía abierta) — se agrega de a una al estado en vez de esperar a "Listo" para no
@@ -30,6 +38,11 @@ export function PhotoCapture({ fotos, onChange }: Props) {
   async function agregarFotoDesdeCamara(blob: Blob, dispositivoEnHorizontal: boolean) {
     const nueva = await crearFotoLocal(blob, new Date().toISOString(), dispositivoEnHorizontal);
     onChange([...fotosRef.current, nueva]);
+  }
+
+  async function rotar(foto: FotoLocal) {
+    const girada = await rotarFotoLocal(foto);
+    onChange(fotosRef.current.map((f) => (f.id === foto.id ? girada : f)));
   }
 
   async function eliminar(foto: FotoLocal) {
@@ -48,17 +61,29 @@ export function PhotoCapture({ fotos, onChange }: Props) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <label className="etiqueta mb-0">Fotografías de la visita</label>
-        <button type="button" className="boton-secundario text-sm py-1.5 px-3" onClick={() => setCamaraAbierta(true)}>
-          📷 Tomar foto
-        </button>
+        <label className="etiqueta mb-0">
+          Fotografías de la visita{conTope ? ` (${fotos.length}/${max})` : ''}
+        </label>
+        {puedeAgregar && (
+          <button
+            type="button"
+            className="boton-secundario text-sm py-1.5 px-3"
+            onClick={() => {
+              setCupoCamara(conTope ? max - fotos.length : Infinity);
+              setCamaraAbierta(true);
+            }}
+          >
+            📷 Tomar foto
+          </button>
+        )}
       </div>
 
       {camaraAbierta && (
         <CamaraFoto
-          maxFotos={Infinity}
+          maxFotos={cupoCamara}
           etiquetaSeccion="Fotos de la visita"
           fotosPrevias={fotos.length}
+          totalMax={conTope ? max : undefined}
           onCapturar={agregarFotoDesdeCamara}
           onCerrar={() => setCamaraAbierta(false)}
         />
@@ -80,9 +105,20 @@ export function PhotoCapture({ fotos, onChange }: Props) {
                   type="button"
                   onClick={() => eliminar(foto)}
                   className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center"
+                  aria-label="Eliminar foto"
                 >
                   ✕
                 </button>
+                {foto.blob && (
+                  <button
+                    type="button"
+                    onClick={() => rotar(foto)}
+                    className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/60 text-white text-sm flex items-center justify-center"
+                    aria-label="Girar foto 90 grados"
+                  >
+                    ↻
+                  </button>
+                )}
                 {foto.estado_subida === 'pendiente' && (
                   <span className="absolute bottom-1 left-1 text-[10px] bg-gauge-warn/90 text-white px-1.5 rounded">
                     Pendiente
