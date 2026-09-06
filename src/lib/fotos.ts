@@ -3,6 +3,7 @@ import type { VisitaParaReporte } from './pdf';
 import type { FotoLocal } from './types';
 import { generarUUID } from './uuid';
 import { prepararBlobParaSubida } from './syncMotor';
+import { mensajeErrorFuncion } from './edgeFunctions';
 
 /**
  * Elimina el registro de una foto ya subida (no borra el archivo de Drive,
@@ -290,7 +291,7 @@ export async function girarFotoSubida(
       reemplazar_foto_id: foto.id,
     },
   });
-  if (error) throw new Error(error.message ?? 'No se pudo subir la foto girada.');
+  if (error) throw new Error(await mensajeErrorFuncion(error));
   const fileId = (data as { file_id?: string })?.file_id;
   const urlPublica = (data as { url_publica?: string })?.url_publica;
   const nuevaUrl = urlMiniaturaDrive(fileId, urlPublica);
