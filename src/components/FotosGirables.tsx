@@ -114,7 +114,7 @@ export function FotosGirables({
             title="Borrar (esta foto no corresponde a este capítulo)"
             aria-label="Borrar foto"
           >
-            🗑
+            ✕
           </button>
         )}
         {pie}
@@ -136,7 +136,7 @@ export function FotosGirables({
     return (
       <div className="mt-2">
         <p className="text-xs text-slate-500 mb-1">
-          Fotos (↺ ↻ giran la foto y dejan la fecha horizontal, 🗑 borra si no corresponde a este capítulo) — el informe lleva 1 foto por capítulo.
+          Fotos (↺ ↻ giran la foto y dejan la fecha horizontal, ✕ borra si no corresponde a este capítulo) — el informe lleva 1 foto por capítulo.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {unaPorCapitulo.map((f) => {
