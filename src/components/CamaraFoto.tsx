@@ -62,6 +62,13 @@ export function CamaraFoto({
   const [avisoTexto, setAvisoTexto] = useState('');
   const [avisoVisible, setAvisoVisible] = useState(false);
   const timeoutAvisoRef = useRef<number | null>(null);
+  // DIAGNÓSTICO temporal (2026-09-06): el arreglo de la 7ma vuelta del bug de fotos horizontales
+  // no alcanzó (el usuario lo confirmó con una foto de prueba real en Android). En vez de adivinar
+  // una 8va vez sin poder probar en el celular, se muestra el tamaño REAL que entrega la cámara
+  // (`video.videoWidth x videoHeight`) al lado del indicador de orientación — mandando una captura
+  // de esto (parado y de costado) se puede ver si el cuadro que entrega la cámara cambia de forma
+  // al girar el celular o se queda siempre igual, que es la pregunta clave para el próximo arreglo.
+  const [tamanoVideo, setTamanoVideo] = useState<{ w: number; h: number } | null>(null);
 
   // Orientación FÍSICA del celular al momento del disparo, leída del acelerómetro — NO de
   // matchMedia('(orientation: landscape)') ni screen.orientation, que devuelven "vertical" cuando el
@@ -177,6 +184,20 @@ export function CamaraFoto({
     };
   }, [intento]);
 
+  // Diagnóstico temporal (ver tamanoVideo): además de leerlo una vez con onLoadedMetadata, se
+  // vuelve a chequear cada rato mientras la cámara está abierta — por si el navegador cambia el
+  // tamaño del cuadro dinámicamente al girar el celular (algo que `onLoadedMetadata` solo no
+  // alcanzaría a mostrar, porque dispara una sola vez al arrancar el video).
+  useEffect(() => {
+    if (!listo) return;
+    const intervalo = window.setInterval(() => {
+      const v = videoRef.current;
+      if (!v || !v.videoWidth) return;
+      setTamanoVideo((prev) => (prev && prev.w === v.videoWidth && prev.h === v.videoHeight ? prev : { w: v.videoWidth, h: v.videoHeight }));
+    }, 400);
+    return () => window.clearInterval(intervalo);
+  }, [listo]);
+
   function disparar() {
     const video = videoRef.current;
     // videoWidth/videoHeight siguen en 0 hasta que el video carga sus metadatos, un instante
@@ -253,17 +274,29 @@ export function CamaraFoto({
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <video ref={videoRef} autoPlay playsInline muted className="flex-1 w-full h-full object-cover" />
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        onLoadedMetadata={(e) => {
+          const v = e.currentTarget;
+          setTamanoVideo({ w: v.videoWidth, h: v.videoHeight });
+        }}
+        className="flex-1 w-full h-full object-cover"
+      />
       {!listo && <p className="absolute inset-0 flex items-center justify-center text-white text-sm">Abriendo cámara…</p>}
 
       {/* Orientación detectada por el sensor, EN VIVO — para poder confirmar de un vistazo (girando
           el celular) que la app se está dando cuenta bien, en vez de enterarse recién al ver el
           informe generado. Si el sensor nunca respondió (ver sensorSinRespuesta), en su lugar sale
-          un interruptor para avisar a mano. */}
+          un interruptor para avisar a mano. El tamaño del cuadro (ancho x alto) es diagnóstico
+          temporal (ver comentario en tamanoVideo) — se puede sacar una vez resuelto el bug. */}
       {listo && !sensorSinRespuesta && orientacionVisible && (
         <div className="absolute top-3 left-3 bg-black/60 text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5">
           <span className={orientacionVisible === 'horizontal' ? 'inline-block rotate-90' : 'inline-block'}>📱</span>
           {orientacionVisible === 'horizontal' ? 'De costado' : 'Vertical'}
+          {tamanoVideo && <span className="opacity-70">· {tamanoVideo.w}×{tamanoVideo.h}</span>}
         </div>
       )}
       {listo && sensorSinRespuesta && (
