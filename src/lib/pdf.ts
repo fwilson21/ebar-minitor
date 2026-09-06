@@ -551,24 +551,15 @@ function bloqueVisita(v: VisitaParaReporte): any[] {
   ].filter(Boolean);
 }
 
-/** Fotos representativas de un grupo de categorías: por defecto la primera foto de cada una que
- * tenga alguna (categorías sin fotos simplemente no aportan ninguna) — usada por el formato
- * Compacto y por Súper compacto. `elegidas` (solo Súper compacto, ver categoriasGrupo): label →
- * id de foto elegida a mano en la vista previa cuando había más de una candidata para el mismo
- * capítulo (ej. 2 visitas el mismo día, cada una con su propia foto de "Cerramiento y seguridad")
- * — si no hay elección o no calza con ninguna de las fotos de esa categoría, sigue el criterio de
- * siempre (la primera). */
-function fotosRepresentativas(
-  categorias: CategoriaVisita[],
-  elegidas?: Record<string, string>,
-): Array<{ url: string; label: string }> {
-  return categorias
-    .filter((c) => c.fotos.length > 0)
-    .map((c) => {
-      const idElegida = elegidas?.[c.label];
-      const elegida = (idElegida && c.fotos.find((f) => f.id === idElegida)) || c.fotos[0];
-      return { url: elegida.url, label: c.label };
-    });
+/** Fotos representativas de un grupo de categorías: la primera foto de cada una que tenga alguna
+ * (categorías sin fotos simplemente no aportan ninguna) — usada por el formato Compacto y por
+ * Súper compacto. Si una categoría tenía más de una candidata (ej. 2 visitas el mismo día, cada
+ * una con su propia foto de "Cerramiento y seguridad"), la vista previa de Reportes deja BORRAR
+ * la que no corresponda (`FotosGirables` con `categorias.onBorrar`, ver `girarFotoSubida`/
+ * `eliminarFotoGuardada` en fotos.ts) — al generar el PDF ya se vuelve a leer de la base, así que
+ * la "primera" acá ya es la que sobrevivió, sin necesidad de que esta función elija nada. */
+function fotosRepresentativas(categorias: CategoriaVisita[]): Array<{ url: string; label: string }> {
+  return categorias.filter((c) => c.fotos.length > 0).map((c) => ({ url: c.fotos[0].url, label: c.label }));
 }
 
 /** Grilla de fotos del formato Compacto: 5 por fila, con el nombre de la categoría centrado debajo
@@ -870,7 +861,7 @@ function categoriasGrupo(g: GrupoDiario): CategoriaVisita[] {
   return [...porLabel.values()];
 }
 
-function bloqueGrupoSuperCompacto(g: GrupoDiario, resumenEditado?: string, fotosElegidas?: Record<string, string>): any[] {
+function bloqueGrupoSuperCompacto(g: GrupoDiario, resumenEditado?: string): any[] {
   const titulo = codigoYNombre({ codigo: g.estacion_codigo, nombre: g.estacion_nombre });
   return [
     {
@@ -895,7 +886,7 @@ function bloqueGrupoSuperCompacto(g: GrupoDiario, resumenEditado?: string, fotos
       alignment: 'justify',
       margin: [0, 0, 0, 4],
     },
-    ...filasFotosCompacto(fotosRepresentativas(categoriasGrupo(g), fotosElegidas)),
+    ...filasFotosCompacto(fotosRepresentativas(categoriasGrupo(g))),
   ];
 }
 
@@ -1030,10 +1021,6 @@ export function generarReporteVisitas(
   /** Solo formato "super_compacto": resúmenes ya retocados por el operador en la vista previa de
    * Reportes, por `claveGrupoDiario`. Los grupos sin entrada usan el resumen auto-generado. */
   resumenesEditados: Record<string, string> = {},
-  /** Solo formato "super_compacto": por `claveGrupoDiario`, qué foto quedó elegida a mano (por
-   * `label` de categoría) cuando había más de una candidata — ver fotosRepresentativas. Los grupos
-   * o categorías sin entrada usan el criterio de siempre (la primera). */
-  fotosElegidasPorGrupo: Record<string, Record<string, string>> = {},
 ): Promise<Blob> {
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
@@ -1087,7 +1074,7 @@ export function generarReporteVisitas(
       // entre bloques — la idea es que quepan varios por hoja; solo una raya fina los separa.
       ...(formato === 'super_compacto'
         ? agruparVisitasPorDia(visitas).flatMap((g, idx, arr) => [
-            ...bloqueGrupoSuperCompacto(g, resumenesEditados[claveGrupoDiario(g)], fotosElegidasPorGrupo[claveGrupoDiario(g)]),
+            ...bloqueGrupoSuperCompacto(g, resumenesEditados[claveGrupoDiario(g)]),
             idx < arr.length - 1 ? lineaCierreVisita() : null,
           ])
         : // Compacto/Extenso: mismo orden que Súper compacto — por fecha, luego EBAR/línea de

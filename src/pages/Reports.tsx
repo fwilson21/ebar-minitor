@@ -90,10 +90,6 @@ export function Reports() {
   const [cargandoPreview, setCargandoPreview] = useState(false);
   // Resúmenes retocados a mano, por `claveGrupoDiario`. Los grupos sin entrada usan el auto.
   const [resumenesEditados, setResumenesEditados] = useState<Record<string, string>>({});
-  // Foto elegida a mano cuando una categoría tenía más de una candidata (ej. 2 visitas el mismo
-  // día con foto propia de "Cerramiento y seguridad") — por `claveGrupoDiario`, luego por label de
-  // categoría → id de foto. Sin entrada = la primera (mismo criterio que ya usaba el PDF).
-  const [fotosElegidas, setFotosElegidas] = useState<Record<string, Record<string, string>>>({});
   const mostrarRevisionResumenes = esEscritorio && formato === 'super_compacto';
   // Resaltados rojos que guían a dónde ir: "Revisar resúmenes" cuando se intentó generar sin
   // revisar; "Generar PDF" cuando se tocó "Descargar y compartir" sin haber generado nada.
@@ -334,16 +330,9 @@ export function Reports() {
   useEffect(() => {
     setGruposPreview([]);
     setResumenesEditados({});
-    setFotosElegidas({});
     setResaltarRevisar(false);
     setResaltarGenerar(false);
   }, [tipo, formato, fechaInicio, fechaFin, operadorId, estacionIds, diasEspecificos, soloFinSemanaFeriado, diasElegidos]);
-
-  // Elige qué foto de una categoría con más de una candidata se usa en el informe (ver
-  // FotosGirables `categorias`).
-  function onElegirFoto(grupoClave: string, label: string, fotoId: string) {
-    setFotosElegidas((prev) => ({ ...prev, [grupoClave]: { ...(prev[grupoClave] ?? {}), [label]: fotoId } }));
-  }
 
   async function abrirRevisionResumenes() {
     setMensaje(null);
@@ -373,6 +362,20 @@ export function Reports() {
         visitas: g.visitas.map((v) => ({
           ...v,
           fotos: (v.fotos ?? []).map((f) => (f.id === fotoId ? { ...f, url: nuevaUrl } : f)),
+        })),
+      })),
+    );
+  }
+
+  // Saca una foto de la vista previa apenas se borra (ver FotosGirables `categorias.onBorrar`) —
+  // si esa categoría tenía otra candidata, pasa a mostrarse ella sola, sin recargar nada.
+  function eliminarFotoPreview(fotoId: string) {
+    setGruposPreview((prev) =>
+      prev.map((g) => ({
+        ...g,
+        visitas: g.visitas.map((v) => ({
+          ...v,
+          fotos: (v.fotos ?? []).filter((f) => f.id !== fotoId),
         })),
       })),
     );
@@ -456,7 +459,6 @@ export function Reports() {
         noVisitadas,
         formato,
         resumenesEditados,
-        fotosElegidas,
       );
       const nombreFechas =
         fechaInicioEfectiva === fechaFinEfectiva ? fechaInicioEfectiva : `${fechaInicioEfectiva}_a_${fechaFinEfectiva}`;
@@ -627,13 +629,12 @@ export function Reports() {
             grupos={gruposPreview}
             cargando={cargandoPreview}
             resumenesEditados={resumenesEditados}
-            fotosElegidas={fotosElegidas}
             resaltar={resaltarRevisar}
             onAbrir={abrirRevisionResumenes}
             onCambiarResumen={(clave, texto) => setResumenesEditados((prev) => ({ ...prev, [clave]: texto }))}
             onCorregirGlobal={corregirPalabraEnReporte}
             onFotoGirada={reemplazarUrlFotoPreview}
-            onElegirFoto={onElegirFoto}
+            onFotoBorrada={eliminarFotoPreview}
           />
 
           {/* Botones DEBAJO de la revisión (pedido del usuario: que no tiente generar antes de
@@ -686,25 +687,23 @@ function BloqueRevisionResumenes({
   grupos,
   cargando,
   resumenesEditados,
-  fotosElegidas,
   resaltar,
   onAbrir,
   onCambiarResumen,
   onCorregirGlobal,
   onFotoGirada,
-  onElegirFoto,
+  onFotoBorrada,
 }: {
   grupos: GrupoDiario[];
   cargando: boolean;
   resumenesEditados: Record<string, string>;
-  fotosElegidas: Record<string, Record<string, string>>;
   /** Rojo + negrita cuando el usuario intentó generar sin revisar — para mandarlo acá primero. */
   resaltar: boolean;
   onAbrir: () => void;
   onCambiarResumen: (clave: string, texto: string) => void;
   onCorregirGlobal: (palabra: string, correccion: string) => void;
   onFotoGirada: (fotoId: string, nuevaUrl: string) => void;
-  onElegirFoto: (grupoClave: string, label: string, fotoId: string) => void;
+  onFotoBorrada: (fotoId: string) => void;
 }) {
   const sinRevisar = grupos.length === 0;
   return (
@@ -751,14 +750,7 @@ function BloqueRevisionResumenes({
               onCambiar={(t) => onCambiarResumen(clave, t)}
               onCorregirGlobal={onCorregirGlobal}
             />
-            <FotosGirables
-              fotos={fotosGirables}
-              onGirada={onFotoGirada}
-              categorias={{
-                elegidaPorCategoria: fotosElegidas[clave] ?? {},
-                onElegir: (label, fotoId) => onElegirFoto(clave, label, fotoId),
-              }}
-            />
+            <FotosGirables fotos={fotosGirables} onGirada={onFotoGirada} categorias={{ onBorrar: onFotoBorrada }} />
           </div>
         );
       })}

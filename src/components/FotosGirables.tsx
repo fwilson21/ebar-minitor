@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { girarFotoSubida, type SentidoGiro } from '../lib/fotos';
+import { girarFotoSubida, eliminarFotoGuardada, type SentidoGiro } from '../lib/fotos';
 import { etiquetaFoto } from '../lib/pdf';
 
 type FotoGirable = { id: string; visita_id: string; url: string; etiqueta?: string | null; tomada_en: string };
@@ -18,23 +18,23 @@ export function FotosGirables({
 }: {
   fotos: FotoGirable[];
   onGirada: (fotoId: string, nuevaUrl: string) => void;
-  /** Si viene, agrupa `fotos` por categoría (misma etiqueta que ya se mostraba debajo de cada
-   * una) — en las categorías con MÁS DE UNA candidata (ej. 2 visitas el mismo día, cada una con su
-   * propia foto de "Cerramiento y seguridad") deja elegir cuál es la que se usa en el informe, en
-   * vez de mostrar todas sueltas como si fueran fotos distintas. Sin esto, se listan todas planas
-   * (comportamiento del Informe Semanal, que no tiene este concepto de "una foto por categoría"). */
+  /** Si viene, agrupa `fotos` por categoría (misma etiqueta que ya se mostraba debajo de cada una)
+   * y solo muestra la PRIMERA de cada una — el informe lleva 1 foto por capítulo, mostrar 2 o 3
+   * candidatas sueltas confundía (pedido del usuario, 2026-09-06: "solo la primera foto de cada
+   * capítulo, no dos ni tres"). Si esa foto no corresponde de verdad a su capítulo, se borra con
+   * `onBorrar` — la candidata siguiente (si había otra) pasa a mostrarse sola, sin necesidad de
+   * elegir nada a mano. Sin `categorias`, se listan todas las fotos planas (comportamiento del
+   * Informe Semanal, que no tiene este concepto de "una foto por capítulo"). */
   categorias?: {
-    /** label de categoría → id de foto elegida. Sin entrada = la primera de esa categoría (mismo
-     * criterio que usa el PDF por defecto). */
-    elegidaPorCategoria: Record<string, string>;
-    onElegir: (label: string, fotoId: string) => void;
+    onBorrar: (fotoId: string) => void;
   };
 }) {
   const [girando, setGirando] = useState<Set<string>>(new Set());
+  const [borrando, setBorrando] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   async function girar(f: FotoGirable, sentido: SentidoGiro) {
-    if (girando.has(f.id)) return;
+    if (girando.has(f.id) || borrando.has(f.id)) return;
     setError(null);
     setGirando((prev) => new Set(prev).add(f.id));
     try {
@@ -51,23 +51,44 @@ export function FotosGirables({
     }
   }
 
+  async function borrar(f: FotoGirable, onBorrada: (fotoId: string) => void) {
+    if (girando.has(f.id) || borrando.has(f.id)) return;
+    if (!window.confirm('¿Eliminar esta foto? Esta acción no se puede deshacer.')) return;
+    setError(null);
+    setBorrando((prev) => new Set(prev).add(f.id));
+    try {
+      const resultado = await eliminarFotoGuardada(f.id);
+      if (!resultado.ok) throw new Error(resultado.error ?? 'No se pudo eliminar la foto.');
+      onBorrada(f.id);
+    } catch (err: any) {
+      setError(err?.message ?? 'No se pudo eliminar la foto.');
+      setBorrando((prev) => {
+        const copia = new Set(prev);
+        copia.delete(f.id);
+        return copia;
+      });
+    }
+    // Si salió bien no hace falta sacarla de `borrando`: la foto desaparece de `fotos` (el padre
+    // la filtra) y esta tarjeta ni se vuelve a renderizar.
+  }
+
   if (!fotos.length) return null;
 
-  // Tarjeta de una foto (imagen + botones de giro) — comparte el mismo mecanismo de girar en los
-  // 2 modos (plano y agrupado), solo cambia lo que va debajo de la imagen.
-  function tarjeta(f: FotoGirable, pie: ReactNode, atenuada = false) {
-    const estaGirando = girando.has(f.id);
+  // Tarjeta de una foto (imagen + botones de giro, y de borrar si `onBorrar` viene) — comparte el
+  // mismo mecanismo en los 2 modos (plano y agrupado), solo cambia lo que va debajo de la imagen.
+  function tarjeta(f: FotoGirable, pie: ReactNode, onBorrar?: (fotoId: string) => void) {
+    const ocupada = girando.has(f.id) || borrando.has(f.id);
     return (
-      <div key={f.id} className={`relative ${atenuada ? 'opacity-50 hover:opacity-90 transition-opacity' : ''}`}>
+      <div key={f.id} className="relative">
         <img
           src={f.url}
           alt=""
-          className={`w-full aspect-square object-cover rounded-md ${estaGirando ? 'animate-pulse' : ''}`}
+          className={`w-full aspect-square object-cover rounded-md ${ocupada ? 'animate-pulse' : ''}`}
         />
         <div className="absolute top-1 left-1 flex gap-1">
           <button
             type="button"
-            disabled={estaGirando}
+            disabled={ocupada}
             onClick={() => girar(f, 'izquierda')}
             className="w-6 h-6 rounded-full bg-black/60 text-white text-sm flex items-center justify-center disabled:opacity-40"
             aria-label="Girar foto a la izquierda"
@@ -76,7 +97,7 @@ export function FotosGirables({
           </button>
           <button
             type="button"
-            disabled={estaGirando}
+            disabled={ocupada}
             onClick={() => girar(f, 'derecha')}
             className="w-6 h-6 rounded-full bg-black/60 text-white text-sm flex items-center justify-center disabled:opacity-40"
             aria-label="Girar foto a la derecha"
@@ -84,6 +105,18 @@ export function FotosGirables({
             ↻
           </button>
         </div>
+        {onBorrar && (
+          <button
+            type="button"
+            disabled={ocupada}
+            onClick={() => borrar(f, onBorrar)}
+            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center disabled:opacity-40"
+            title="Borrar (esta foto no corresponde a este capítulo)"
+            aria-label="Borrar foto"
+          >
+            🗑
+          </button>
+        )}
         {pie}
       </div>
     );
@@ -96,43 +129,24 @@ export function FotosGirables({
       if (!grupos.has(label)) grupos.set(label, []);
       grupos.get(label)!.push(f);
     }
-    // UNA sola grilla con TODAS las fotos (sin cortar en bloques separados por capítulo — pedido
-    // explícito del usuario, 2026-09-06: "4 fotos en la misma línea sin importar su grupo ni
-    // capítulo"), pero ORDENADAS para que las de un mismo capítulo queden una al lado de la otra
-    // (antes iban en el orden en que llegaban de la base, mezclando capítulos sin ningún criterio
-    // — el usuario no podía comparar 2 candidatas del mismo capítulo por estar lejos en la
-    // grilla). El orden de los capítulos entre sí es el de su primera aparición; `grupos` ya
-    // los tiene juntos (Map, agrupados al armarlo más arriba), alcanza con aplanarlo.
-    const fotosOrdenadas = [...grupos.values()].flat();
+    // UNA sola grilla de 4 por fila con solo la primera foto de cada capítulo — si un capítulo
+    // tiene más de una candidata, las demás quedan disponibles (borrar la que se ve revela la
+    // siguiente sola) pero no se muestran todas juntas.
+    const unaPorCapitulo = [...grupos.values()].map((lista) => lista[0]);
     return (
       <div className="mt-2">
         <p className="text-xs text-slate-500 mb-1">
-          Fotos (↺ ↻ giran la foto y dejan la fecha horizontal) — el informe lleva 1 foto por capítulo; si hay más de una, elegí cuál usar.
+          Fotos (↺ ↻ giran la foto y dejan la fecha horizontal, 🗑 borra si no corresponde a este capítulo) — el informe lleva 1 foto por capítulo.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {fotosOrdenadas.map((f) => {
+          {unaPorCapitulo.map((f) => {
             const label = etiquetaFoto(f.etiqueta);
-            const lista = grupos.get(label)!;
-            const hayVarias = lista.length > 1;
-            const elegidaId = categorias.elegidaPorCategoria[label] ?? lista[0].id;
-            const elegida = f.id === elegidaId;
-            const pie = hayVarias ? (
-              <button
-                type="button"
-                onClick={() => categorias.onElegir(label, f.id)}
-                disabled={elegida}
-                className={`block w-full text-[10px] mt-0.5 rounded px-1 py-0.5 text-center font-semibold ${
-                  elegida ? 'bg-gauge-ok/15 text-gauge-ok' : 'text-slate-500 underline decoration-dotted hover:text-gauge-idle'
-                }`}
-              >
-                {elegida ? `✓ Se usa en el informe (${label})` : `Usar esta (${label})`}
-              </button>
-            ) : (
+            const pie = (
               <span className="block text-[10px] text-slate-500 mt-0.5 truncate" title={label}>
                 {label}
               </span>
             );
-            return tarjeta(f, pie, hayVarias && !elegida);
+            return tarjeta(f, pie, categorias.onBorrar);
           })}
         </div>
         {error && <p className="text-xs text-gauge-danger mt-1">{error}</p>}
