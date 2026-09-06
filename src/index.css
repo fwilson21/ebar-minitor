@@ -41,7 +41,10 @@ body {
   }
 
   .etiqueta {
-    @apply text-xs font-medium text-slate-600 uppercase tracking-wider mb-1.5 block;
+    /* Antes font-medium + slate-600 — se perdía contra el texto de los campos (slate-900), no
+     * destacaba como título de sección. Más oscuro y en negrita para que sí se note (pedido del
+     * usuario, con captura, 2026-09-06). */
+    @apply text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 block;
   }
 
   /* Título de pantalla: uno por ventana, bien grande y en negrita para que se note de un vistazo

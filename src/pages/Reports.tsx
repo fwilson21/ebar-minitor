@@ -722,10 +722,10 @@ function BloqueRevisionResumenes({
         );
         return (
           <div key={clave} className="border-t border-panel-600/40 pt-3">
-            <p className="text-lg font-bold text-slate-900">
+            <p className="text-2xl font-extrabold text-slate-900 leading-tight">
               {codigoYNombre({ codigo: g.estacion_codigo, nombre: g.estacion_nombre })}
             </p>
-            <p className="text-sm font-medium text-slate-500 mb-1.5">
+            <p className="text-sm font-semibold text-slate-600 mb-1.5">
               {g.operador_nombre} · {formatFechaCorta(g.fecha)}
             </p>
             <ResumenEditable
