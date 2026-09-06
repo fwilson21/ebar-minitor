@@ -120,6 +120,11 @@ export function VisitForm() {
   const [cargandoDatos, setCargandoDatos] = useState(true);
   const [horaLlegada, setHoraLlegada] = useState(new Date().toISOString());
   const [fechaSalidaOriginal, setFechaSalidaOriginal] = useState<string | null>(null);
+  // Cuánto tiempo estuvo en pausa (sumando todos los ciclos "Pausar" → "Continuar donde
+  // quedaste") — se resta del contador de "tiempo en sitio" para que no se vea como si hubiera
+  // seguido corriendo mientras el operador no estaba en la EBAR. La hora de llegada guardada en
+  // la visita NO cambia (sigue siendo la real, para el reporte) — pedido del usuario (2026-09-06).
+  const [tiempoPausadoMs, setTiempoPausadoMs] = useState(0);
   // Quién registró la visita DE VERDAD, para no pisarlo al editar (bug real reportado por el
   // usuario, 2026-09-03: un supervisor/administrador corrigiendo la visita de un operador hacía
   // que la visita quedara atribuida a quien la editó, no a quien la hizo en el sitio — ver
@@ -210,7 +215,10 @@ export function VisitForm() {
   // la visita más tarde, incluidas las fotos ya tomadas (como Blob, IndexedDB las soporta bien).
   function construirBorrador() {
     return {
-      horaLlegada, fechaSalidaOriginal,
+      horaLlegada, fechaSalidaOriginal, tiempoPausadoMs,
+      // Se llena solo desde pausarYSalir (Date.now() al momento de pausar); en cualquier otro
+      // guardado del borrador (autoguardado, "Salir") queda en null porque el operador sigue acá.
+      pausadoDesde: null as number | null,
       estadoEstacion, nivelTanque, observaciones, fotos,
       bombasSeleccionadas: Array.from(bombasSeleccionadas),
       registrosBombas,
@@ -224,6 +232,12 @@ export function VisitForm() {
   function restaurarBorrador(datos: ReturnType<typeof construirBorrador>) {
     setHoraLlegada(datos.horaLlegada);
     setFechaSalidaOriginal(datos.fechaSalidaOriginal);
+    // El rato que estuvo pausada (desde que se tocó "Pausar" hasta ahora, que se retoma) se suma
+    // al acumulado de pausas anteriores — así el contador de "tiempo en sitio" sigue mostrando
+    // solo el tiempo activo, sin el hueco de la pausa. `pausadoDesde` puede faltar en borradores
+    // guardados antes de este cambio (?? 0 / sin pausadoDesde = sin hueco que descontar).
+    const huecoPausa = datos.pausadoDesde ? Date.now() - datos.pausadoDesde : 0;
+    setTiempoPausadoMs((datos.tiempoPausadoMs ?? 0) + huecoPausa);
     setEstadoEstacion(datos.estadoEstacion);
     setNivelTanque(datos.nivelTanque);
     setObservaciones(datos.observaciones);
@@ -252,7 +266,10 @@ export function VisitForm() {
   async function pausarYSalir(salir: () => void) {
     if (!estacionId) return;
     try {
-      await guardarBorradorVisita(claveBorrador(), estacionId, visitaId, construirBorrador());
+      await guardarBorradorVisita(claveBorrador(), estacionId, visitaId, {
+        ...construirBorrador(),
+        pausadoDesde: Date.now(),
+      });
     } catch (err) {
       // Si el borrador no se pudo guardar (ej. el navegador no deja meter las fotos en su
       // almacenamiento local), NO dejamos al operador atrapado en la pantalla — pero le avisamos
@@ -403,7 +420,9 @@ export function VisitForm() {
     return () => clearInterval(intervalo);
   }, []);
 
-  const tiempoEnSitio = formatearDuracion(ahora - new Date(horaLlegada).getTime());
+  // Descuenta el tiempo en pausa: el contador solo suma mientras el operador está de verdad en
+  // la EBAR llenando el formulario, no el hueco entre "Pausar" y "Continuar donde quedaste".
+  const tiempoEnSitio = formatearDuracion(Math.max(0, ahora - new Date(horaLlegada).getTime() - tiempoPausadoMs));
 
   function manejarClickGuardar() {
     // Si falta un campo obligatorio (no "blando" como voltaje/amperaje/observaciones), ni
