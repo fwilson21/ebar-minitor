@@ -8,6 +8,7 @@ import { abrirBlob, descargarBlob, etiquetaFoto, generarInformeSemanal } from '.
 import { girarFotoSubida } from '../lib/fotos';
 import type { SentidoGiro } from '../lib/fotos';
 import { cargarCorrectorEs, revisarTexto, reemplazarPalabra, esEscritorio, type PalabraMal } from '../lib/correctorEs';
+import { resumenAHtml } from '../lib/resumenFormato';
 import type { Nspell } from 'nspell';
 import { hoyLocal } from '../lib/fecha';
 import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
@@ -1228,15 +1229,7 @@ function BloqueEditor({
         <label className="etiqueta text-slate-800 font-bold">
           Resumen de la actividad (se arma solo con lo que reportó el operador — corrígelo si algo está mal escrito)
         </label>
-        <textarea
-          className="campo w-full"
-          rows={5}
-          spellCheck
-          lang="es"
-          value={bloque.resumen}
-          onChange={(e) => onCambiar({ ...bloque, resumen: e.target.value })}
-          placeholder="Sin novedades reportadas por el operador."
-        />
+        <EditorResumen valor={bloque.resumen} onCambiar={(t) => onCambiar({ ...bloque, resumen: t })} />
         {esEscritorio && <PanelCorrectorEs texto={bloque.resumen} onAplicar={onCorregirGlobal} />}
       </div>
 
@@ -1299,6 +1292,47 @@ function BloqueEditor({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Cuadro de "Resumen de la actividad": `contentEditable` (no `<textarea>`) para poder mostrar los
+ * nombres de capítulo ("Cerramiento y seguridad:", "Bomba 1:", …) en negrita — pedido del usuario.
+ * Crece con el contenido, sin barra de scroll ni recorte. Mientras está enfocado NO se re-pinta el
+ * HTML (para no mover el cursor); el dato siempre sale de `innerText` (texto plano), y al salir del
+ * campo se vuelve a resaltar prolijo.
+ */
+function EditorResumen({ valor, onCambiar }: { valor: string; onCambiar: (t: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const enfocadoRef = useRef(false);
+
+  useEffect(() => {
+    if (!enfocadoRef.current && ref.current && ref.current.innerText !== valor) {
+      ref.current.innerHTML = resumenAHtml(valor);
+    }
+  }, [valor]);
+
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      spellCheck
+      lang="es"
+      className="campo w-full min-h-[7rem] whitespace-pre-wrap leading-relaxed"
+      onFocus={() => {
+        enfocadoRef.current = true;
+      }}
+      onInput={() => onCambiar(ref.current?.innerText ?? '')}
+      onBlur={() => {
+        enfocadoRef.current = false;
+        const t = ref.current?.innerText ?? '';
+        onCambiar(t);
+        if (ref.current) ref.current.innerHTML = resumenAHtml(t);
+      }}
+    />
   );
 }
 
@@ -1368,7 +1402,7 @@ function PanelCorrectorEs({
           const valor = correcciones[e.palabra] ?? e.sugerencia ?? '';
           return (
             <div key={e.palabra} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5 text-sm">
-              <span className="basis-full lg:basis-auto lg:flex-1 min-w-0 text-xs text-slate-500 leading-snug">
+              <span className="min-w-0 lg:max-w-[58ch] text-xs text-slate-500 leading-snug">
                 {e.contexto.antes}
                 <span
                   className="text-slate-900 font-semibold"
@@ -1391,7 +1425,7 @@ function PanelCorrectorEs({
                     aplicar(e.palabra, valor);
                   }
                 }}
-                className="w-40 shrink-0 rounded border border-panel-600 bg-panel-900 px-1.5 py-1 text-sm"
+                className="w-44 shrink-0 rounded border border-panel-600 bg-panel-900 px-1.5 py-1 text-sm"
                 placeholder="escribe la correcta"
               />
               <button

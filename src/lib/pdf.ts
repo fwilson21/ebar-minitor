@@ -4,6 +4,7 @@ import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { MEMBRETE_FONDO_BASE64 } from '../assets/membrete/membreteData';
 import { formatFechaLarga, formatFechaCortaTabla, LEYENDA_CODIGOS_ASISTENCIA, type BloqueInformePdf } from './informeSemanal';
 import { codigoYNombre } from './agruparEstaciones';
+import { resumenARuns } from './resumenFormato';
 
 (pdfMake as any).vfs = (pdfFonts as any).vfs;
 
@@ -847,7 +848,7 @@ function bloqueGrupoSuperCompacto(g: GrupoDiario): any[] {
       fontSize: 8,
       margin: [0, 0, 0, 4],
     },
-    { text: parrafoResumenDia(g), fontSize: 9, alignment: 'justify', margin: [0, 0, 0, 4] },
+    { text: resumenARuns(parrafoResumenDia(g)), fontSize: 9, alignment: 'justify', margin: [0, 0, 0, 4] },
     ...filasFotosCompacto(fotosRepresentativas(categoriasGrupo(g))),
   ];
 }
@@ -1429,7 +1430,7 @@ function bloqueOperadorInforme(b: BloqueInformePdf): any[] {
     { text: `${b.estacion_nombre}${ubicacion}${horario}`, bold: true, fontSize: 10, margin: [0, 5, 0, 1] },
     { text: [{ text: 'Responsable: ', bold: true }, b.responsable], fontSize: 9, margin: [0, 0, 0, 3] },
     {
-      text: b.resumen?.trim() || 'Sin observaciones registradas.',
+      text: resumenARuns(b.resumen?.trim() || 'Sin observaciones registradas.'),
       fontSize: 9,
       alignment: 'justify',
       margin: [0, 0, 0, 2],
