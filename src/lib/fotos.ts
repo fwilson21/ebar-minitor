@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import type { VisitaParaReporte } from './pdf';
 import type { FotoLocal } from './types';
 import { generarUUID } from './uuid';
+import { prepararBlobParaSubida } from './syncMotor';
 
 /**
  * Elimina el registro de una foto ya subida (no borra el archivo de Drive,
@@ -256,7 +257,7 @@ export async function rotarFotoLocal(foto: FotoLocal, sentido: SentidoGiro): Pro
 /** Baja una foto ya subida a Drive, la gira (redibujando el sello con la misma fecha/hora) y
  * devuelve el blob girado listo para volver a subir. Requiere conexión. `null` si no se pudo
  * bajar la imagen. */
-export async function rotarFotoSubida(url: string, tomadaEn: string, sentido: SentidoGiro): Promise<Blob | null> {
+async function rotarFotoSubida(url: string, tomadaEn: string, sentido: SentidoGiro): Promise<Blob | null> {
   try {
     const resp = await fetch(url);
     if (!resp.ok) return null;
@@ -265,6 +266,36 @@ export async function rotarFotoSubida(url: string, tomadaEn: string, sentido: Se
   } catch {
     return null;
   }
+}
+
+/**
+ * Gira una foto YA SUBIDA a Drive: la baja, la gira (redibujando el sello horizontal con la misma
+ * fecha/hora), y la vuelve a subir REEMPLAZANDO la misma fila de `fotos` (la Edge Function valida
+ * que quien llama sea admin/supervisor). El archivo viejo de Drive queda huérfano. Devuelve la
+ * nueva URL de miniatura, lista para `<img>`. Requiere conexión.
+ */
+export async function girarFotoSubida(
+  foto: { id: string; visita_id: string; url: string; tomada_en: string },
+  sentido: SentidoGiro,
+): Promise<string> {
+  if (!navigator.onLine) throw new Error('Necesitas conexión a internet para girar una foto ya guardada.');
+  const blob = await rotarFotoSubida(foto.url, foto.tomada_en, sentido);
+  if (!blob) throw new Error('No se pudo descargar la foto para girarla (puede ser un límite temporal de Google, reintenta en unos minutos).');
+  const { base64, contentType } = await prepararBlobParaSubida(blob);
+  const { data, error } = await supabase.functions.invoke('upload-to-drive', {
+    body: {
+      visita_id: foto.visita_id,
+      file_base64: base64,
+      content_type: contentType,
+      reemplazar_foto_id: foto.id,
+    },
+  });
+  if (error) throw new Error(error.message ?? 'No se pudo subir la foto girada.');
+  const fileId = (data as { file_id?: string })?.file_id;
+  const urlPublica = (data as { url_publica?: string })?.url_publica;
+  const nuevaUrl = urlMiniaturaDrive(fileId, urlPublica);
+  if (!nuevaUrl) throw new Error('El servidor no devolvió la foto girada.');
+  return nuevaUrl;
 }
 
 /**

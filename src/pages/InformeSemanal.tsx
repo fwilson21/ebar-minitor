@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { abrirBlob, descargarBlob, etiquetaFoto, generarInformeSemanal } from '../lib/pdf';
+import { girarFotoSubida } from '../lib/fotos';
+import type { SentidoGiro } from '../lib/fotos';
 import { hoyLocal } from '../lib/fecha';
 import { nombreFeriadoCalculado, esDiaNoRegular } from '../lib/feriadosEcuador';
 import {
@@ -257,6 +259,15 @@ export function InformeSemanal() {
 
   function actualizarBloques(fecha: string, nuevos: BloqueInforme[]) {
     setEdicion((prev) => ({ ...prev, [fecha]: nuevos }));
+  }
+
+  // Una foto ya subida se giró (se reemplazó el archivo en Drive) — se apunta su URL nueva en el
+  // estado para que la miniatura y el PDF de esta sesión ya la muestren girada (en la base ya
+  // quedó actualizada por la Edge Function).
+  function reemplazarUrlFoto(fotoId: string, nuevaUrl: string) {
+    setVisitasSemana((prev) =>
+      prev.map((v) => ({ ...v, fotos: v.fotos.map((f) => (f.id === fotoId ? { ...f, url: nuevaUrl } : f)) })),
+    );
   }
 
   async function aprobarDia(fecha: string) {
@@ -621,6 +632,7 @@ export function InformeSemanal() {
               bloques={bloquesDeHoy(fecha)}
               estaForzado={forzarEdicion.has(fecha)}
               onCambiarBloques={(nuevos) => actualizarBloques(fecha, nuevos)}
+              onFotoGirada={reemplazarUrlFoto}
               onAprobar={() => aprobarDia(fecha)}
               onActualizarConCambio={() => actualizarDiaConCambio(fecha)}
               onMantener={() => mantenerDiaComoEsta(fecha)}
@@ -965,6 +977,7 @@ function DiaCard({
   bloques,
   estaForzado,
   onCambiarBloques,
+  onFotoGirada,
   onAprobar,
   onActualizarConCambio,
   onMantener,
@@ -978,6 +991,7 @@ function DiaCard({
   bloques: BloqueInforme[];
   estaForzado: boolean;
   onCambiarBloques: (nuevos: BloqueInforme[]) => void;
+  onFotoGirada: (fotoId: string, nuevaUrl: string) => void;
   onAprobar: () => void;
   onActualizarConCambio: () => void;
   onMantener: () => void;
@@ -1087,6 +1101,7 @@ function DiaCard({
               fotosDisponibles={visitasDia
                 .filter((v) => v.estacion_id === b.estacion_id && v.operador_id === b.operador_id)
                 .flatMap((v) => v.fotos)}
+              onFotoGirada={onFotoGirada}
               onCambiar={(nuevo) => {
                 const copia = [...bloques];
                 copia[i] = nuevo;
@@ -1121,12 +1136,35 @@ function DiaCard({
 function BloqueEditor({
   bloque,
   fotosDisponibles,
+  onFotoGirada,
   onCambiar,
 }: {
   bloque: BloqueInforme;
-  fotosDisponibles: { id: string; url: string; descripcion: string | null; tomada_en: string }[];
+  fotosDisponibles: { id: string; visita_id: string; url: string; descripcion: string | null; tomada_en: string }[];
+  onFotoGirada: (fotoId: string, nuevaUrl: string) => void;
   onCambiar: (nuevo: BloqueInforme) => void;
 }) {
+  const [girando, setGirando] = useState<Set<string>>(new Set());
+  const [errorGiro, setErrorGiro] = useState<string | null>(null);
+
+  async function girar(foto: { id: string; visita_id: string; url: string; tomada_en: string }, sentido: SentidoGiro) {
+    if (girando.has(foto.id)) return;
+    setErrorGiro(null);
+    setGirando((prev) => new Set(prev).add(foto.id));
+    try {
+      const nuevaUrl = await girarFotoSubida(foto, sentido);
+      onFotoGirada(foto.id, nuevaUrl);
+    } catch (err: any) {
+      setErrorGiro(err?.message ?? 'No se pudo girar la foto.');
+    } finally {
+      setGirando((prev) => {
+        const copia = new Set(prev);
+        copia.delete(foto.id);
+        return copia;
+      });
+    }
+  }
+
   return (
     <div className="rounded-lg border border-panel-600 p-3 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap text-sm">
@@ -1166,15 +1204,19 @@ function BloqueEditor({
 
       {fotosDisponibles.length > 0 && (
         <div>
-          <label className="etiqueta">Fotos a incluir en el PDF (salen 5 por fila con el nombre del capítulo)</label>
+          <label className="etiqueta">
+            Fotos a incluir en el PDF (sale 1 por capítulo, 5 por fila; ↺ ↻ giran la foto y dejan la fecha horizontal)
+          </label>
           <div className="grid grid-cols-4 gap-2">
             {fotosDisponibles.map((f) => {
               const marcada = bloque.fotos_seleccionadas.includes(f.id);
+              const estaGirando = girando.has(f.id);
               return (
-                <label key={f.id} className="relative cursor-pointer">
+                <div key={f.id} className="relative">
                   <span className="absolute top-1.5 right-1.5 z-10 bg-white/90 rounded-md p-0.5 shadow leading-none">
                     <input
                       type="checkbox"
+                      aria-label="Incluir esta foto"
                       className="block w-5 h-5 accent-gauge-ok cursor-pointer"
                       checked={marcada}
                       onChange={(e) => {
@@ -1187,14 +1229,35 @@ function BloqueEditor({
                   </span>
                   <img
                     src={f.url}
-                    className={`w-full aspect-square object-cover rounded-md ${marcada ? '' : 'opacity-40'}`}
+                    className={`w-full aspect-square object-cover rounded-md ${marcada ? '' : 'opacity-40'} ${estaGirando ? 'animate-pulse' : ''}`}
                     alt=""
                   />
+                  <div className="absolute bottom-6 left-1 flex gap-1">
+                    <button
+                      type="button"
+                      disabled={estaGirando}
+                      onClick={() => girar(f, 'izquierda')}
+                      className="w-6 h-6 rounded-full bg-black/60 text-white text-sm flex items-center justify-center disabled:opacity-40"
+                      aria-label="Girar foto a la izquierda"
+                    >
+                      ↺
+                    </button>
+                    <button
+                      type="button"
+                      disabled={estaGirando}
+                      onClick={() => girar(f, 'derecha')}
+                      className="w-6 h-6 rounded-full bg-black/60 text-white text-sm flex items-center justify-center disabled:opacity-40"
+                      aria-label="Girar foto a la derecha"
+                    >
+                      ↻
+                    </button>
+                  </div>
                   <span className="block text-[10px] text-slate-500 mt-0.5">{etiquetaFoto(f.descripcion)}</span>
-                </label>
+                </div>
               );
             })}
           </div>
+          {errorGiro && <p className="text-xs text-gauge-danger mt-1">{errorGiro}</p>}
         </div>
       )}
     </div>

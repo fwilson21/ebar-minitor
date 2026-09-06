@@ -102,6 +102,7 @@ function formatHora(fechaIso: string): string {
 
 export interface FotoInforme {
   id: string;
+  visita_id: string;
   url: string;
   descripcion: string | null;
   tomada_en: string;
@@ -218,6 +219,7 @@ export async function obtenerVisitasSemana(desde: string, hasta: string): Promis
     fotos: (v.fotos ?? [])
       .map((f: any) => ({
         id: f.id as string,
+        visita_id: v.id as string,
         url: urlMiniaturaDrive(f.drive_file_id, f.url_publica),
         descripcion: f.descripcion ?? null,
         tomada_en: f.tomada_en,

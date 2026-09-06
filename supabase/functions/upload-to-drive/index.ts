@@ -23,6 +23,10 @@ interface Payload {
   file_base64: string;
   content_type: string;
   descripcion?: string | null;
+  /** Si viene, no se crea una fila nueva en `fotos`: se REEMPLAZAN los datos de Drive de esa fila
+   * existente (para "girar" una foto ya subida desde el Informe Semanal). Solo admin/supervisor.
+   * El archivo viejo de Drive queda huérfano (mismo criterio que borrar una foto suelta). */
+  reemplazar_foto_id?: string | null;
 }
 
 function json(body: unknown, status = 200) {
@@ -39,11 +43,27 @@ Deno.serve(async (req) => {
   try {
     const body: Payload = await req.json();
     const { visita_id, file_base64, content_type } = body;
+    const reemplazarFotoId = body.reemplazar_foto_id ?? null;
 
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAdmin = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+    // "Girar una foto ya subida" (reemplazar_foto_id) es una operación de supervisor/administrador
+    // desde el Informe Semanal — a diferencia de la subida normal, que la hace el operador al
+    // sincronizar. Se valida el rol del que llama antes de tocar una fila existente.
+    if (reemplazarFotoId) {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) return json({ error: 'No autorizado.' }, 401);
+      const supabaseCaller = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await supabaseCaller.auth.getUser();
+      if (!user) return json({ error: 'No autorizado.' }, 401);
+      const { data: perfil } = await supabaseCaller.from('usuarios').select('rol').eq('id', user.id).single();
+      if (perfil?.rol !== 'administrador' && perfil?.rol !== 'supervisor') {
+        return json({ error: 'Solo un administrador o supervisor puede girar una foto ya guardada.' }, 403);
+      }
+    }
 
     // Obtener datos de la visita para nombrar/organizar la carpeta correctamente.
     const { data: visita, error: visitaError } = await supabaseAdmin
@@ -64,12 +84,16 @@ Deno.serve(async (req) => {
         content_type,
         descripcion: body.descripcion ?? null,
       });
-      await insertarRegistroFoto(supabaseAdmin, visita_id, {
-        file_id: resultado.file_id,
-        folder_id: resultado.folder_id,
-        url_publica: resultado.url_publica,
-        descripcion: body.descripcion ?? null,
-      });
+      if (reemplazarFotoId) {
+        await actualizarRegistroFoto(supabaseAdmin, reemplazarFotoId, resultado);
+      } else {
+        await insertarRegistroFoto(supabaseAdmin, visita_id, {
+          file_id: resultado.file_id,
+          folder_id: resultado.folder_id,
+          url_publica: resultado.url_publica,
+          descripcion: body.descripcion ?? null,
+        });
+      }
       return json(resultado);
     }
 
@@ -87,12 +111,16 @@ Deno.serve(async (req) => {
       url_publica: `https://drive.google.com/file/d/${archivo.id}/view`,
     };
 
-    await insertarRegistroFoto(supabaseAdmin, visita_id, {
-      file_id: resultado.file_id,
-      folder_id: resultado.folder_id,
-      url_publica: resultado.url_publica,
-      descripcion: body.descripcion ?? null,
-    });
+    if (reemplazarFotoId) {
+      await actualizarRegistroFoto(supabaseAdmin, reemplazarFotoId, resultado);
+    } else {
+      await insertarRegistroFoto(supabaseAdmin, visita_id, {
+        file_id: resultado.file_id,
+        folder_id: resultado.folder_id,
+        url_publica: resultado.url_publica,
+        descripcion: body.descripcion ?? null,
+      });
+    }
 
     return json(resultado);
   } catch (err) {
@@ -132,6 +160,26 @@ async function insertarRegistroFoto(
     descripcion: datos.descripcion ?? null,
     estado_subida: 'subida',
   });
+
+  if (error) throw error;
+}
+
+/** "Girar una foto ya subida": se apunta la fila existente al archivo nuevo de Drive. `visita_id`,
+ * `descripcion` y demás quedan igual; el archivo viejo de Drive queda huérfano. */
+async function actualizarRegistroFoto(
+  supabaseAdmin: any,
+  fotoId: string,
+  datos: { file_id: string; folder_id: string; url_publica: string },
+) {
+  const { error } = await supabaseAdmin
+    .from('fotos')
+    .update({
+      drive_file_id: datos.file_id,
+      drive_folder_id: datos.folder_id,
+      url_publica: datos.url_publica,
+      estado_subida: 'subida',
+    })
+    .eq('id', fotoId);
 
   if (error) throw error;
 }
