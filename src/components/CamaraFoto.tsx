@@ -297,16 +297,23 @@ export function CamaraFoto({
         // desde el punto de vista de la persona que tiene el celular horizontal (la pantalla no
         // gira sola porque el giro automático está bloqueado; sin esto, el texto quedaba de
         // costado justo cuando más hace falta leerlo).
-        // Posición: el usuario mandó una captura mostrando que, ANCLADO abajo a la izquierda en
-        // este mismo código (`bottom-8 left-3`), el badge terminaba apareciendo abajo a la
-        // DERECHA en la pantalla ya girada — la pantalla entera se reacomoda como una unidad al
-        // girar el celular (no solo el contenido), así que "abajo a la izquierda" en el código no
-        // es "abajo a la izquierda" en la pantalla ya girada. Con ese dato: para terminar abajo a
-        // la izquierda en pantalla, hay que anclarlo arriba a la izquierda en el código (mismo
-        // `top-3` que ya usa en vertical) — no hace falta una posición aparte para cada caso.
+        // Posición: el usuario mandó capturas reales que permitieron calcular esto con la
+        // geometría, no adivinando —
+        // (1) anclado abajo a la izquierda en el código, terminaba apareciendo abajo a la
+        //     DERECHA en pantalla: la pantalla entera se reacomoda como una unidad al girar el
+        //     celular, así que las esquinas del código no son las esquinas de la pantalla ya
+        //     girada — para terminar abajo-izquierda en pantalla, hay que anclarlo
+        //     ARRIBA-izquierda en el código (ya aplicado, confirmado por el usuario).
+        // (2) con ese mismo anclaje, el texto salía CORTADO por arriba y quedaba más arriba de lo
+        //     pedido: al girar 90° alrededor de su propio CENTRO (`rotate-90` solo), la mitad del
+        //     badge se sale por ARRIBA del todo (donde no hay más pantalla) y la otra mitad define
+        //     qué tan abajo termina cayendo en la pantalla ya girada. Girándolo alrededor de su
+        //     borde IZQUIERDO en cambio (`origin-left`) el badge entero queda por DEBAJO de ese
+        //     punto (nunca se sale por arriba → ya no se corta) y, de paso, ese punto queda más
+        //     cerca de la esquina real → cae más abajo en la pantalla ya girada, tal como se pidió.
         <div
-          className={`absolute top-3 left-3 bg-black/60 text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5 transition-transform ${
-            orientacionVisible === 'horizontal' ? 'rotate-90' : ''
+          className={`absolute top-3 left-4 bg-black/60 text-white text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1.5 transition-transform ${
+            orientacionVisible === 'horizontal' ? 'rotate-90 origin-left' : ''
           }`}
         >
           <span className="inline-block">📱</span>
