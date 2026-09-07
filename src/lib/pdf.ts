@@ -646,7 +646,7 @@ function bloqueVisitaCompacto(v: VisitaParaReporte): any[] {
 // A diferencia de Extenso/Compacto (un bloque por visita), acá va UN bloque por
 // operador + EBAR + DÍA: si el mismo operador visitó la misma EBAR dos veces el
 // mismo día, se arma un solo resumen que menciona las dos horas. Cada bloque:
-// encabezado corto + UN párrafo de resumen (≤6 líneas: datos objetivos de la visita
+// encabezado corto + UN párrafo de resumen (≤15 líneas: datos objetivos de la visita
 // + las observaciones que escribió el operador) + grilla de fotos (una
 // representativa por capítulo, 5 por fila) + firma del operador.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -719,7 +719,7 @@ function formatHora(fechaISO: string): string {
 }
 
 /** Corta un texto largo en el último espacio antes de `max` y le agrega "…" — para que el párrafo
- * de resumen no pase de ~6 líneas por más larga que sea la observación del operador. */
+ * de resumen no pase de ~15 líneas por más larga que sea la observación del operador. */
 function recortarTexto(texto: string, max: number): string {
   if (texto.length <= max) return texto;
   const cortado = texto.slice(0, max);
@@ -759,7 +759,7 @@ function peorEstadoEquipo(visitas: VisitaParaReporte[], clave: keyof VisitaParaR
   return peor;
 }
 
-/** El párrafo de resumen (≤6 líneas): datos objetivos de la(s) visita(s) del día + las
+/** El párrafo de resumen (≤15 líneas): datos objetivos de la(s) visita(s) del día + las
  * observaciones que escribió el operador, todo seguido en un solo párrafo. */
 export function parrafoResumenDia(g: GrupoDiario): string {
   const partes: string[] = [];
@@ -831,7 +831,7 @@ export function parrafoResumenDia(g: GrupoDiario): string {
   }
   if (obs.length) partes.push(obs.join('. ') + '.');
 
-  return recortarTexto(partes.join(' '), 560);
+  return recortarTexto(partes.join(' '), 1400);
 }
 
 /** Categorías del día combinando todas las visitas del grupo: para cada capítulo, se juntan las
