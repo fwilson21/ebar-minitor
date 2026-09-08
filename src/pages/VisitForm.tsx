@@ -648,6 +648,15 @@ export function VisitForm() {
       return 'La estación no está operativa: agrega observaciones generales antes de guardar.';
     }
 
+    // Pedido explícito del usuario (2026-09-08): si la estación queda "Fuera de servicio", son
+    // obligatorias 3 fotos como mínimo (el mensaje bien visible ya está pegado al control de fotos
+    // de "Estado general de la estación" — esto es el bloqueo real). Solo en visitas NUEVAS, mismo
+    // criterio que el resto de fotos/observaciones obligatorias de esta función: no se puede
+    // retroactivamente tomar fotos de una visita ya pasada al editarla.
+    if (!modoEdicion && !esLineaConduccion && esFueraDeServicio && fotos.length < 3) {
+      return 'La estación está fuera de servicio: agrega 3 fotos como mínimo antes de guardar.';
+    }
+
     if (!esLineaConduccion && !esFueraDeServicio && nivelTanque === '') {
       return 'Selecciona el nivel del tanque de almacenamiento antes de guardar.';
     }
@@ -1203,6 +1212,12 @@ export function VisitForm() {
                   </div>
                 </div>
 
+                {esFueraDeServicio && fotos.length < 3 && (
+                  <p className="text-sm font-bold text-white bg-gauge-danger rounded-lg px-3 py-2.5 flex items-center gap-2">
+                    <span className="text-base leading-none">⚠️</span>
+                    Estación fuera de servicio: son obligatorias 3 fotos como mínimo ({fotos.length}/3 tomadas).
+                  </p>
+                )}
                 <PhotoCapture fotos={fotos} onChange={setFotos} max={3} />
               </div>
 
