@@ -25,6 +25,7 @@ import { hoyLocal } from '../lib/fecha';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
 import { esDiaNoRegular } from '../lib/feriadosEcuador';
 import { SelectorDiasReporte } from '../components/SelectorDiasReporte';
+import { consultarDestinatarioInforme, actualizarDestinatarioInforme } from '../lib/destinatarioInforme';
 
 type TipoReporte = 'diario_operador' | 'consolidado_fecha' | 'individual_estacion';
 type FormatoReporte = 'extenso' | 'compacto' | 'super_compacto';
@@ -105,20 +106,42 @@ export function Reports() {
   const [numeroInforme, setNumeroInforme] = useState('');
 
   // Encabezado tipo memo del PDF (formato GADMFO: PARA/DE/ASUNTO/FECHA) — pedido del usuario.
-  // "Para" arranca con un valor fijo (a quién se le suele dirigir este reporte); "De" arranca con
-  // quien esté generando el reporte ahora mismo; los 3 quedan editables antes de generar.
-  const [paraNombre, setParaNombre] = useState('Ing. Freddy Vásconez');
-  const [paraCargo, setParaCargo] = useState('JEFE DE SERVICIOS DE ALCANTARILLADO');
+  // "Para" arranca con el valor por defecto guardado en `configuracion_destinatario_informe`
+  // (migración 0060, ver destinatarioInforme.ts); "De" arranca con quien esté generando el
+  // reporte ahora mismo; los 3 quedan editables antes de generar.
+  const [paraNombre, setParaNombre] = useState('');
+  const [paraCargo, setParaCargo] = useState('');
   const [deNombre, setDeNombre] = useState('');
   const [deCargo, setDeCargo] = useState('');
   const [asunto, setAsunto] = useState('');
   const [asuntoTocado, setAsuntoTocado] = useState(false);
+  // Guardar el "Para" actual como valor por defecto para todos (solo administrador/supervisor,
+  // reforzado por la política RLS de la tabla) — botón junto a los campos que lo disparan.
+  const [guardandoDestinatario, setGuardandoDestinatario] = useState(false);
+  const [mensajeDestinatario, setMensajeDestinatario] = useState<string | null>(null);
 
   useEffect(() => {
     if (!usuario) return;
     setDeNombre((prev) => prev || usuario.nombre_completo);
     setDeCargo((prev) => prev || usuario.cargo || '');
   }, [usuario]);
+
+  useEffect(() => {
+    consultarDestinatarioInforme().then((d) => {
+      setParaNombre((prev) => prev || d.nombre);
+      setParaCargo((prev) => prev || d.cargo);
+    });
+  }, []);
+
+  async function guardarDestinatarioPorDefecto() {
+    setGuardandoDestinatario(true);
+    setMensajeDestinatario(null);
+    const { error } = await actualizarDestinatarioInforme({ nombre: paraNombre, cargo: paraCargo }, usuario?.id);
+    setGuardandoDestinatario(false);
+    setMensajeDestinatario(
+      error ? `No se pudo guardar: ${error}` : 'Guardado: este será el "Para" con el que arranquen los próximos reportes.',
+    );
+  }
 
   useEffect(() => {
     if (!esAdmin) return;
@@ -601,6 +624,9 @@ export function Reports() {
           setParaNombre={setParaNombre}
           paraCargo={paraCargo}
           setParaCargo={setParaCargo}
+          guardandoDestinatario={guardandoDestinatario}
+          mensajeDestinatario={mensajeDestinatario}
+          onGuardarDestinatario={guardarDestinatarioPorDefecto}
           deNombre={deNombre}
           setDeNombre={setDeNombre}
           deCargo={deCargo}
@@ -794,6 +820,9 @@ function BloqueFiltrosGenerar({
   setParaNombre,
   paraCargo,
   setParaCargo,
+  guardandoDestinatario,
+  mensajeDestinatario,
+  onGuardarDestinatario,
   deNombre,
   setDeNombre,
   deCargo,
@@ -834,6 +863,9 @@ function BloqueFiltrosGenerar({
   setParaNombre: (v: string) => void;
   paraCargo: string;
   setParaCargo: (v: string) => void;
+  guardandoDestinatario: boolean;
+  mensajeDestinatario: string | null;
+  onGuardarDestinatario: () => void;
   deNombre: string;
   setDeNombre: (v: string) => void;
   deCargo: string;
@@ -995,6 +1027,25 @@ function BloqueFiltrosGenerar({
               <input type="text" className="campo" value={paraCargo} onChange={(e) => setParaCargo(e.target.value)} />
             </div>
           </div>
+
+          {esAdmin && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                className="boton-secundario text-xs py-1.5 px-3"
+                disabled={guardandoDestinatario || !paraNombre.trim() || !paraCargo.trim()}
+                onClick={onGuardarDestinatario}
+              >
+                {guardandoDestinatario ? 'Guardando…' : '💾 Usar este "Para" como predeterminado'}
+              </button>
+              {mensajeDestinatario && (
+                <span className={`text-xs ${mensajeDestinatario.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+                  {mensajeDestinatario}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="etiqueta">De (nombre)</label>

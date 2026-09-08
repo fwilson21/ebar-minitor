@@ -15,6 +15,7 @@ import { hoyLocal } from '../lib/fecha';
 import { BarraDistribucion } from '../components/BarraDistribucion';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { duracionVisita } from '../lib/duracionVisita';
+import { consultarDestinatarioInforme } from '../lib/destinatarioInforme';
 
 const VISITAS_EN_PDF = 30;
 
@@ -242,9 +243,10 @@ export function StationDetail() {
         return;
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
+      const destinatario = await consultarDestinatarioInforme();
       const blob = await generarReporteVisitas(visitas, {
         numero: '',
-        para: { nombre: 'Ing. Freddy Vásconez', cargo: 'JEFE DE SERVICIOS DE ALCANTARILLADO' },
+        para: destinatario,
         de: { nombre: usuario?.nombre_completo ?? '', cargo: usuario?.cargo ?? '' },
         asunto: `Historial de estación — ${estacion.nombre}`,
         fecha: hoyLocal(),
