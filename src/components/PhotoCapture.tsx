@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { FotoLocal } from '../lib/types';
-import { crearFotoLocal, eliminarFotoGuardada, rotarFotoLocal, type SentidoGiro } from '../lib/fotos';
+import { eliminarFotoGuardada, rotarFotoLocal, type SentidoGiro } from '../lib/fotos';
 import { useObjectUrls } from '../lib/useObjectUrls';
+import { useCapturaFotos } from '../lib/useCapturaFotos';
 import { FotoLightbox } from './FotoLightbox';
 import { CamaraFoto } from './CamaraFoto';
 
@@ -21,28 +22,23 @@ interface Props {
  */
 export function PhotoCapture({ fotos, onChange, max = Infinity }: Props) {
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
-  const [camaraAbierta, setCamaraAbierta] = useState(false);
-  // Cupo fijado al ABRIR la cámara (no recalculado en cada foto) — ver el mismo comentario en
-  // EquipoSection.tsx: CamaraFoto ya lleva su propio contador de disparos de la sesión.
-  const [cupoCamara, setCupoCamara] = useState(0);
-  const fotosRef = useRef(fotos);
-  fotosRef.current = fotos;
   const urls = useObjectUrls(fotos);
+  const { camaraAbierta, setCamaraAbierta, cupoCamara, capturasPendientes, abrirCamara, agregarFoto } =
+    useCapturaFotos(max);
 
   const conTope = Number.isFinite(max);
-  const puedeAgregar = fotos.length < max;
+  const puedeAgregar = fotos.length < max && capturasPendientes === 0;
 
   // Cada captura de CamaraFoto llega una por una (mientras el operador sigue disparando con la
   // cámara todavía abierta) — se agrega de a una al estado en vez de esperar a "Listo" para no
   // perder fotos ya tomadas si algo falla a mitad de la sesión.
   async function agregarFotoDesdeCamara(blob: Blob, dispositivoEnHorizontal: boolean) {
-    const nueva = await crearFotoLocal(blob, new Date().toISOString(), dispositivoEnHorizontal);
-    onChange([...fotosRef.current, nueva]);
+    onChange(await agregarFoto(blob, dispositivoEnHorizontal));
   }
 
   async function rotar(foto: FotoLocal, sentido: SentidoGiro) {
     const girada = await rotarFotoLocal(foto, sentido);
-    onChange(fotosRef.current.map((f) => (f.id === foto.id ? girada : f)));
+    onChange(fotos.map((f) => (f.id === foto.id ? girada : f)));
   }
 
   async function eliminar(foto: FotoLocal) {
@@ -68,10 +64,7 @@ export function PhotoCapture({ fotos, onChange, max = Infinity }: Props) {
           <button
             type="button"
             className="boton-secundario text-sm py-1.5 px-3"
-            onClick={() => {
-              setCupoCamara(conTope ? max - fotos.length : Infinity);
-              setCamaraAbierta(true);
-            }}
+            onClick={() => abrirCamara(fotos)}
           >
             📷 Tomar foto
           </button>

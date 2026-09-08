@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import type { EstadoEquipo, FotoLocal, RegistroEquipo } from '../lib/types';
-import { crearFotoLocal, eliminarFotoGuardada, rotarFotoLocal, type SentidoGiro } from '../lib/fotos';
+import { eliminarFotoGuardada, rotarFotoLocal, type SentidoGiro } from '../lib/fotos';
 import { useAutoResizeTextarea } from '../lib/useAutoResizeTextarea';
 import { useObjectUrls } from '../lib/useObjectUrls';
+import { useCapturaFotos } from '../lib/useCapturaFotos';
 import { FotoLightbox } from './FotoLightbox';
 import { BotonDictado } from './BotonDictado';
 import { CamaraFoto } from './CamaraFoto';
@@ -49,16 +50,12 @@ export function EquipoSection({
   estadoSiTiene,
 }: Props) {
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
-  const [camaraAbierta, setCamaraAbierta] = useState(false);
-  // Cupo fijado al ABRIR la cámara (no recalculado en cada foto): CamaraFoto ya lleva su propio
-  // contador de disparos de la sesión, así que si acá se recalculara en vivo contra
-  // valor.fotos.length (que también crece con cada foto) se estaría restando dos veces el mismo
-  // avance y el disparador se apagaría antes de llegar a MAX_FOTOS.
-  const [cupoCamara, setCupoCamara] = useState(0);
   const valorRef = useRef(valor);
   valorRef.current = valor;
   const urls = useObjectUrls(valor.fotos);
   const observacionesRef = useAutoResizeTextarea(valor.observaciones ?? '');
+  const { camaraAbierta, setCamaraAbierta, cupoCamara, capturasPendientes, abrirCamara, agregarFoto } =
+    useCapturaFotos(MAX_FOTOS);
   const mostrarDetalle = !tieneSelector || valor.tiene === true;
   const mostrarEstado = !sinEstado && (!tieneSelector || (estadoSiTiene && valor.tiene === true));
 
@@ -73,8 +70,8 @@ export function EquipoSection({
 
   // Ver el mismo comentario en PhotoCapture.tsx: cada captura de CamaraFoto llega una por una.
   async function agregarFotoDesdeCamara(blob: Blob, dispositivoEnHorizontal: boolean) {
-    const nueva = await crearFotoLocal(blob, new Date().toISOString(), dispositivoEnHorizontal);
-    onChange({ ...valorRef.current, fotos: [...valorRef.current.fotos, nueva] });
+    const fotos = await agregarFoto(blob, dispositivoEnHorizontal);
+    onChange({ ...valorRef.current, fotos });
   }
 
   async function rotarFoto(foto: FotoLocal, sentido: SentidoGiro) {
@@ -207,14 +204,11 @@ export function EquipoSection({
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="etiqueta mb-0">Fotos ({valor.fotos.length}/{MAX_FOTOS})</span>
-          {valor.fotos.length < MAX_FOTOS && (
+          {valor.fotos.length < MAX_FOTOS && capturasPendientes === 0 && (
             <button
               type="button"
               className="boton-secundario text-sm py-1.5 px-3"
-              onClick={() => {
-                setCupoCamara(MAX_FOTOS - valor.fotos.length);
-                setCamaraAbierta(true);
-              }}
+              onClick={() => abrirCamara(valor.fotos)}
             >
               📷 Tomar foto
             </button>
