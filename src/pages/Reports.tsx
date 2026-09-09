@@ -306,28 +306,39 @@ export function Reports() {
   // (fechaInicio === fechaFin); en un rango de varios días o en los otros 2 tipos de reporte
   // (diario por operador, de una sola estación) no hay una lista de "no visitadas" con un
   // significado claro, así que queda vacía y el PDF no agrega la sección (ver bloqueNoVisitadas en
-  // pdf.ts). Es la foto de TODA la empresa ese día — no se filtra por el operador elegido arriba
-  // (que no visitó no dice quién sí), pero si se eligieron estaciones puntuales en el filtro, la
-  // lista se acota a esas.
+  // pdf.ts). Si hay un operador elegido en el filtro de arriba (el propio, si quien mira es
+  // operador; el elegido a mano, si es administrador/supervisor), la lista se acota a las
+  // estaciones asignadas a ESE operador (asignaciones_estacion) — antes mostraba SIEMPRE la foto
+  // de toda la empresa sin importar el operador del filtro, y en el reporte de un operador
+  // aparecían EBAR de otros compañeros que él no tenía por qué visitar (reportado por el usuario
+  // con una captura real, 2026-09-09). Sin ningún operador elegido, sigue siendo la foto de toda
+  // la empresa. Si además se eligieron estaciones puntuales en el filtro, la lista se acota
+  // también a esas.
   async function obtenerNoVisitadas(): Promise<FilaNoVisitadaReporte[]> {
     if (tipo !== 'consolidado_fecha' || fechaInicioEfectiva !== fechaFinEfectiva) return [];
     if (estacionIds !== null && estacionIds.size === 0) return [];
 
+    const operadorEfectivo = esAdmin ? operadorId : (usuario?.id ?? '');
+
     let queryEstaciones = supabase.from('estaciones_ebar').select('id, nombre, codigo').eq('activa', true);
     if (estacionIds !== null) queryEstaciones = queryEstaciones.in('id', [...estacionIds]);
 
-    const [{ data: todasActivas }, { data: visitasDelDia }, { data: justificacionesDia }] = await Promise.all([
-      queryEstaciones,
-      supabase
-        .from('visitas')
-        .select('estacion_id')
-        .gte('fecha_hora_llegada', `${fechaInicioEfectiva}T00:00:00`)
-        .lte('fecha_hora_llegada', `${fechaInicioEfectiva}T23:59:59`),
-      supabase
-        .from('justificaciones_no_visita')
-        .select('estacion_id, motivo, usuarios ( nombre_completo )')
-        .eq('fecha', fechaInicioEfectiva),
-    ]);
+    const [{ data: todasActivas }, { data: visitasDelDia }, { data: justificacionesDia }, { data: asignacionesOperador }] =
+      await Promise.all([
+        queryEstaciones,
+        supabase
+          .from('visitas')
+          .select('estacion_id')
+          .gte('fecha_hora_llegada', `${fechaInicioEfectiva}T00:00:00`)
+          .lte('fecha_hora_llegada', `${fechaInicioEfectiva}T23:59:59`),
+        supabase
+          .from('justificaciones_no_visita')
+          .select('estacion_id, motivo, usuarios ( nombre_completo )')
+          .eq('fecha', fechaInicioEfectiva),
+        operadorEfectivo
+          ? supabase.from('asignaciones_estacion').select('estacion_id, fecha').eq('operador_id', operadorEfectivo)
+          : Promise.resolve({ data: null as null }),
+      ]);
 
     const idsConVisita = new Set(((visitasDelDia ?? []) as any[]).map((v) => v.estacion_id));
     const mapaJustificaciones = new Map(
@@ -336,9 +347,18 @@ export function Reports() {
         { motivo: j.motivo as string, registrado_por: (j.usuarios?.nombre_completo as string) ?? null },
       ]),
     );
+    // null = sin operador elegido, no se acota por asignación (foto de toda la empresa).
+    const idsAsignadosAlOperador = operadorEfectivo
+      ? new Set(
+          ((asignacionesOperador ?? []) as any[])
+            .filter((a) => a.fecha === null || a.fecha === fechaInicioEfectiva)
+            .map((a) => a.estacion_id),
+        )
+      : null;
 
     return ((todasActivas ?? []) as EstacionEbar[])
       .filter((e) => !idsConVisita.has(e.id) && mapaJustificaciones.has(e.id))
+      .filter((e) => idsAsignadosAlOperador === null || idsAsignadosAlOperador.has(e.id))
       .map((e) => ({
         nombre: e.nombre,
         codigo: e.codigo,
