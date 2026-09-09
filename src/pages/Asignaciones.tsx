@@ -12,10 +12,11 @@ import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, codigoYNombre } from
 
 // Sentinel del selector "Operador" para el modo "Todos los operadores" — pedido del usuario
 // (2026-09-09) para asignar de una sola las mismas EBAR a todo el mundo, sin tener que repetir
-// operador por operador. Solo se ofrece para la "Asignación por defecto": SIEMPRE agrega, nunca
-// quita nada que un operador ya tuviera (confirmado con el usuario) — "Asignación especial" y
-// "Excepción de GPS" quedan deshabilitadas en este modo, son casos puntuales de un operador a la
-// vez sin un significado claro para "todos a la vez".
+// operador por operador. Solo se ofrece para "Asignación especial por fecha" (ej. un refuerzo de
+// feriado/fin de semana para todo el mundo) — el usuario pidió explícitamente que NO aplique a
+// "Asignación por defecto" (esa sigue siendo operador por operador). SIEMPRE agrega, nunca quita
+// nada que un operador ya tuviera esa fecha. "Excepción de GPS" queda deshabilitada en este modo,
+// es un caso puntual de un operador a la vez sin significado claro para "todos juntos".
 const TODOS_OPERADORES = '__todos__';
 
 function dentroDelRango(fecha: string, desde: string, hasta: string): boolean {
@@ -210,40 +211,6 @@ export function Asignaciones() {
     }
   }
 
-  /** "Todos los operadores": agrega las EBAR marcadas como asignación por defecto a TODOS los
-   * operadores activos de una sola vez. Nunca quita nada — al operador que ya tuviera alguna de
-   * esas EBAR asignada, esa en particular no se toca (se salta, no se duplica). */
-  async function guardarParaTodos() {
-    if (seleccionDefault.size === 0) return;
-    setGuardando(true);
-    setMensaje(null);
-    try {
-      const yaAsignados = new Set(
-        todasAsignaciones.filter((a) => a.fecha === null).map((a) => `${a.operador_id}:${a.estacion_id}`),
-      );
-      const filas = operadores.flatMap((o) =>
-        [...seleccionDefault]
-          .filter((estacionId) => !yaAsignados.has(`${o.id}:${estacionId}`))
-          .map((estacionId) => ({ operador_id: o.id, estacion_id: estacionId, fecha: null, creado_por: usuario?.id })),
-      );
-      if (filas.length) {
-        const { error } = await supabase.from('asignaciones_estacion').insert(filas);
-        if (error) throw error;
-      }
-      setSeleccionDefault(new Set());
-      await cargarTodasAsignaciones();
-      setMensaje(
-        filas.length
-          ? `Agregado a los ${operadores.length} operadores (${filas.length} asignaciones nuevas — a quien ya tenía alguna de esas EBAR no se le duplicó).`
-          : 'Todos los operadores ya tenían esas EBAR asignadas por defecto — no había nada que agregar.',
-      );
-    } catch (err: any) {
-      setMensaje(`No se pudo guardar: ${err.message ?? err}`);
-    } finally {
-      setGuardando(false);
-    }
-  }
-
   async function agregarEspecial() {
     if (!operadorId || !fechaEspecial || seleccionEspecial.size === 0) return;
     setGuardando(true);
@@ -262,6 +229,43 @@ export function Asignaciones() {
       await cargarAsignaciones(operadorId);
       await cargarTodasAsignaciones();
       setMensaje('Asignación especial agregada.');
+    } catch (err: any) {
+      setMensaje(`No se pudo agregar: ${err.message ?? err}`);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  /** "Todos los operadores": agrega la(s) EBAR marcadas como asignación especial de esa fecha a
+   * TODOS los operadores activos de una sola vez (ej. un refuerzo de feriado/fin de semana para
+   * todo el mundo). Nunca quita nada; a quien ya tuviera esa EBAR asignada ese mismo día
+   * simplemente no se le duplica — se filtra ANTES de insertar (en vez de confiar en el error
+   * 23505 de `agregarEspecial`, que en un insert de varias filas a la vez haría fallar el lote
+   * completo si UNA sola ya existía, y ninguna de las demás quedaría agregada). */
+  async function agregarEspecialParaTodos() {
+    if (!fechaEspecial || seleccionEspecial.size === 0) return;
+    setGuardando(true);
+    setMensaje(null);
+    try {
+      const yaExisten = new Set(
+        todasAsignaciones.filter((a) => a.fecha === fechaEspecial).map((a) => `${a.operador_id}:${a.estacion_id}`),
+      );
+      const filas = operadores.flatMap((o) =>
+        [...seleccionEspecial]
+          .filter((estacionId) => !yaExisten.has(`${o.id}:${estacionId}`))
+          .map((estacionId) => ({ operador_id: o.id, estacion_id: estacionId, fecha: fechaEspecial, creado_por: usuario?.id })),
+      );
+      if (filas.length) {
+        const { error } = await supabase.from('asignaciones_estacion').insert(filas);
+        if (error) throw error;
+      }
+      setSeleccionEspecial(new Set());
+      await cargarTodasAsignaciones();
+      setMensaje(
+        filas.length
+          ? `Agregada a los ${operadores.length} operadores para el ${fechaEspecial} (${filas.length} asignaciones nuevas — a quien ya la tenía ese día no se le duplicó).`
+          : 'Todos los operadores ya tenían esas EBAR asignadas ese día — no había nada que agregar.',
+      );
     } catch (err: any) {
       setMensaje(`No se pudo agregar: ${err.message ?? err}`);
     } finally {
@@ -305,11 +309,11 @@ export function Asignaciones() {
     registrarFormularioActivo({
       hayCambios: seleccionDefaultDistinta || hayPendienteEspecial || hayPendienteExcepcion,
       guardar: async () => {
-        if (seleccionDefaultDistinta) {
-          if (operadorId === TODOS_OPERADORES) await guardarParaTodos();
-          else await guardarDefault();
+        if (seleccionDefaultDistinta) await guardarDefault();
+        if (hayPendienteEspecial) {
+          if (operadorId === TODOS_OPERADORES) await agregarEspecialParaTodos();
+          else await agregarEspecial();
         }
-        if (hayPendienteEspecial) await agregarEspecial();
         if (hayPendienteExcepcion) await agregarExcepcion();
       },
     });
@@ -343,12 +347,12 @@ export function Asignaciones() {
     setSeleccionDefault,
     guardando,
     guardarDefault,
-    guardarParaTodos,
     fechaEspecial,
     setFechaEspecial,
     seleccionEspecial,
     setSeleccionEspecial,
     agregarEspecial,
+    agregarEspecialParaTodos,
     asignacionesEspecialesFiltradas,
     quitarEspecial,
     alternar,
@@ -448,12 +452,12 @@ type BloquesProps = {
   setSeleccionDefault: (s: Set<string>) => void;
   guardando: boolean;
   guardarDefault: () => void;
-  guardarParaTodos: () => void;
   fechaEspecial: string;
   setFechaEspecial: (v: string) => void;
   seleccionEspecial: Set<string>;
   setSeleccionEspecial: (s: Set<string>) => void;
   agregarEspecial: () => void;
+  agregarEspecialParaTodos: () => void;
   asignacionesEspecialesFiltradas: AsignacionEstacion[];
   quitarEspecial: (id: string) => void;
   alternar: (set: Set<string>, setSet: (s: Set<string>) => void, estacionId: string) => void;
@@ -582,23 +586,22 @@ function BloqueAsignacionDefault({
   setSeleccionDefault,
   guardando,
   guardarDefault,
-  guardarParaTodos,
   alternar,
 }: BloquesProps) {
-  const sinOperador = !operadorId;
   const modoTodos = operadorId === TODOS_OPERADORES;
+  const sinOperador = !operadorId || modoTodos;
   return (
     <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
       <div>
         <h2 className="text-base font-semibold">Asignación por defecto</h2>
-        <p className="text-xs text-slate-500">
-          {modoTodos
-            ? 'Marcá las EBAR y se agregan a TODOS los operadores de una sola vez — nunca les quita ninguna que ya tuvieran.'
-            : 'EBAR que este operador visita habitualmente, todos los días.'}
-        </p>
+        <p className="text-xs text-slate-500">EBAR que este operador visita habitualmente, todos los días.</p>
       </div>
-      {sinOperador && (
-        <p className="text-xs text-slate-500 italic">Elegí un operador arriba para ver y editar su asignación.</p>
+      {modoTodos ? (
+        <p className="text-xs text-slate-500 italic">No aplica a "Todos los operadores" — elegí un operador puntual para esto.</p>
+      ) : (
+        sinOperador && (
+          <p className="text-xs text-slate-500 italic">Elegí un operador arriba para ver y editar su asignación.</p>
+        )
       )}
       <div className="space-y-3">
         {agruparPorZonaYTipo(estaciones).map(({ zona, tipo, estaciones: delGrupo }) => (
@@ -627,12 +630,8 @@ function BloqueAsignacionDefault({
           </div>
         ))}
       </div>
-      <button
-        onClick={modoTodos ? guardarParaTodos : guardarDefault}
-        disabled={guardando || sinOperador || (modoTodos && seleccionDefault.size === 0)}
-        className="boton-primario w-full"
-      >
-        {guardando ? 'Guardando…' : modoTodos ? 'Agregar a todos los operadores' : 'Guardar asignación por defecto'}
+      <button onClick={guardarDefault} disabled={guardando || sinOperador} className="boton-primario w-full">
+        {guardando ? 'Guardando…' : 'Guardar asignación por defecto'}
       </button>
     </div>
   );
@@ -647,6 +646,7 @@ function BloqueAsignacionEspecial({
   setSeleccionEspecial,
   guardando,
   agregarEspecial,
+  agregarEspecialParaTodos,
   hayFiltro,
   asignacionesEspecialesFiltradas,
   quitarEspecial,
@@ -654,22 +654,20 @@ function BloqueAsignacionEspecial({
   nombreEstacion,
 }: BloquesProps) {
   const modoTodos = operadorId === TODOS_OPERADORES;
-  const sinOperador = !operadorId || modoTodos;
+  const sinOperador = !operadorId;
   return (
     <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
       <div>
         <h2 className="text-base font-semibold">Asignación especial por fecha</h2>
         <p className="text-xs text-slate-500">
-          EBAR adicionales que este operador debe visitar solo ese día, sin afectar su asignación por defecto.
+          {modoTodos
+            ? 'Marcá fecha + EBAR y se agregan a TODOS los operadores de una sola vez (ej. un refuerzo de feriado) — sin afectar la asignación por defecto de nadie.'
+            : 'EBAR adicionales que este operador debe visitar solo ese día, sin afectar su asignación por defecto.'}
         </p>
       </div>
 
-      {modoTodos ? (
-        <p className="text-xs text-slate-500 italic">No aplica a "Todos los operadores" — elegí un operador puntual para esto.</p>
-      ) : (
-        sinOperador && (
-          <p className="text-xs text-slate-500 italic">Elegí un operador arriba para poder agregar una asignación especial.</p>
-        )
+      {sinOperador && (
+        <p className="text-xs text-slate-500 italic">Elegí un operador arriba (o "Todos los operadores") para poder agregar una asignación especial.</p>
       )}
 
       <div>
@@ -712,14 +710,14 @@ function BloqueAsignacionEspecial({
       </div>
 
       <button
-        onClick={agregarEspecial}
+        onClick={modoTodos ? agregarEspecialParaTodos : agregarEspecial}
         disabled={guardando || sinOperador || !fechaEspecial || seleccionEspecial.size === 0}
         className="boton-primario w-full"
       >
-        {guardando ? 'Guardando…' : 'Agregar asignación especial'}
+        {guardando ? 'Guardando…' : modoTodos ? 'Agregar a todos los operadores' : 'Agregar asignación especial'}
       </button>
 
-      {hayFiltro ? (
+      {modoTodos ? null : hayFiltro ? (
         <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
           <p className="text-xs text-slate-500">Asignaciones especiales de este operador en ese rango:</p>
           {asignacionesEspecialesFiltradas.length > 0 ? (
