@@ -236,8 +236,12 @@ export function Asignaciones() {
     setGuardandoExcepcion(true);
     setMensajeExcepcion(null);
     const { error } = await supabase.from('excepciones_gps').delete().eq('id', id);
-    if (error) setMensajeExcepcion(`No se pudo quitar: ${error.message}`);
-    else setExcepcionesGps((prev) => prev.filter((e) => e.id !== id));
+    if (error) {
+      setMensajeExcepcion(`No se pudo quitar: ${error.message}`);
+    } else {
+      setExcepcionesGps((prev) => prev.filter((e) => e.id !== id));
+      setTodasExcepciones((prev) => prev.filter((e) => e.id !== id));
+    }
     setGuardandoExcepcion(false);
   }
 
@@ -448,6 +452,7 @@ export function Asignaciones() {
     setOperadorId,
     mensaje,
     todasAsignaciones,
+    todasExcepciones,
     filtroDesde,
     setFiltroDesde,
     filtroHasta,
@@ -556,6 +561,7 @@ type BloquesProps = {
   setOperadorId: (v: string) => void;
   mensaje: string | null;
   todasAsignaciones: AsignacionEstacion[];
+  todasExcepciones: ExcepcionGps[];
   filtroDesde: string;
   setFiltroDesde: (v: string) => void;
   filtroHasta: string;
@@ -756,8 +762,10 @@ function BloqueAsignacionDefault({
 }
 
 function BloqueAsignacionEspecial({
+  operadores,
   estaciones,
   operadorId,
+  todasAsignaciones,
   fechaEspecial,
   setFechaEspecial,
   seleccionEspecial,
@@ -774,6 +782,18 @@ function BloqueAsignacionEspecial({
 }: BloquesProps) {
   const modoTodos = operadorId === TODOS_OPERADORES;
   const sinOperador = !operadorId;
+  // Modo "Todos": quién (qué operador) tiene qué EBAR asignada ESA fecha puntual — para poder
+  // desasignar una por una además del botón "Quitar de todos" (pedido del usuario, 2026-09-09).
+  const especialesEnFecha = fechaEspecial
+    ? todasAsignaciones
+        .filter((a) => a.fecha === fechaEspecial)
+        .sort(
+          (a, b) =>
+            (operadores.find((o) => o.id === a.operador_id)?.nombre_completo ?? '').localeCompare(
+              operadores.find((o) => o.id === b.operador_id)?.nombre_completo ?? '',
+            ) || a.estacion_id.localeCompare(b.estacion_id),
+        )
+    : [];
   return (
     <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
       <div>
@@ -855,7 +875,29 @@ function BloqueAsignacionEspecial({
         </button>
       )}
 
-      {modoTodos ? null : hayFiltro ? (
+      {modoTodos ? (
+        <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
+          <p className="text-xs text-slate-500">
+            {fechaEspecial ? `Asignado el ${fechaEspecial}:` : 'Elegí una fecha arriba para ver quién tiene qué asignado ese día.'}
+          </p>
+          {fechaEspecial && (
+            especialesEnFecha.length > 0 ? (
+              especialesEnFecha.map((a) => (
+                <div key={a.id} className="flex items-center justify-between text-sm">
+                  <span className="text-slate-700">
+                    {operadores.find((o) => o.id === a.operador_id)?.nombre_completo ?? '?'} · {nombreEstacion(a.estacion_id)}
+                  </span>
+                  <button onClick={() => quitarEspecial(a.id)} disabled={guardando} className="text-gauge-danger hover:underline text-xs">
+                    Quitar
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-500 italic">Nadie tiene asignaciones especiales para esa fecha.</p>
+            )
+          )}
+        </div>
+      ) : hayFiltro ? (
         <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
           <p className="text-xs text-slate-500">Asignaciones especiales de este operador en ese rango:</p>
           {asignacionesEspecialesFiltradas.length > 0 ? (
@@ -897,8 +939,10 @@ function descripcionRangoExcepcion(e: ExcepcionGps): string {
  * problemas conocidos de cobertura en una EBAR puntual (ej. Lapo en EBAR-9 con la señal de Claro
  * floja). La otorga supervisor/administrador, nunca el propio operador. */
 function BloqueExcepcionGps({
+  operadores,
   estaciones,
   operadorId,
+  todasExcepciones,
   excepcionesGps,
   seleccionExcepcion,
   setSeleccionExcepcion,
@@ -919,10 +963,23 @@ function BloqueExcepcionGps({
 }: BloquesProps) {
   const modoTodos = operadorId === TODOS_OPERADORES;
   const sinOperador = !operadorId;
-  const listaParaGuardar =
-    seleccionExcepcion.size > 0 &&
-    (modoExcepcion === 'indefinido' || !!excepcionDesde) &&
-    (modoExcepcion !== 'rango' || !!excepcionHasta);
+  const periodoElegido =
+    (modoExcepcion === 'indefinido' || !!excepcionDesde) && (modoExcepcion !== 'rango' || !!excepcionHasta);
+  const listaParaGuardar = seleccionExcepcion.size > 0 && periodoElegido;
+  // Modo "Todos": quién (qué operador) tiene qué excepción para ESE período exacto — para poder
+  // desasignar una por una además del botón "Quitar de todos" (pedido del usuario, 2026-09-09).
+  const fechaInicioElegida = modoExcepcion === 'indefinido' ? null : excepcionDesde;
+  const fechaFinElegida = modoExcepcion === 'indefinido' ? null : modoExcepcion === 'un_dia' ? excepcionDesde : excepcionHasta;
+  const excepcionesEnPeriodo = periodoElegido
+    ? todasExcepciones
+        .filter((e) => e.fecha_inicio === fechaInicioElegida && e.fecha_fin === fechaFinElegida)
+        .sort(
+          (a, b) =>
+            (operadores.find((o) => o.id === a.operador_id)?.nombre_completo ?? '').localeCompare(
+              operadores.find((o) => o.id === b.operador_id)?.nombre_completo ?? '',
+            ) || a.estacion_id.localeCompare(b.estacion_id),
+        )
+    : [];
   return (
     <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
       <div>
@@ -1043,7 +1100,33 @@ function BloqueExcepcionGps({
         </p>
       )}
 
-      {modoTodos ? null : (
+      {modoTodos ? (
+      <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
+        <p className="text-xs text-slate-500">
+          {periodoElegido ? 'Con ese período, ya tienen la excepción:' : 'Elegí el período arriba para ver quién ya tiene esa excepción.'}
+        </p>
+        {periodoElegido && (
+          excepcionesEnPeriodo.length > 0 ? (
+            excepcionesEnPeriodo.map((ex) => (
+              <div key={ex.id} className="flex items-center justify-between text-sm gap-2">
+                <span className="text-slate-700 truncate">
+                  {operadores.find((o) => o.id === ex.operador_id)?.nombre_completo ?? '?'} · {nombreEstacion(ex.estacion_id)}
+                </span>
+                <button
+                  onClick={() => quitarExcepcion(ex.id)}
+                  disabled={guardandoExcepcion}
+                  className="text-gauge-danger hover:underline text-xs shrink-0"
+                >
+                  Quitar
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="text-xs text-slate-500 italic">Nadie tiene esa excepción todavía.</p>
+          )
+        )}
+      </div>
+      ) : (
       <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
         <p className="text-xs text-slate-500">Excepciones de este operador:</p>
         {sinOperador ? null : excepcionesGps.length > 0 ? (
