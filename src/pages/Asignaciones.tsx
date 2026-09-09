@@ -65,6 +65,11 @@ export function Asignaciones() {
   const [asignacionesEspeciales, setAsignacionesEspeciales] = useState<AsignacionEstacion[]>([]);
   const [fechaEspecial, setFechaEspecial] = useState('');
   const [seleccionEspecial, setSeleccionEspecial] = useState<Set<string>>(new Set());
+  // Aviso propio de este bloque (no el `mensaje` compartido de arriba, que solo se ve en el panel
+  // "Operador") — mismo criterio que ya tenía Excepción de GPS. El usuario reportó (2026-09-10)
+  // que "Quitar de todos" parecía no hacer nada: lo más probable es que sí funcionaba pero el
+  // aviso quedaba en un panel que no estaba mirando.
+  const [mensajeEspecial, setMensajeEspecial] = useState<string | null>(null);
 
   // Excepción de GPS (ver migración 0056): supervisor/administrador la otorga a un operador para
   // una EBAR con problemas conocidos de cobertura, sin depender de que el propio operador se la
@@ -220,11 +225,18 @@ export function Asignaciones() {
       let query = supabase.from('excepciones_gps').delete().in('estacion_id', [...seleccionExcepcion]);
       query = fecha_inicio === null ? query.is('fecha_inicio', null) : query.eq('fecha_inicio', fecha_inicio);
       query = fecha_fin === null ? query.is('fecha_fin', null) : query.eq('fecha_fin', fecha_fin);
-      const { error } = await query;
+      // `.select('id')` para saber de verdad cuántas se borraron — ver el mismo comentario en
+      // quitarEspecialParaTodos.
+      const { data, error } = await query.select('id');
       if (error) throw error;
+      const cantidad = data?.length ?? 0;
       setSeleccionExcepcion(new Set());
       await cargarTodasExcepciones();
-      setMensajeExcepcion('Excepción quitada a todos los operadores que la tenían.');
+      setMensajeExcepcion(
+        cantidad > 0
+          ? `Quitada a ${cantidad} operador(es) que la tenían.`
+          : 'Nadie tenía esa excepción — no había nada que quitar.',
+      );
     } catch (err: any) {
       setMensajeExcepcion(`No se pudo quitar: ${err.message ?? err}`);
     } finally {
@@ -302,7 +314,7 @@ export function Asignaciones() {
   async function agregarEspecial() {
     if (!operadorId || !fechaEspecial || seleccionEspecial.size === 0) return;
     setGuardando(true);
-    setMensaje(null);
+    setMensajeEspecial(null);
     try {
       const { error } = await supabase.from('asignaciones_estacion').insert(
         [...seleccionEspecial].map((estacion_id) => ({
@@ -316,9 +328,9 @@ export function Asignaciones() {
       if (error && error.code !== '23505') throw error;
       await cargarAsignaciones(operadorId);
       await cargarTodasAsignaciones();
-      setMensaje('Asignación especial agregada.');
+      setMensajeEspecial('Asignación especial agregada.');
     } catch (err: any) {
-      setMensaje(`No se pudo agregar: ${err.message ?? err}`);
+      setMensajeEspecial(`No se pudo agregar: ${err.message ?? err}`);
     } finally {
       setGuardando(false);
     }
@@ -333,7 +345,7 @@ export function Asignaciones() {
   async function agregarEspecialParaTodos() {
     if (!fechaEspecial || seleccionEspecial.size === 0) return;
     setGuardando(true);
-    setMensaje(null);
+    setMensajeEspecial(null);
     try {
       const yaExisten = new Set(
         todasAsignaciones.filter((a) => a.fecha === fechaEspecial).map((a) => `${a.operador_id}:${a.estacion_id}`),
@@ -349,13 +361,13 @@ export function Asignaciones() {
       }
       setSeleccionEspecial(new Set());
       await cargarTodasAsignaciones();
-      setMensaje(
+      setMensajeEspecial(
         filas.length
           ? `Agregada a los ${operadores.length} operadores para el ${fechaEspecial} (${filas.length} asignaciones nuevas — a quien ya la tenía ese día no se le duplicó).`
           : 'Todos los operadores ya tenían esas EBAR asignadas ese día — no había nada que agregar.',
       );
     } catch (err: any) {
-      setMensaje(`No se pudo agregar: ${err.message ?? err}`);
+      setMensajeEspecial(`No se pudo agregar: ${err.message ?? err}`);
     } finally {
       setGuardando(false);
     }
@@ -368,19 +380,28 @@ export function Asignaciones() {
   async function quitarEspecialParaTodos() {
     if (!fechaEspecial || seleccionEspecial.size === 0) return;
     setGuardando(true);
-    setMensaje(null);
+    setMensajeEspecial(null);
     try {
-      const { error } = await supabase
+      // `.select('id')` para saber de verdad cuántas filas se borraron — sin esto, un delete que no
+      // encuentra ninguna coincidencia (fecha/EBAR ya sin asignar, o bloqueado por RLS) no tira
+      // ningún error y el aviso decía "Quitada" igual, aunque no se hubiera borrado nada.
+      const { data, error } = await supabase
         .from('asignaciones_estacion')
         .delete()
         .eq('fecha', fechaEspecial)
-        .in('estacion_id', [...seleccionEspecial]);
+        .in('estacion_id', [...seleccionEspecial])
+        .select('id');
       if (error) throw error;
+      const cantidad = data?.length ?? 0;
       setSeleccionEspecial(new Set());
       await cargarTodasAsignaciones();
-      setMensaje(`Quitada a todos los operadores para el ${fechaEspecial}.`);
+      setMensajeEspecial(
+        cantidad > 0
+          ? `Quitada a ${cantidad} operador(es) para el ${fechaEspecial}.`
+          : 'Nadie tenía esa EBAR asignada ese día — no había nada que quitar.',
+      );
     } catch (err: any) {
-      setMensaje(`No se pudo quitar: ${err.message ?? err}`);
+      setMensajeEspecial(`No se pudo quitar: ${err.message ?? err}`);
     } finally {
       setGuardando(false);
     }
@@ -388,8 +409,11 @@ export function Asignaciones() {
 
   async function quitarEspecial(id: string) {
     setGuardando(true);
+    setMensajeEspecial(null);
     const { error } = await supabase.from('asignaciones_estacion').delete().eq('id', id);
-    if (!error) {
+    if (error) {
+      setMensajeEspecial(`No se pudo quitar: ${error.message}`);
+    } else {
       setAsignacionesEspeciales((prev) => prev.filter((a) => a.id !== id));
       await cargarTodasAsignaciones();
     }
@@ -471,6 +495,7 @@ export function Asignaciones() {
     agregarEspecial,
     agregarEspecialParaTodos,
     quitarEspecialParaTodos,
+    mensajeEspecial,
     asignacionesEspecialesFiltradas,
     quitarEspecial,
     alternar,
@@ -580,6 +605,7 @@ type BloquesProps = {
   agregarEspecial: () => void;
   agregarEspecialParaTodos: () => void;
   quitarEspecialParaTodos: () => void;
+  mensajeEspecial: string | null;
   asignacionesEspecialesFiltradas: AsignacionEstacion[];
   quitarEspecial: (id: string) => void;
   alternar: (set: Set<string>, setSet: (s: Set<string>) => void, estacionId: string) => void;
@@ -774,6 +800,7 @@ function BloqueAsignacionEspecial({
   agregarEspecial,
   agregarEspecialParaTodos,
   quitarEspecialParaTodos,
+  mensajeEspecial,
   hayFiltro,
   asignacionesEspecialesFiltradas,
   quitarEspecial,
@@ -873,6 +900,12 @@ function BloqueAsignacionEspecial({
         >
           {guardando ? 'Guardando…' : 'Agregar asignación especial'}
         </button>
+      )}
+
+      {mensajeEspecial && (
+        <p className={`text-sm ${mensajeEspecial.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
+          {mensajeEspecial}
+        </p>
       )}
 
       {modoTodos ? (
