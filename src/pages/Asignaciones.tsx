@@ -10,6 +10,14 @@ import { PANTALLAS_EDITABLES } from '../lib/pantallasEditables';
 import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, codigoYNombre } from '../lib/agruparEstaciones';
 
+// Sentinel del selector "Operador" para el modo "Todos los operadores" — pedido del usuario
+// (2026-09-09) para asignar de una sola las mismas EBAR a todo el mundo, sin tener que repetir
+// operador por operador. Solo se ofrece para la "Asignación por defecto": SIEMPRE agrega, nunca
+// quita nada que un operador ya tuviera (confirmado con el usuario) — "Asignación especial" y
+// "Excepción de GPS" quedan deshabilitadas en este modo, son casos puntuales de un operador a la
+// vez sin un significado claro para "todos a la vez".
+const TODOS_OPERADORES = '__todos__';
+
 function dentroDelRango(fecha: string, desde: string, hasta: string): boolean {
   return fecha >= desde && fecha <= hasta;
 }
@@ -91,7 +99,10 @@ export function Asignaciones() {
   }
 
   useEffect(() => {
-    if (!operadorId) {
+    // "Todos los operadores": arranca en blanco (nada premarcado — mezclar lo que cada operador
+    // ya tiene por defecto no tendría sentido acá) y no trae asignaciones especiales ni
+    // excepciones de GPS (esos 2 bloques quedan deshabilitados en este modo, ver TODOS_OPERADORES).
+    if (!operadorId || operadorId === TODOS_OPERADORES) {
       setAsignacionesDefault(new Set());
       setSeleccionDefault(new Set());
       setAsignacionesEspeciales([]);
@@ -199,6 +210,40 @@ export function Asignaciones() {
     }
   }
 
+  /** "Todos los operadores": agrega las EBAR marcadas como asignación por defecto a TODOS los
+   * operadores activos de una sola vez. Nunca quita nada — al operador que ya tuviera alguna de
+   * esas EBAR asignada, esa en particular no se toca (se salta, no se duplica). */
+  async function guardarParaTodos() {
+    if (seleccionDefault.size === 0) return;
+    setGuardando(true);
+    setMensaje(null);
+    try {
+      const yaAsignados = new Set(
+        todasAsignaciones.filter((a) => a.fecha === null).map((a) => `${a.operador_id}:${a.estacion_id}`),
+      );
+      const filas = operadores.flatMap((o) =>
+        [...seleccionDefault]
+          .filter((estacionId) => !yaAsignados.has(`${o.id}:${estacionId}`))
+          .map((estacionId) => ({ operador_id: o.id, estacion_id: estacionId, fecha: null, creado_por: usuario?.id })),
+      );
+      if (filas.length) {
+        const { error } = await supabase.from('asignaciones_estacion').insert(filas);
+        if (error) throw error;
+      }
+      setSeleccionDefault(new Set());
+      await cargarTodasAsignaciones();
+      setMensaje(
+        filas.length
+          ? `Agregado a los ${operadores.length} operadores (${filas.length} asignaciones nuevas — a quien ya tenía alguna de esas EBAR no se le duplicó).`
+          : 'Todos los operadores ya tenían esas EBAR asignadas por defecto — no había nada que agregar.',
+      );
+    } catch (err: any) {
+      setMensaje(`No se pudo guardar: ${err.message ?? err}`);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function agregarEspecial() {
     if (!operadorId || !fechaEspecial || seleccionEspecial.size === 0) return;
     setGuardando(true);
@@ -260,14 +305,17 @@ export function Asignaciones() {
     registrarFormularioActivo({
       hayCambios: seleccionDefaultDistinta || hayPendienteEspecial || hayPendienteExcepcion,
       guardar: async () => {
-        if (seleccionDefaultDistinta) await guardarDefault();
+        if (seleccionDefaultDistinta) {
+          if (operadorId === TODOS_OPERADORES) await guardarParaTodos();
+          else await guardarDefault();
+        }
         if (hayPendienteEspecial) await agregarEspecial();
         if (hayPendienteExcepcion) await agregarExcepcion();
       },
     });
     return () => desregistrarFormularioActivo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seleccionDefault, asignacionesDefault, fechaEspecial, seleccionEspecial, seleccionExcepcion, modoExcepcion, excepcionDesde, excepcionHasta]);
+  }, [operadorId, seleccionDefault, asignacionesDefault, fechaEspecial, seleccionEspecial, seleccionExcepcion, modoExcepcion, excepcionDesde, excepcionHasta]);
 
   if (cargando) return <p className="text-slate-600">Cargando…</p>;
 
@@ -295,6 +343,7 @@ export function Asignaciones() {
     setSeleccionDefault,
     guardando,
     guardarDefault,
+    guardarParaTodos,
     fechaEspecial,
     setFechaEspecial,
     seleccionEspecial,
@@ -399,6 +448,7 @@ type BloquesProps = {
   setSeleccionDefault: (s: Set<string>) => void;
   guardando: boolean;
   guardarDefault: () => void;
+  guardarParaTodos: () => void;
   fechaEspecial: string;
   setFechaEspecial: (v: string) => void;
   seleccionEspecial: Set<string>;
@@ -510,6 +560,7 @@ function BloqueSeleccionarOperador({ operadores, operadorId, setOperadorId, mens
         <label className="etiqueta">Operador</label>
         <select className="campo" value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
           <option value="">Selecciona un operador…</option>
+          <option value={TODOS_OPERADORES}>— Todos los operadores —</option>
           {operadores.map((o) => (
             <option key={o.id} value={o.id}>
               {o.nombre_completo}
@@ -531,14 +582,20 @@ function BloqueAsignacionDefault({
   setSeleccionDefault,
   guardando,
   guardarDefault,
+  guardarParaTodos,
   alternar,
 }: BloquesProps) {
   const sinOperador = !operadorId;
+  const modoTodos = operadorId === TODOS_OPERADORES;
   return (
     <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
       <div>
         <h2 className="text-base font-semibold">Asignación por defecto</h2>
-        <p className="text-xs text-slate-500">EBAR que este operador visita habitualmente, todos los días.</p>
+        <p className="text-xs text-slate-500">
+          {modoTodos
+            ? 'Marcá las EBAR y se agregan a TODOS los operadores de una sola vez — nunca les quita ninguna que ya tuvieran.'
+            : 'EBAR que este operador visita habitualmente, todos los días.'}
+        </p>
       </div>
       {sinOperador && (
         <p className="text-xs text-slate-500 italic">Elegí un operador arriba para ver y editar su asignación.</p>
@@ -570,8 +627,12 @@ function BloqueAsignacionDefault({
           </div>
         ))}
       </div>
-      <button onClick={guardarDefault} disabled={guardando || sinOperador} className="boton-primario w-full">
-        {guardando ? 'Guardando…' : 'Guardar asignación por defecto'}
+      <button
+        onClick={modoTodos ? guardarParaTodos : guardarDefault}
+        disabled={guardando || sinOperador || (modoTodos && seleccionDefault.size === 0)}
+        className="boton-primario w-full"
+      >
+        {guardando ? 'Guardando…' : modoTodos ? 'Agregar a todos los operadores' : 'Guardar asignación por defecto'}
       </button>
     </div>
   );
@@ -592,7 +653,8 @@ function BloqueAsignacionEspecial({
   alternar,
   nombreEstacion,
 }: BloquesProps) {
-  const sinOperador = !operadorId;
+  const modoTodos = operadorId === TODOS_OPERADORES;
+  const sinOperador = !operadorId || modoTodos;
   return (
     <div className="tarjeta p-4 space-y-3 lg:h-full lg:overflow-auto">
       <div>
@@ -602,8 +664,12 @@ function BloqueAsignacionEspecial({
         </p>
       </div>
 
-      {sinOperador && (
-        <p className="text-xs text-slate-500 italic">Elegí un operador arriba para poder agregar una asignación especial.</p>
+      {modoTodos ? (
+        <p className="text-xs text-slate-500 italic">No aplica a "Todos los operadores" — elegí un operador puntual para esto.</p>
+      ) : (
+        sinOperador && (
+          <p className="text-xs text-slate-500 italic">Elegí un operador arriba para poder agregar una asignación especial.</p>
+        )
       )}
 
       <div>
@@ -713,7 +779,8 @@ function BloqueExcepcionGps({
   alternar,
   nombreEstacion,
 }: BloquesProps) {
-  const sinOperador = !operadorId;
+  const modoTodos = operadorId === TODOS_OPERADORES;
+  const sinOperador = !operadorId || modoTodos;
   const listaParaGuardar =
     seleccionExcepcion.size > 0 &&
     (modoExcepcion === 'indefinido' || !!excepcionDesde) &&
@@ -729,8 +796,12 @@ function BloqueExcepcionGps({
         </p>
       </div>
 
-      {sinOperador && (
-        <p className="text-xs text-slate-500 italic">Elegí un operador arriba para poder agregar una excepción.</p>
+      {modoTodos ? (
+        <p className="text-xs text-slate-500 italic">No aplica a "Todos los operadores" — elegí un operador puntual para esto.</p>
+      ) : (
+        sinOperador && (
+          <p className="text-xs text-slate-500 italic">Elegí un operador arriba para poder agregar una excepción.</p>
+        )
       )}
 
       <div>
