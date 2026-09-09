@@ -205,6 +205,33 @@ export function Asignaciones() {
     }
   }
 
+  /** "Todos los operadores": lo contrario de agregarExcepcionParaTodos — quita esa excepción
+   * (EBAR + período EXACTO) a cualquier operador que la tuviera. Pedido del usuario (2026-09-09):
+   * así como se puede otorgar a todos de una sola, también poder revocarla a todos. */
+  async function quitarExcepcionParaTodos() {
+    if (seleccionExcepcion.size === 0) return;
+    if (modoExcepcion !== 'indefinido' && !excepcionDesde) return;
+    if (modoExcepcion === 'rango' && !excepcionHasta) return;
+    setGuardandoExcepcion(true);
+    setMensajeExcepcion(null);
+    try {
+      const fecha_inicio = modoExcepcion === 'indefinido' ? null : excepcionDesde;
+      const fecha_fin = modoExcepcion === 'indefinido' ? null : modoExcepcion === 'un_dia' ? excepcionDesde : excepcionHasta;
+      let query = supabase.from('excepciones_gps').delete().in('estacion_id', [...seleccionExcepcion]);
+      query = fecha_inicio === null ? query.is('fecha_inicio', null) : query.eq('fecha_inicio', fecha_inicio);
+      query = fecha_fin === null ? query.is('fecha_fin', null) : query.eq('fecha_fin', fecha_fin);
+      const { error } = await query;
+      if (error) throw error;
+      setSeleccionExcepcion(new Set());
+      await cargarTodasExcepciones();
+      setMensajeExcepcion('Excepción quitada a todos los operadores que la tenían.');
+    } catch (err: any) {
+      setMensajeExcepcion(`No se pudo quitar: ${err.message ?? err}`);
+    } finally {
+      setGuardandoExcepcion(false);
+    }
+  }
+
   async function quitarExcepcion(id: string) {
     setGuardandoExcepcion(true);
     setMensajeExcepcion(null);
@@ -330,6 +357,31 @@ export function Asignaciones() {
     }
   }
 
+  /** "Todos los operadores": lo contrario de agregarEspecialParaTodos — quita la asignación
+   * especial de esa fecha con esas EBAR a CUALQUIER operador que la tuviera, no solo a los
+   * activos ahora mismo (mismo criterio "de una sola vez" que agregar). Pedido del usuario
+   * (2026-09-09): así como se puede asignar a todos de una sola, también poder desasignar. */
+  async function quitarEspecialParaTodos() {
+    if (!fechaEspecial || seleccionEspecial.size === 0) return;
+    setGuardando(true);
+    setMensaje(null);
+    try {
+      const { error } = await supabase
+        .from('asignaciones_estacion')
+        .delete()
+        .eq('fecha', fechaEspecial)
+        .in('estacion_id', [...seleccionEspecial]);
+      if (error) throw error;
+      setSeleccionEspecial(new Set());
+      await cargarTodasAsignaciones();
+      setMensaje(`Quitada a todos los operadores para el ${fechaEspecial}.`);
+    } catch (err: any) {
+      setMensaje(`No se pudo quitar: ${err.message ?? err}`);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function quitarEspecial(id: string) {
     setGuardando(true);
     const { error } = await supabase.from('asignaciones_estacion').delete().eq('id', id);
@@ -413,6 +465,7 @@ export function Asignaciones() {
     setSeleccionEspecial,
     agregarEspecial,
     agregarEspecialParaTodos,
+    quitarEspecialParaTodos,
     asignacionesEspecialesFiltradas,
     quitarEspecial,
     alternar,
@@ -431,6 +484,7 @@ export function Asignaciones() {
     mensajeExcepcion,
     agregarExcepcion,
     agregarExcepcionParaTodos,
+    quitarExcepcionParaTodos,
     quitarExcepcion,
   };
 
@@ -519,6 +573,7 @@ type BloquesProps = {
   setSeleccionEspecial: (s: Set<string>) => void;
   agregarEspecial: () => void;
   agregarEspecialParaTodos: () => void;
+  quitarEspecialParaTodos: () => void;
   asignacionesEspecialesFiltradas: AsignacionEstacion[];
   quitarEspecial: (id: string) => void;
   alternar: (set: Set<string>, setSet: (s: Set<string>) => void, estacionId: string) => void;
@@ -537,6 +592,7 @@ type BloquesProps = {
   mensajeExcepcion: string | null;
   agregarExcepcion: () => void;
   agregarExcepcionParaTodos: () => void;
+  quitarExcepcionParaTodos: () => void;
   quitarExcepcion: (id: string) => void;
 };
 
@@ -709,6 +765,7 @@ function BloqueAsignacionEspecial({
   guardando,
   agregarEspecial,
   agregarEspecialParaTodos,
+  quitarEspecialParaTodos,
   hayFiltro,
   asignacionesEspecialesFiltradas,
   quitarEspecial,
@@ -771,13 +828,32 @@ function BloqueAsignacionEspecial({
         ))}
       </div>
 
-      <button
-        onClick={modoTodos ? agregarEspecialParaTodos : agregarEspecial}
-        disabled={guardando || sinOperador || !fechaEspecial || seleccionEspecial.size === 0}
-        className="boton-primario w-full"
-      >
-        {guardando ? 'Guardando…' : modoTodos ? 'Agregar a todos los operadores' : 'Agregar asignación especial'}
-      </button>
+      {modoTodos ? (
+        <div className="flex gap-2">
+          <button
+            onClick={agregarEspecialParaTodos}
+            disabled={guardando || !fechaEspecial || seleccionEspecial.size === 0}
+            className="boton-primario flex-1"
+          >
+            {guardando ? 'Guardando…' : 'Agregar a todos'}
+          </button>
+          <button
+            onClick={quitarEspecialParaTodos}
+            disabled={guardando || !fechaEspecial || seleccionEspecial.size === 0}
+            className="boton-secundario flex-1 text-gauge-danger border-gauge-danger/40 hover:bg-gauge-danger/10"
+          >
+            Quitar de todos
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={agregarEspecial}
+          disabled={guardando || sinOperador || !fechaEspecial || seleccionEspecial.size === 0}
+          className="boton-primario w-full"
+        >
+          {guardando ? 'Guardando…' : 'Agregar asignación especial'}
+        </button>
+      )}
 
       {modoTodos ? null : hayFiltro ? (
         <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
@@ -836,6 +912,7 @@ function BloqueExcepcionGps({
   mensajeExcepcion,
   agregarExcepcion,
   agregarExcepcionParaTodos,
+  quitarExcepcionParaTodos,
   quitarExcepcion,
   alternar,
   nombreEstacion,
@@ -942,13 +1019,24 @@ function BloqueExcepcionGps({
         ))}
       </div>
 
-      <button
-        onClick={modoTodos ? agregarExcepcionParaTodos : agregarExcepcion}
-        disabled={guardandoExcepcion || sinOperador || !listaParaGuardar}
-        className="boton-primario w-full"
-      >
-        {guardandoExcepcion ? 'Guardando…' : modoTodos ? 'Otorgar a todos los operadores' : 'Agregar excepción'}
-      </button>
+      {modoTodos ? (
+        <div className="flex gap-2">
+          <button onClick={agregarExcepcionParaTodos} disabled={guardandoExcepcion || !listaParaGuardar} className="boton-primario flex-1">
+            {guardandoExcepcion ? 'Guardando…' : 'Otorgar a todos'}
+          </button>
+          <button
+            onClick={quitarExcepcionParaTodos}
+            disabled={guardandoExcepcion || !listaParaGuardar}
+            className="boton-secundario flex-1 text-gauge-danger border-gauge-danger/40 hover:bg-gauge-danger/10"
+          >
+            Quitar de todos
+          </button>
+        </div>
+      ) : (
+        <button onClick={agregarExcepcion} disabled={guardandoExcepcion || sinOperador || !listaParaGuardar} className="boton-primario w-full">
+          {guardandoExcepcion ? 'Guardando…' : 'Agregar excepción'}
+        </button>
+      )}
       {mensajeExcepcion && (
         <p className={`text-sm ${mensajeExcepcion.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
           {mensajeExcepcion}
