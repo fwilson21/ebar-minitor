@@ -213,8 +213,13 @@ export function Asignaciones() {
   /** "Todos los operadores": lo contrario de agregarExcepcionParaTodos — quita esa excepción
    * (EBAR + período EXACTO) a cualquier operador que la tuviera. Pedido del usuario (2026-09-09):
    * así como se puede otorgar a todos de una sola, también poder revocarla a todos. */
+  /** Quita TODAS las excepciones de GPS de ese período exacto (de cualquier operador, cualquier
+   * EBAR) — ya no depende de tener marcada la EBAR en los botones de arriba, mismo motivo (y
+   * mismo arreglo) que quitarEspecialParaTodos: `seleccionExcepcion` se vacía solo después de
+   * "Otorgar a todos", así que al querer revocar lo recién otorgado ya no había nada marcado y el
+   * botón quedaba deshabilitado sin ningún aviso. Para sacar una EBAR puntual está el "Quitar" de
+   * la lista de abajo (uno por uno). */
   async function quitarExcepcionParaTodos() {
-    if (seleccionExcepcion.size === 0) return;
     if (modoExcepcion !== 'indefinido' && !excepcionDesde) return;
     if (modoExcepcion === 'rango' && !excepcionHasta) return;
     setGuardandoExcepcion(true);
@@ -222,20 +227,17 @@ export function Asignaciones() {
     try {
       const fecha_inicio = modoExcepcion === 'indefinido' ? null : excepcionDesde;
       const fecha_fin = modoExcepcion === 'indefinido' ? null : modoExcepcion === 'un_dia' ? excepcionDesde : excepcionHasta;
-      let query = supabase.from('excepciones_gps').delete().in('estacion_id', [...seleccionExcepcion]);
+      let query = supabase.from('excepciones_gps').delete();
       query = fecha_inicio === null ? query.is('fecha_inicio', null) : query.eq('fecha_inicio', fecha_inicio);
       query = fecha_fin === null ? query.is('fecha_fin', null) : query.eq('fecha_fin', fecha_fin);
-      // `.select('id')` para saber de verdad cuántas se borraron — ver el mismo comentario en
-      // quitarEspecialParaTodos.
       const { data, error } = await query.select('id');
       if (error) throw error;
       const cantidad = data?.length ?? 0;
-      setSeleccionExcepcion(new Set());
       await cargarTodasExcepciones();
       setMensajeExcepcion(
         cantidad > 0
-          ? `Quitada a ${cantidad} operador(es) que la tenían.`
-          : 'Nadie tenía esa excepción — no había nada que quitar.',
+          ? `Quitadas las ${cantidad} excepciones de ese período (de todos los operadores).`
+          : 'No había ninguna excepción con ese período — no había nada que quitar.',
       );
     } catch (err: any) {
       setMensajeExcepcion(`No se pudo quitar: ${err.message ?? err}`);
@@ -377,28 +379,33 @@ export function Asignaciones() {
    * especial de esa fecha con esas EBAR a CUALQUIER operador que la tuviera, no solo a los
    * activos ahora mismo (mismo criterio "de una sola vez" que agregar). Pedido del usuario
    * (2026-09-09): así como se puede asignar a todos de una sola, también poder desasignar. */
+  /** Quita TODAS las asignaciones especiales de esa fecha (de cualquier operador, cualquier EBAR)
+   * — ya no depende de tener marcada la EBAR en los botones de arriba. Antes sí dependía de eso
+   * (`.in('estacion_id', [...seleccionEspecial])`) y el usuario reportó (2026-09-10) que el botón
+   * "no funcionaba": la causa real es que `seleccionEspecial` se vacía solo después de "Agregar a
+   * todos" (para dejar la selección lista para la próxima), así que al querer quitar lo recién
+   * agregado ya no había nada marcado — el botón quedaba deshabilitado y el clic no hacía nada,
+   * sin ningún aviso (confirmado contra la base real: las filas de prueba del usuario seguían ahí
+   * intactas). "Todos de una" ahora significa de verdad "todo lo de ese día", no "lo que esté
+   * marcado en los botones" — para sacar una EBAR puntual está el botón "Quitar" de la lista de
+   * abajo (uno por uno). */
   async function quitarEspecialParaTodos() {
-    if (!fechaEspecial || seleccionEspecial.size === 0) return;
+    if (!fechaEspecial) return;
     setGuardando(true);
     setMensajeEspecial(null);
     try {
-      // `.select('id')` para saber de verdad cuántas filas se borraron — sin esto, un delete que no
-      // encuentra ninguna coincidencia (fecha/EBAR ya sin asignar, o bloqueado por RLS) no tira
-      // ningún error y el aviso decía "Quitada" igual, aunque no se hubiera borrado nada.
       const { data, error } = await supabase
         .from('asignaciones_estacion')
         .delete()
         .eq('fecha', fechaEspecial)
-        .in('estacion_id', [...seleccionEspecial])
         .select('id');
       if (error) throw error;
       const cantidad = data?.length ?? 0;
-      setSeleccionEspecial(new Set());
       await cargarTodasAsignaciones();
       setMensajeEspecial(
         cantidad > 0
-          ? `Quitada a ${cantidad} operador(es) para el ${fechaEspecial}.`
-          : 'Nadie tenía esa EBAR asignada ese día — no había nada que quitar.',
+          ? `Quitadas las ${cantidad} asignaciones especiales del ${fechaEspecial} (de todos los operadores).`
+          : 'No había ninguna asignación especial para ese día — no había nada que quitar.',
       );
     } catch (err: any) {
       setMensajeEspecial(`No se pudo quitar: ${err.message ?? err}`);
@@ -827,7 +834,7 @@ function BloqueAsignacionEspecial({
         <h2 className="text-base font-semibold">Asignación especial por fecha</h2>
         <p className="text-xs text-slate-500">
           {modoTodos
-            ? 'Marcá fecha + EBAR y se agregan a TODOS los operadores de una sola vez (ej. un refuerzo de feriado) — sin afectar la asignación por defecto de nadie.'
+            ? '"Agregar a todos" suma las EBAR marcadas a TODOS los operadores para esa fecha (ej. un refuerzo de feriado). "Quitar todo ese día" borra TODO lo asignado esa fecha, de cualquier operador — no hace falta volver a marcar nada. Ninguno de los dos toca la asignación por defecto.'
             : 'EBAR adicionales que este operador debe visitar solo ese día, sin afectar su asignación por defecto.'}
         </p>
       </div>
@@ -886,10 +893,10 @@ function BloqueAsignacionEspecial({
           </button>
           <button
             onClick={quitarEspecialParaTodos}
-            disabled={guardando || !fechaEspecial || seleccionEspecial.size === 0}
+            disabled={guardando || !fechaEspecial}
             className="boton-secundario flex-1 text-gauge-danger border-gauge-danger/40 hover:bg-gauge-danger/10"
           >
-            Quitar de todos
+            Quitar todo ese día
           </button>
         </div>
       ) : (
@@ -1019,7 +1026,7 @@ function BloqueExcepcionGps({
         <h2 className="text-base font-semibold">Excepción de GPS</h2>
         <p className="text-xs text-slate-500">
           {modoTodos
-            ? 'Marcá EBAR + período y se otorga la excepción a TODOS los operadores de una sola vez.'
+            ? '"Otorgar a todos" da la excepción de las EBAR marcadas, para ese período, a TODOS los operadores. "Quitar todas ese período" revoca TODAS las excepciones con ese período exacto, de cualquier operador — no hace falta volver a marcar nada.'
             : 'Para cuando el GPS no logra confirmar la ubicación de este operador en una EBAR puntual (ej. sin señal de datos dentro de la cámara) y de verdad está ahí — deja registrar la visita sin el chequeo de ubicación, solo para la(s) EBAR y el período que elijas.'}
         </p>
       </div>
@@ -1116,10 +1123,10 @@ function BloqueExcepcionGps({
           </button>
           <button
             onClick={quitarExcepcionParaTodos}
-            disabled={guardandoExcepcion || !listaParaGuardar}
+            disabled={guardandoExcepcion || !periodoElegido}
             className="boton-secundario flex-1 text-gauge-danger border-gauge-danger/40 hover:bg-gauge-danger/10"
           >
-            Quitar de todos
+            Quitar todas ese período
           </button>
         </div>
       ) : (
