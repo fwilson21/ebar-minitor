@@ -11,12 +11,11 @@ import { useEditorDistribucion } from '../hooks/useEditorDistribucion';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, codigoYNombre } from '../lib/agruparEstaciones';
 
 // Sentinel del selector "Operador" para el modo "Todos los operadores" — pedido del usuario
-// (2026-09-09) para asignar de una sola las mismas EBAR a todo el mundo, sin tener que repetir
-// operador por operador. Solo se ofrece para "Asignación especial por fecha" (ej. un refuerzo de
-// feriado/fin de semana para todo el mundo) — el usuario pidió explícitamente que NO aplique a
-// "Asignación por defecto" (esa sigue siendo operador por operador). SIEMPRE agrega, nunca quita
-// nada que un operador ya tuviera esa fecha. "Excepción de GPS" queda deshabilitada en este modo,
-// es un caso puntual de un operador a la vez sin significado claro para "todos juntos".
+// (2026-09-09) para agregar lo mismo a todo el mundo sin repetir operador por operador. Se ofrece
+// en "Asignación especial por fecha" (ej. un refuerzo de feriado/fin de semana para todo el mundo)
+// y en "Excepción de GPS" (2026-09-09, 2do pedido) — el usuario pidió explícitamente que NO
+// aplique a "Asignación por defecto" (esa sigue siendo operador por operador). SIEMPRE agrega,
+// nunca quita ni reemplaza nada que un operador ya tuviera.
 const TODOS_OPERADORES = '__todos__';
 
 function dentroDelRango(fecha: string, desde: string, hasta: string): boolean {
@@ -72,6 +71,10 @@ export function Asignaciones() {
   // auto-conceda. Mensaje/guardando propios (no el `mensaje`/`guardando` compartido de arriba) —
   // el usuario pidió que cada aviso quede pegado a su propio botón.
   const [excepcionesGps, setExcepcionesGps] = useState<ExcepcionGps[]>([]);
+  // Todas las excepciones de GPS de todos los operadores — solo se usa para el modo "Todos los
+  // operadores" (ver TODOS_OPERADORES), para no duplicar una excepción idéntica que ya exista
+  // (la tabla no tiene una restricción única que lo evite sola, a diferencia de asignaciones_estacion).
+  const [todasExcepciones, setTodasExcepciones] = useState<ExcepcionGps[]>([]);
   const [seleccionExcepcion, setSeleccionExcepcion] = useState<Set<string>>(new Set());
   const [modoExcepcion, setModoExcepcion] = useState<'un_dia' | 'rango' | 'indefinido'>('un_dia');
   const [excepcionDesde, setExcepcionDesde] = useState('');
@@ -81,14 +84,16 @@ export function Asignaciones() {
 
   useEffect(() => {
     async function cargarBase() {
-      const [{ data: ops }, { data: est }, { data: asigTodas }] = await Promise.all([
+      const [{ data: ops }, { data: est }, { data: asigTodas }, { data: excepTodas }] = await Promise.all([
         supabase.from('usuarios').select('*').eq('rol', 'operador').eq('activo', true).order('nombre_completo'),
         supabase.from('estaciones_ebar').select('*').eq('activa', true).order('nombre'),
         supabase.from('asignaciones_estacion').select('*'),
+        supabase.from('excepciones_gps').select('*'),
       ]);
       setOperadores((ops as Usuario[]) ?? []);
       setEstaciones((est as EstacionEbar[]) ?? []);
       setTodasAsignaciones((asigTodas as AsignacionEstacion[]) ?? []);
+      setTodasExcepciones((excepTodas as ExcepcionGps[]) ?? []);
       setCargando(false);
     }
     cargarBase();
@@ -97,6 +102,11 @@ export function Asignaciones() {
   async function cargarTodasAsignaciones() {
     const { data } = await supabase.from('asignaciones_estacion').select('*');
     setTodasAsignaciones((data as AsignacionEstacion[]) ?? []);
+  }
+
+  async function cargarTodasExcepciones() {
+    const { data } = await supabase.from('excepciones_gps').select('*');
+    setTodasExcepciones((data as ExcepcionGps[]) ?? []);
   }
 
   useEffect(() => {
@@ -141,6 +151,53 @@ export function Asignaciones() {
       setSeleccionExcepcion(new Set());
       await cargarExcepciones(operadorId);
       setMensajeExcepcion('Excepción de GPS agregada.');
+    } catch (err: any) {
+      setMensajeExcepcion(`No se pudo agregar: ${err.message ?? err}`);
+    } finally {
+      setGuardandoExcepcion(false);
+    }
+  }
+
+  /** "Todos los operadores": otorga la(s) excepción(es) de GPS marcadas a TODOS los operadores
+   * activos de una sola vez, con el mismo período elegido. Nunca duplica: `excepciones_gps` no
+   * tiene una restricción única que lo evite sola (a diferencia de asignaciones_estacion), así que
+   * se descarta a mano cualquier combinación operador+estación+período IDÉNTICA que ya exista. */
+  async function agregarExcepcionParaTodos() {
+    if (seleccionExcepcion.size === 0) return;
+    if (modoExcepcion !== 'indefinido' && !excepcionDesde) return;
+    if (modoExcepcion === 'rango' && !excepcionHasta) return;
+    setGuardandoExcepcion(true);
+    setMensajeExcepcion(null);
+    try {
+      const fecha_inicio = modoExcepcion === 'indefinido' ? null : excepcionDesde;
+      const fecha_fin = modoExcepcion === 'indefinido' ? null : modoExcepcion === 'un_dia' ? excepcionDesde : excepcionHasta;
+      const yaExisten = new Set(
+        todasExcepciones
+          .filter((e) => e.fecha_inicio === fecha_inicio && e.fecha_fin === fecha_fin)
+          .map((e) => `${e.operador_id}:${e.estacion_id}`),
+      );
+      const filas = operadores.flatMap((o) =>
+        [...seleccionExcepcion]
+          .filter((estacionId) => !yaExisten.has(`${o.id}:${estacionId}`))
+          .map((estacion_id) => ({
+            operador_id: o.id,
+            estacion_id,
+            fecha_inicio,
+            fecha_fin,
+            creado_por: usuario?.id,
+          })),
+      );
+      if (filas.length) {
+        const { error } = await supabase.from('excepciones_gps').insert(filas);
+        if (error) throw error;
+      }
+      setSeleccionExcepcion(new Set());
+      await cargarTodasExcepciones();
+      setMensajeExcepcion(
+        filas.length
+          ? `Otorgada a los ${operadores.length} operadores (${filas.length} excepciones nuevas — a quien ya tenía la misma no se le duplicó).`
+          : 'Todos los operadores ya tenían esa misma excepción — no había nada que agregar.',
+      );
     } catch (err: any) {
       setMensajeExcepcion(`No se pudo agregar: ${err.message ?? err}`);
     } finally {
@@ -314,7 +371,10 @@ export function Asignaciones() {
           if (operadorId === TODOS_OPERADORES) await agregarEspecialParaTodos();
           else await agregarEspecial();
         }
-        if (hayPendienteExcepcion) await agregarExcepcion();
+        if (hayPendienteExcepcion) {
+          if (operadorId === TODOS_OPERADORES) await agregarExcepcionParaTodos();
+          else await agregarExcepcion();
+        }
       },
     });
     return () => desregistrarFormularioActivo();
@@ -370,6 +430,7 @@ export function Asignaciones() {
     guardandoExcepcion,
     mensajeExcepcion,
     agregarExcepcion,
+    agregarExcepcionParaTodos,
     quitarExcepcion,
   };
 
@@ -475,6 +536,7 @@ type BloquesProps = {
   guardandoExcepcion: boolean;
   mensajeExcepcion: string | null;
   agregarExcepcion: () => void;
+  agregarExcepcionParaTodos: () => void;
   quitarExcepcion: (id: string) => void;
 };
 
@@ -773,12 +835,13 @@ function BloqueExcepcionGps({
   guardandoExcepcion,
   mensajeExcepcion,
   agregarExcepcion,
+  agregarExcepcionParaTodos,
   quitarExcepcion,
   alternar,
   nombreEstacion,
 }: BloquesProps) {
   const modoTodos = operadorId === TODOS_OPERADORES;
-  const sinOperador = !operadorId || modoTodos;
+  const sinOperador = !operadorId;
   const listaParaGuardar =
     seleccionExcepcion.size > 0 &&
     (modoExcepcion === 'indefinido' || !!excepcionDesde) &&
@@ -788,18 +851,14 @@ function BloqueExcepcionGps({
       <div>
         <h2 className="text-base font-semibold">Excepción de GPS</h2>
         <p className="text-xs text-slate-500">
-          Para cuando el GPS no logra confirmar la ubicación de este operador en una EBAR puntual (ej. sin señal de
-          datos dentro de la cámara) y de verdad está ahí — deja registrar la visita sin el chequeo de ubicación,
-          solo para la(s) EBAR y el período que elijas.
+          {modoTodos
+            ? 'Marcá EBAR + período y se otorga la excepción a TODOS los operadores de una sola vez.'
+            : 'Para cuando el GPS no logra confirmar la ubicación de este operador en una EBAR puntual (ej. sin señal de datos dentro de la cámara) y de verdad está ahí — deja registrar la visita sin el chequeo de ubicación, solo para la(s) EBAR y el período que elijas.'}
         </p>
       </div>
 
-      {modoTodos ? (
-        <p className="text-xs text-slate-500 italic">No aplica a "Todos los operadores" — elegí un operador puntual para esto.</p>
-      ) : (
-        sinOperador && (
-          <p className="text-xs text-slate-500 italic">Elegí un operador arriba para poder agregar una excepción.</p>
-        )
+      {sinOperador && (
+        <p className="text-xs text-slate-500 italic">Elegí un operador arriba (o "Todos los operadores") para poder agregar una excepción.</p>
       )}
 
       <div>
@@ -883,8 +942,12 @@ function BloqueExcepcionGps({
         ))}
       </div>
 
-      <button onClick={agregarExcepcion} disabled={guardandoExcepcion || !listaParaGuardar} className="boton-primario w-full">
-        {guardandoExcepcion ? 'Guardando…' : 'Agregar excepción'}
+      <button
+        onClick={modoTodos ? agregarExcepcionParaTodos : agregarExcepcion}
+        disabled={guardandoExcepcion || sinOperador || !listaParaGuardar}
+        className="boton-primario w-full"
+      >
+        {guardandoExcepcion ? 'Guardando…' : modoTodos ? 'Otorgar a todos los operadores' : 'Agregar excepción'}
       </button>
       {mensajeExcepcion && (
         <p className={`text-sm ${mensajeExcepcion.startsWith('No se pudo') ? 'text-gauge-danger' : 'text-gauge-ok'}`}>
@@ -892,6 +955,7 @@ function BloqueExcepcionGps({
         </p>
       )}
 
+      {modoTodos ? null : (
       <div className="space-y-1.5 pt-2 border-t border-panel-600/40">
         <p className="text-xs text-slate-500">Excepciones de este operador:</p>
         {sinOperador ? null : excepcionesGps.length > 0 ? (
@@ -913,6 +977,7 @@ function BloqueExcepcionGps({
           <p className="text-xs text-slate-500 italic">Sin excepciones de GPS para este operador.</p>
         )}
       </div>
+      )}
     </div>
   );
 }
