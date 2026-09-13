@@ -108,22 +108,24 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
       )}
 
       {src && (
-        // eslint-disable-next-line jsx-a11y/alt-text
-        <img
-          src={src}
-          onClick={(e) => e.stopPropagation()}
-          className="max-w-full max-h-full object-contain"
-        />
-      )}
-
-      {etiqueta && (
-        // Esquina inferior derecha de la foto (no de la pantalla) — pedido del usuario. Como la
-        // foto no ocupa siempre todo el ancho/alto (queda centrada con `object-contain`), el badge
-        // se ancla al contenedor entero y no al <img>; alineado a la izquierda es el orden normal
-        // de lectura del texto, la esquina es solo dónde queda posicionado el bloque.
-        <span className="absolute bottom-4 right-4 max-w-[70%] text-left text-white text-sm bg-black/60 px-2.5 py-1.5 rounded z-10">
-          {etiqueta}
-        </span>
+        // Envoltorio del tamaño exacto de la foto ya renderizada (inline-block se ajusta a su
+        // contenido) — así el badge de abajo se puede anclar a LA FOTO y no a la pantalla entera,
+        // que es distinto cuando la foto es más angosta o más baja que la pantalla (queda centrada
+        // con `object-contain`, con franjas negras a los costados). El tamaño se limita en unidades
+        // de viewport (no `max-w-full`/`max-h-full`, que acá dependerían del propio contenido y
+        // nunca limitarían nada).
+        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+          {/* eslint-disable-next-line jsx-a11y/alt-text */}
+          <img src={src} className="block max-w-[92vw] max-h-[85vh] object-contain" />
+          {etiqueta && (
+            // Esquina inferior IZQUIERDA de la FOTO (no de la pantalla) — solo en esta vista
+            // ampliada, no en las miniaturas ni en el PDF. Alineado a la izquierda es el orden
+            // normal de lectura del texto.
+            <span className="absolute bottom-2 left-2 max-w-[70%] text-left text-white text-sm bg-black/60 px-2.5 py-1.5 rounded z-10">
+              {etiqueta}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );
