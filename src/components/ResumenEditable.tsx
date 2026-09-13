@@ -197,8 +197,10 @@ function PanelCorrector({
   };
 
   return (
-    <div className="mt-2 rounded-lg border border-gauge-warn/40 bg-gauge-warn/5 p-3">
-      <p className="text-sm font-semibold text-slate-700 mb-2">
+    // Fondo rojo (no el amarillo de advertencia de antes) — pedido del usuario: que se note de
+    // entrada que este cuadro necesita atención, no que pase como un aviso más entre los demás.
+    <div className="mt-2 rounded-lg border-2 border-gauge-danger bg-gauge-danger/15 p-3">
+      <p className="text-sm font-bold text-gauge-danger mb-2">
         Palabras que podrían estar mal escritas. Mirá la frase para decidir, corregí (o escribí a mano) y aplicá — se cambia en todo el documento.
       </p>
       {/* Grid: la frase de contexto llega como mucho a ~la mitad de la página (columna acotada,
