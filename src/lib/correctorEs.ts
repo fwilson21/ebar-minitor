@@ -130,19 +130,27 @@ export function revisarTexto(corrector: CorrectorMulti, texto: string): PalabraM
   const salida: PalabraMal[] = [];
   for (const m of texto.matchAll(PALABRA_RE)) {
     const palabra = m[0].replace(/^['’-]+|['’-]+$/g, '');
-    if (palabra.length < 3) continue;
-    if (/\d/.test(palabra)) continue;
-    if (palabra === palabra.toUpperCase()) continue;
-    if (palabra[0] !== palabra[0].toLowerCase()) continue;
     const clave = palabra.toLowerCase();
+    // Caso especial: algunos operadores escriben "x" suelta en vez de "por" (ej. "cambió x estar
+    // dañada"). Una letra sola pasaría de largo el filtro de "menos de 3 letras" de abajo (y ni
+    // nspell ni el corrector nativo del navegador la marcan — es una letra válida), así que se
+    // fuerza a marcarla — salvo que se vea como una multiplicación entre números ("10 x 15"), que
+    // es un uso real y no un typeo de "por".
+    const esXComoPor = clave === 'x' && !seVeComoMultiplicacion(texto, m.index ?? 0, m[0].length);
+    if (!esXComoPor) {
+      if (palabra.length < 3) continue;
+      if (/\d/.test(palabra)) continue;
+      if (palabra === palabra.toUpperCase()) continue;
+      if (palabra[0] !== palabra[0].toLowerCase()) continue;
+    }
     if (vistas.has(clave)) continue;
     vistas.add(clave);
-    if (corrector.correct(palabra) || corrector.correct(clave)) continue;
+    if (!esXComoPor && (corrector.correct(palabra) || corrector.correct(clave))) continue;
     const inicio = m.index ?? 0;
     const fin = inicio + m[0].length;
     salida.push({
       palabra,
-      sugerencia: mejorSugerencia(corrector, palabra),
+      sugerencia: esXComoPor ? 'por' : mejorSugerencia(corrector, palabra),
       contexto: {
         antes: (inicio > CTX ? '…' : '') + texto.slice(Math.max(0, inicio - CTX), inicio),
         despues: texto.slice(fin, fin + CTX) + (fin + CTX < texto.length ? '…' : ''),
@@ -150,6 +158,15 @@ export function revisarTexto(corrector: CorrectorMulti, texto: string): PalabraM
     });
   }
   return salida;
+}
+
+/** `true` si la "x" en `[inicio, inicio+largo)` de `texto` está entre dos números (con o sin
+ * espacio de por medio, ej. "10 x 15" o "10x15") — ahí es una multiplicación real, no el typeo de
+ * "por" que se corrige más arriba. */
+function seVeComoMultiplicacion(texto: string, inicio: number, largo: number): boolean {
+  const antes = texto.slice(0, inicio).trimEnd();
+  const despues = texto.slice(inicio + largo).trimStart();
+  return /\d$/.test(antes) && /^\d/.test(despues);
 }
 
 /**
