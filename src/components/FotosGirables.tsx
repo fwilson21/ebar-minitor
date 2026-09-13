@@ -1,8 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { girarFotoSubida, eliminarFotoGuardada, type SentidoGiro } from '../lib/fotos';
 import { etiquetaFoto } from '../lib/pdf';
+import { FotoLightbox } from './FotoLightbox';
+import type { FotoLocal } from '../lib/types';
 
 type FotoGirable = { id: string; visita_id: string; url: string; etiqueta?: string | null; tomada_en: string };
+
+/** Adapta una `FotoGirable` (sin `blob`, ya subida a Drive) a lo que espera `FotoLightbox`. */
+function comoFotoLocal(f: FotoGirable): FotoLocal {
+  return { id: f.id, url_publica: f.url, tomada_en: f.tomada_en, estado_subida: 'subida' };
+}
 
 /**
  * Grilla de fotos ya subidas con botones ↺ / ↻ para girarlas (redibujando el sello de fecha
@@ -32,6 +39,9 @@ export function FotosGirables({
   const [girando, setGirando] = useState<Set<string>>(new Set());
   const [borrando, setBorrando] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  // Al abrir el visor se guarda la LISTA que estaba mostrándose en ese momento (una foto por
+  // capítulo, o todas planas) — el ‹ › del visor recorre esas mismas fotos, en el mismo orden.
+  const [visor, setVisor] = useState<{ lista: FotoGirable[]; indice: number } | null>(null);
 
   async function girar(f: FotoGirable, sentido: SentidoGiro) {
     if (girando.has(f.id) || borrando.has(f.id)) return;
@@ -76,14 +86,15 @@ export function FotosGirables({
 
   // Tarjeta de una foto (imagen + botones de giro, y de borrar si `onBorrar` viene) — comparte el
   // mismo mecanismo en los 2 modos (plano y agrupado), solo cambia lo que va debajo de la imagen.
-  function tarjeta(f: FotoGirable, pie: ReactNode, onBorrar?: (fotoId: string) => void) {
+  function tarjeta(f: FotoGirable, pie: ReactNode, lista: FotoGirable[], onBorrar?: (fotoId: string) => void) {
     const ocupada = girando.has(f.id) || borrando.has(f.id);
     return (
       <div key={f.id} className="relative">
         <img
           src={f.url}
           alt=""
-          className={`w-full aspect-square object-cover rounded-md ${ocupada ? 'animate-pulse' : ''}`}
+          onDoubleClick={() => setVisor({ lista, indice: lista.findIndex((x) => x.id === f.id) })}
+          className={`w-full aspect-square object-cover rounded-md cursor-zoom-in ${ocupada ? 'animate-pulse' : ''}`}
         />
         <div className="absolute top-1 left-1 flex gap-1">
           <button
@@ -146,10 +157,18 @@ export function FotosGirables({
                 {label}
               </span>
             );
-            return tarjeta(f, pie, categorias.onBorrar);
+            return tarjeta(f, pie, unaPorCapitulo, categorias.onBorrar);
           })}
         </div>
         {error && <p className="text-xs text-gauge-danger mt-1">{error}</p>}
+        {visor && (
+          <FotoLightbox
+            fotos={visor.lista.map(comoFotoLocal)}
+            indice={visor.indice}
+            onCambiarIndice={(i) => setVisor({ lista: visor.lista, indice: i })}
+            onCerrar={() => setVisor(null)}
+          />
+        )}
       </div>
     );
   }
@@ -164,10 +183,19 @@ export function FotosGirables({
             <span className="block text-[10px] text-slate-500 mt-0.5 truncate" title={etiquetaFoto(f.etiqueta)}>
               {etiquetaFoto(f.etiqueta)}
             </span>,
+            fotos,
           ),
         )}
       </div>
       {error && <p className="text-xs text-gauge-danger mt-1">{error}</p>}
+      {visor && (
+        <FotoLightbox
+          fotos={visor.lista.map(comoFotoLocal)}
+          indice={visor.indice}
+          onCambiarIndice={(i) => setVisor({ lista: visor.lista, indice: i })}
+          onCerrar={() => setVisor(null)}
+        />
+      )}
     </div>
   );
 }
