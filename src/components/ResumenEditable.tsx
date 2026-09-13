@@ -3,6 +3,7 @@ import {
   cargarCorrectorEs,
   revisarTexto,
   marcarPalabraBienEscrita,
+  detectarCorreccionPalabra,
   esEscritorio,
   type PalabraMal,
   type CorrectorMulti,
@@ -30,15 +31,31 @@ export function ResumenEditable({
 }) {
   return (
     <div>
-      <CuadroContentEditable valor={valor} onCambiar={onCambiar} />
+      <CuadroContentEditable valor={valor} onCambiar={onCambiar} onCorregirGlobal={onCorregirGlobal} />
       {esEscritorio && <PanelCorrector texto={valor} onAplicar={onCorregirGlobal} />}
     </div>
   );
 }
 
-function CuadroContentEditable({ valor, onCambiar }: { valor: string; onCambiar: (t: string) => void }) {
+function CuadroContentEditable({
+  valor,
+  onCambiar,
+  onCorregirGlobal,
+}: {
+  valor: string;
+  onCambiar: (t: string) => void;
+  /** Si el usuario corrige una palabra a mano (retipeándola) o con el menú del botón derecho del
+   * navegador (su corrector nativo), esa misma corrección se replica sola en el resto del informe
+   * — pedido del usuario, para no tener que repetirla EBAR por EBAR. Ver `detectarCorreccionPalabra`. */
+  onCorregirGlobal: (palabra: string, correccion: string) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const enfocadoRef = useRef(false);
+  // Foto del texto al entrar al cuadro (retipear se hace tecla por tecla — comparar recién al
+  // salir, no en cada `onInput`, es lo único que da un antes/después limpio de "una palabra
+  // cambió"). El menú del botón derecho en cambio reemplaza la palabra de una sola vez mientras
+  // el cuadro sigue enfocado, así que ese caso se revisa aparte en `onInput` (ver abajo).
+  const textoAlEnfocarRef = useRef('');
 
   useEffect(() => {
     // Solo re-pinta el HTML resaltado cuando NO está enfocado (si no, se pierde la posición del cursor).
@@ -59,12 +76,31 @@ function CuadroContentEditable({ valor, onCambiar }: { valor: string; onCambiar:
       className="campo w-full min-h-[7rem] whitespace-pre-wrap leading-relaxed"
       onFocus={() => {
         enfocadoRef.current = true;
+        textoAlEnfocarRef.current = ref.current?.innerText ?? '';
       }}
-      onInput={() => onCambiar(ref.current?.innerText ?? '')}
+      onInput={(e) => {
+        const t = ref.current?.innerText ?? '';
+        onCambiar(t);
+        // `insertReplacementText` es el tipo de evento que dispara el navegador cuando el usuario
+        // elige una sugerencia de SU corrector nativo (clic derecho sobre la palabra subrayada) —
+        // a diferencia de retipear (que llega como `insertText`/`deleteContentBackward` de a una
+        // letra, sin nada útil para comparar todavía). Ese reemplazo ya quedó completo de una vez,
+        // así que se puede revisar ahí mismo sin esperar a salir del cuadro.
+        const tipo = (e.nativeEvent as InputEvent).inputType;
+        if (tipo === 'insertReplacementText') {
+          const cambio = detectarCorreccionPalabra(textoAlEnfocarRef.current, t);
+          if (cambio) onCorregirGlobal(cambio.palabra, cambio.correccion);
+        }
+        textoAlEnfocarRef.current = t;
+      }}
       onBlur={() => {
         enfocadoRef.current = false;
         const t = ref.current?.innerText ?? '';
         onCambiar(t);
+        // Retipeo a mano: recién acá, al salir del cuadro, hay un antes/después completo y estable
+        // para comparar (ver comentario de `textoAlEnfocarRef` arriba).
+        const cambio = detectarCorreccionPalabra(textoAlEnfocarRef.current, t);
+        if (cambio) onCorregirGlobal(cambio.palabra, cambio.correccion);
         if (ref.current) ref.current.innerHTML = resumenAHtml(t);
       }}
     />

@@ -152,6 +152,36 @@ export function revisarTexto(corrector: CorrectorMulti, texto: string): PalabraM
   return salida;
 }
 
+/**
+ * Compara el texto de un párrafo ANTES y DESPUÉS de una edición y, si el único cambio real fue UNA
+ * palabra reemplazada por otra (typeo corregido a mano, o corregido con el menú del botón derecho
+ * del navegador — ambos casos llegan acá igual, como texto antes/después, sin saber cómo pasó),
+ * devuelve ese par para que quien llama lo replique en el resto del informe con `reemplazarPalabra`
+ * — pedido del usuario: no quiere tener que repetir la misma corrección EBAR por EBAR.
+ *
+ * Deliberadamente conservador: si cambió la CANTIDAD de palabras (se agregó o borró una, se partió
+ * una en dos) o si cambió más de una palabra a la vez, devuelve `null` — un reemplazo automático
+ * ahí adivinaría mal cuál de los cambios replicar y podría arruinar otros párrafos sin que el
+ * usuario lo haya pedido. Solo el caso simple y sin ambigüedad: una palabra por otra.
+ */
+export function detectarCorreccionPalabra(anterior: string, nuevo: string): { palabra: string; correccion: string } | null {
+  if (anterior === nuevo) return null;
+  const antes = anterior.match(PALABRA_RE) ?? [];
+  const despues = nuevo.match(PALABRA_RE) ?? [];
+  if (antes.length !== despues.length) return null;
+  let indiceDistinto = -1;
+  for (let i = 0; i < antes.length; i++) {
+    if (antes[i] === despues[i]) continue;
+    if (indiceDistinto !== -1) return null; // más de una palabra cambió — ambiguo, no se toca
+    indiceDistinto = i;
+  }
+  if (indiceDistinto === -1) return null; // ningún token cambió (el cambio fue solo de espacios/puntuación)
+  const palabra = antes[indiceDistinto];
+  const correccion = despues[indiceDistinto];
+  if (palabra.length < 3 || /\d/.test(palabra)) return null; // mismo criterio que `revisarTexto`
+  return { palabra, correccion };
+}
+
 /** Reemplaza TODAS las apariciones de `palabra` como palabra suelta (respetando límites unicode). */
 export function reemplazarPalabra(texto: string, palabra: string, reemplazo: string): string {
   const esc = palabra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
