@@ -7,11 +7,16 @@ interface Props {
   indice: number;
   onCambiarIndice: (i: number) => void;
   onCerrar: () => void;
+  /** Si viene, muestra esta etiqueta (ej. el capítulo al que pertenece la foto) en la esquina
+   * inferior derecha de la foto ampliada — pedido del usuario para la vista previa de informes,
+   * donde varias fotos sueltas se están revisando una por una y conviene ver de qué grupo es cada
+   * una sin tener que cerrar el visor. Sin esta prop no se muestra nada (comportamiento de antes). */
+  etiqueta?: string;
 }
 
 const UMBRAL_SWIPE = 50; // px mínimos de arrastre horizontal para contar como swipe
 
-export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar }: Props) {
+export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiqueta }: Props) {
   const foto = fotos[indice];
   const hayAnterior = indice > 0;
   const haySiguiente = indice < fotos.length - 1;
@@ -109,6 +114,16 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar }: Props
           onClick={(e) => e.stopPropagation()}
           className="max-w-full max-h-full object-contain"
         />
+      )}
+
+      {etiqueta && (
+        // Esquina inferior derecha de la foto (no de la pantalla) — pedido del usuario. Como la
+        // foto no ocupa siempre todo el ancho/alto (queda centrada con `object-contain`), el badge
+        // se ancla al contenedor entero y no al <img>; alineado a la izquierda es el orden normal
+        // de lectura del texto, la esquina es solo dónde queda posicionado el bloque.
+        <span className="absolute bottom-4 right-4 max-w-[70%] text-left text-white text-sm bg-black/60 px-2.5 py-1.5 rounded z-10">
+          {etiqueta}
+        </span>
       )}
     </div>
   );

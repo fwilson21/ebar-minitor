@@ -167,6 +167,7 @@ export function FotosGirables({
             indice={visor.indice}
             onCambiarIndice={(i) => setVisor({ lista: visor.lista, indice: i })}
             onCerrar={() => setVisor(null)}
+            etiqueta={etiquetaFoto(visor.lista[visor.indice]?.etiqueta)}
           />
         )}
       </div>
