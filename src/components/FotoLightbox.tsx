@@ -15,6 +15,10 @@ interface Props {
 }
 
 const UMBRAL_SWIPE = 50; // px mínimos de arrastre horizontal para contar como swipe
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+const ZOOM_PASO_TECLADO = 1.25; // factor por cada pulsación de +/-
+const ZOOM_PASO_RUEDA = 1.15; // factor por cada "muesca" de la rueda del mouse
 
 export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiqueta }: Props) {
   const foto = fotos[indice];
@@ -29,6 +33,32 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
   // como la foto se escala completa para caber en pantalla, ese mismo tamaño en proporción a como
   // se VE queda en `anchoRenderizado * 0.035` — sin necesitar saber la resolución real de la foto.
   const [anchoFoto, setAnchoFoto] = useState<number | null>(null);
+  // Zoom con la rueda del mouse o con +/- del teclado (pedido del usuario). `desplazamiento` es el
+  // arrastre en px de PANTALLA (no se reescala con el zoom) para poder recorrer la foto una vez
+  // ampliada — si no, con zoom no habría forma de ver las esquinas que quedan fuera de pantalla.
+  const [escala, setEscala] = useState(1);
+  const [desplazamiento, setDesplazamiento] = useState({ x: 0, y: 0 });
+  const arrastreRef = useRef<{ x: number; y: number; offX: number; offY: number } | null>(null);
+  const [arrastrando, setArrastrando] = useState(false);
+  // Si el arrastre terminó fuera de la foto (se corrió la mano hasta el fondo negro), el clic que
+  // dispara el navegador al soltar cerraría el visor de golpe — esta marca hace que ese único clic
+  // se ignore, sin afectar a un clic normal (sin arrastre) sobre el fondo.
+  const huboArrastreRef = useRef(false);
+
+  function acercar(factor: number) {
+    setEscala((s) => {
+      const nueva = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s * factor));
+      if (nueva === ZOOM_MIN) setDesplazamiento({ x: 0, y: 0 });
+      return nueva;
+    });
+  }
+
+  // Cada foto arranca sin zoom ni desplazamiento — si no, al pasar a la siguiente con ‹ › quedaría
+  // ampliada y descentrada de la que ya se había dejado así en la foto anterior.
+  useEffect(() => {
+    setEscala(1);
+    setDesplazamiento({ x: 0, y: 0 });
+  }, [indice]);
 
   // Permite cerrar el visor con el botón de retroceso del celular en vez de
   // salir de la pantalla entera: se agrega una entrada de historial "sentinel"
@@ -52,11 +82,59 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
       if (e.key === 'Escape') cerrar();
       if (e.key === 'ArrowLeft' && indice > 0) onCambiarIndice(indice - 1);
       if (e.key === 'ArrowRight' && indice < fotos.length - 1) onCambiarIndice(indice + 1);
+      // '+'/'=' (misma tecla sin/con Shift en la mayoría de teclados) para acercar, '-' para alejar.
+      if (e.key === '+' || e.key === '=') acercar(ZOOM_PASO_TECLADO);
+      if (e.key === '-' || e.key === '_') acercar(1 / ZOOM_PASO_TECLADO);
+      if (e.key === '0') { setEscala(1); setDesplazamiento({ x: 0, y: 0 }); }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indice, fotos.length]);
+
+  function onWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    acercar(e.deltaY < 0 ? ZOOM_PASO_RUEDA : 1 / ZOOM_PASO_RUEDA);
+  }
+
+  // Arrastre con el mouse para recorrer la foto una vez ampliada — solo activo con zoom (con
+  // escala 1 la foto entra completa, no hay nada que recorrer). Se escucha en `window` (no en el
+  // propio elemento) para no perder el arrastre si el mouse se mueve más rápido que el cursor
+  // puede "seguir" al elemento, algo común al arrastrar rápido.
+  function onMouseDownFoto(e: React.MouseEvent) {
+    if (escala <= ZOOM_MIN) return;
+    e.stopPropagation();
+    arrastreRef.current = { x: e.clientX, y: e.clientY, offX: desplazamiento.x, offY: desplazamiento.y };
+    huboArrastreRef.current = false;
+    setArrastrando(true);
+  }
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      const inicio = arrastreRef.current;
+      if (!inicio) return;
+      huboArrastreRef.current = true;
+      setDesplazamiento({ x: inicio.offX + (e.clientX - inicio.x), y: inicio.offY + (e.clientY - inicio.y) });
+    }
+    function onMouseUp() {
+      arrastreRef.current = null;
+      setArrastrando(false);
+    }
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
+  function onClickFondo() {
+    if (huboArrastreRef.current) {
+      huboArrastreRef.current = false;
+      return;
+    }
+    cerrar();
+  }
 
   function onTouchStart(e: React.TouchEvent) {
     touchStartX.current = e.touches[0].clientX;
@@ -89,10 +167,11 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
-      onClick={cerrar}
+      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center overflow-hidden"
+      onClick={onClickFondo}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
+      onWheel={onWheel}
     >
       <button
         type="button"
@@ -141,7 +220,14 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
             ref={imgRef}
             src={src}
             onLoad={(e) => setAnchoFoto(e.currentTarget.clientWidth || null)}
-            className="block max-w-[92vw] max-h-[85vh] object-contain"
+            onMouseDown={onMouseDownFoto}
+            draggable={false}
+            style={{
+              transform: `translate(${desplazamiento.x}px, ${desplazamiento.y}px) scale(${escala})`,
+              transition: arrastrando ? 'none' : 'transform 0.15s ease-out',
+              cursor: escala > ZOOM_MIN ? (arrastrando ? 'grabbing' : 'grab') : 'default',
+            }}
+            className="block max-w-[92vw] max-h-[85vh] object-contain select-none"
           />
           {etiqueta && (
             // Esquina inferior IZQUIERDA de la FOTO (no de la pantalla) — solo en esta vista
