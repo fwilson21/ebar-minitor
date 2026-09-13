@@ -125,19 +125,23 @@ function mejorSugerencia(corrector: CorrectorMulti, palabra: string): string | n
  * sugerencia. Se saltan: palabras de 1-2 letras, con dígitos, TODO EN MAYÚSCULAS (siglas: EBAR,
  * PTAR, LC…) y las que empiezan con mayúscula (nombres propios / inicio de oración — para esas
  * queda el corrector del navegador con clic derecho). */
+// Letras sueltas que algunos operadores escriben en vez de la palabra completa (ej. "cambió x
+// estar dañada", "revisó q la bomba encienda"). Una letra sola pasaría de largo el filtro de
+// "menos de 3 letras" de abajo, y ni nspell ni el corrector nativo del navegador las marcan — son
+// letras válidas — así que se fuerzan a mano acá.
+const ABREVIATURAS_SUELTAS: Record<string, string> = { x: 'por', q: 'que' };
+
 export function revisarTexto(corrector: CorrectorMulti, texto: string): PalabraMal[] {
   const vistas = new Set<string>();
   const salida: PalabraMal[] = [];
   for (const m of texto.matchAll(PALABRA_RE)) {
     const palabra = m[0].replace(/^['’-]+|['’-]+$/g, '');
     const clave = palabra.toLowerCase();
-    // Caso especial: algunos operadores escriben "x" suelta en vez de "por" (ej. "cambió x estar
-    // dañada"). Una letra sola pasaría de largo el filtro de "menos de 3 letras" de abajo (y ni
-    // nspell ni el corrector nativo del navegador la marcan — es una letra válida), así que se
-    // fuerza a marcarla — salvo que se vea como una multiplicación entre números ("10 x 15"), que
-    // es un uso real y no un typeo de "por".
-    const esXComoPor = clave === 'x' && !seVeComoMultiplicacion(texto, m.index ?? 0, m[0].length);
-    if (!esXComoPor) {
+    // "x" queda afuera si se ve como una multiplicación entre números ("10 x 15"), que es un uso
+    // real y no un typeo de "por". "q" no tiene un uso ambiguo parecido.
+    const esAbreviaturaSuelta =
+      clave in ABREVIATURAS_SUELTAS && !(clave === 'x' && seVeComoMultiplicacion(texto, m.index ?? 0, m[0].length));
+    if (!esAbreviaturaSuelta) {
       if (palabra.length < 3) continue;
       if (/\d/.test(palabra)) continue;
       if (palabra === palabra.toUpperCase()) continue;
@@ -145,12 +149,12 @@ export function revisarTexto(corrector: CorrectorMulti, texto: string): PalabraM
     }
     if (vistas.has(clave)) continue;
     vistas.add(clave);
-    if (!esXComoPor && (corrector.correct(palabra) || corrector.correct(clave))) continue;
+    if (!esAbreviaturaSuelta && (corrector.correct(palabra) || corrector.correct(clave))) continue;
     const inicio = m.index ?? 0;
     const fin = inicio + m[0].length;
     salida.push({
       palabra,
-      sugerencia: esXComoPor ? 'por' : mejorSugerencia(corrector, palabra),
+      sugerencia: esAbreviaturaSuelta ? ABREVIATURAS_SUELTAS[clave] : mejorSugerencia(corrector, palabra),
       contexto: {
         antes: (inicio > CTX ? '…' : '') + texto.slice(Math.max(0, inicio - CTX), inicio),
         despues: texto.slice(fin, fin + CTX) + (fin + CTX < texto.length ? '…' : ''),
