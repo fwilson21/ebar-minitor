@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FotoLocal } from '../lib/types';
 import { useObjectUrls } from '../lib/useObjectUrls';
 
@@ -22,6 +22,13 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
   const haySiguiente = indice < fotos.length - 1;
   const touchStartX = useRef<number | null>(null);
   const urls = useObjectUrls(fotos);
+  const imgRef = useRef<HTMLImageElement>(null);
+  // Ancho ya renderizado en pantalla de la foto (no su resolución real) — para que la etiqueta de
+  // abajo salga del MISMO tamaño que la fecha estampada en la propia foto (pedido del usuario). El
+  // sello de fecha se dibuja a `anchoRealDeLaFoto * 0.035px` (ver `dibujarSelloFecha` en fotos.ts);
+  // como la foto se escala completa para caber en pantalla, ese mismo tamaño en proporción a como
+  // se VE queda en `anchoRenderizado * 0.035` — sin necesitar saber la resolución real de la foto.
+  const [anchoFoto, setAnchoFoto] = useState<number | null>(null);
 
   // Permite cerrar el visor con el botón de retroceso del celular en vez de
   // salir de la pantalla entera: se agrega una entrada de historial "sentinel"
@@ -63,8 +70,22 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
     else if (deltaX < -UMBRAL_SWIPE && haySiguiente) onCambiarIndice(indice + 1);
   }
 
+  // Se re-mide con un ResizeObserver (no solo `onLoad`) porque el tamaño renderizado también
+  // cambia al rotar el celular o cambiar de foto (distinta relación de aspecto → distinto ancho
+  // final aunque el viewport no se mueva).
+  useEffect(() => {
+    const el = imgRef.current;
+    if (!el) return;
+    const medir = () => setAnchoFoto(el.clientWidth || null);
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [indice]);
+
   if (!foto) return null;
   const src = foto.blob ? urls[foto.id] : foto.url_publica;
+  const fontSizeEtiqueta = anchoFoto ? Math.max(12, Math.round(anchoFoto * 0.035)) : 14;
 
   return (
     <div
@@ -116,12 +137,21 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
         // nunca limitarían nada).
         <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
           {/* eslint-disable-next-line jsx-a11y/alt-text */}
-          <img src={src} className="block max-w-[92vw] max-h-[85vh] object-contain" />
+          <img
+            ref={imgRef}
+            src={src}
+            onLoad={(e) => setAnchoFoto(e.currentTarget.clientWidth || null)}
+            className="block max-w-[92vw] max-h-[85vh] object-contain"
+          />
           {etiqueta && (
             // Esquina inferior IZQUIERDA de la FOTO (no de la pantalla) — solo en esta vista
             // ampliada, no en las miniaturas ni en el PDF. Alineado a la izquierda es el orden
-            // normal de lectura del texto.
-            <span className="absolute bottom-2 left-2 max-w-[70%] text-left text-white text-sm bg-black/60 px-2.5 py-1.5 rounded z-10">
+            // normal de lectura del texto. Mismo tamaño de letra que la fecha estampada en la
+            // propia foto (ver `fontSizeEtiqueta` arriba) — pedido del usuario.
+            <span
+              style={{ fontSize: fontSizeEtiqueta, padding: `${fontSizeEtiqueta * 0.5}px ${fontSizeEtiqueta * 0.6}px` }}
+              className="absolute bottom-2 left-2 max-w-[70%] text-left font-bold text-white bg-black/55 rounded z-10"
+            >
               {etiqueta}
             </span>
           )}
