@@ -24,15 +24,21 @@ export function ResumenEditable({
   valor,
   onCambiar,
   onCorregirGlobal,
+  onErroresCambian,
 }: {
   valor: string;
   onCambiar: (t: string) => void;
   onCorregirGlobal: (palabra: string, correccion: string) => void;
+  /** Avisa cada vez que el panel de abajo pasa de tener palabras sin corregir a no tener (o al
+   * revés) — pedido del usuario: quiere bloquear "Generar PDF" mientras cualquier resumen del
+   * reporte todavía tenga este panel abierto. Sin esta prop, ResumenEditable no avisa nada (uso
+   * normal del Informe Semanal, que no tiene ese bloqueo). */
+  onErroresCambian?: (hayErrores: boolean) => void;
 }) {
   return (
     <div>
       <CuadroContentEditable valor={valor} onCambiar={onCambiar} onCorregirGlobal={onCorregirGlobal} />
-      {esEscritorio && <PanelCorrector texto={valor} onAplicar={onCorregirGlobal} />}
+      {esEscritorio && <PanelCorrector texto={valor} onAplicar={onCorregirGlobal} onErroresCambian={onErroresCambian} />}
     </div>
   );
 }
@@ -110,9 +116,11 @@ function CuadroContentEditable({
 function PanelCorrector({
   texto,
   onAplicar,
+  onErroresCambian,
 }: {
   texto: string;
   onAplicar: (palabra: string, correccion: string) => void;
+  onErroresCambian?: (hayErrores: boolean) => void;
 }) {
   const { usuario } = useAuth();
   const correctorRef = useRef<CorrectorMulti | null>(null);
@@ -142,6 +150,17 @@ function PanelCorrector({
     const t = setTimeout(() => setErrores(revisarTexto(correctorRef.current!, texto)), 300);
     return () => clearTimeout(t);
   }, [texto, cargado]);
+
+  // Avisa al padre cada vez que este panel pasa de tener palabras sin corregir a no tener (o al
+  // revés) — así "Generar PDF" (Reports.tsx) puede bloquearse mientras cualquier resumen del
+  // reporte todavía tenga este panel abierto. Al desmontarse (el bloque desaparece de la vista
+  // previa, ej. cambió el filtro) avisa que ya no hay error propio, para no dejar una marca
+  // huérfana bloqueando para siempre.
+  useEffect(() => {
+    onErroresCambian?.(errores.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errores.length]);
+  useEffect(() => () => onErroresCambian?.(false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (fallo || !cargado || errores.length === 0) return null;
 

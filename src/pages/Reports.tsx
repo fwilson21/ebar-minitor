@@ -91,6 +91,19 @@ export function Reports() {
   const [cargandoPreview, setCargandoPreview] = useState(false);
   // Resúmenes retocados a mano, por `claveGrupoDiario`. Los grupos sin entrada usan el auto.
   const [resumenesEditados, setResumenesEditados] = useState<Record<string, string>>({});
+  // Claves de los resúmenes que TODAVÍA tienen el panel "Palabras que podrían estar mal escritas"
+  // abierto (con al menos una palabra sin corregir) — pedido del usuario: mientras haya alguno
+  // abierto, no se deja generar el PDF (ver manejarGenerar).
+  const [clavesConErrores, setClavesConErrores] = useState<Set<string>>(new Set());
+  function marcarErroresOrtografia(clave: string, hayErrores: boolean) {
+    setClavesConErrores((prev) => {
+      if (hayErrores === prev.has(clave)) return prev;
+      const siguiente = new Set(prev);
+      if (hayErrores) siguiente.add(clave);
+      else siguiente.delete(clave);
+      return siguiente;
+    });
+  }
   const mostrarRevisionResumenes = esEscritorio && formato === 'super_compacto';
   // Resaltados rojos que guían a dónde ir: "Revisar resúmenes" cuando se intentó generar sin
   // revisar; "Generar PDF" cuando se tocó "Descargar y compartir" sin haber generado nada.
@@ -373,6 +386,7 @@ export function Reports() {
   useEffect(() => {
     setGruposPreview([]);
     setResumenesEditados({});
+    setClavesConErrores(new Set());
     setResaltarRevisar(false);
     setResaltarGenerar(false);
   }, [tipo, formato, fechaInicio, fechaFin, operadorId, estacionIds, diasEspecificos, soloFinSemanaFeriado, diasElegidos]);
@@ -471,6 +485,19 @@ export function Reports() {
       setResaltarRevisar(true);
       document.getElementById('boton-revisar-resumenes')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
+    }
+    // Todavía hay algún resumen con el panel "Palabras que podrían estar mal escritas" abierto —
+    // pedido del usuario: no lo deja generar, avisa fuerte y lo lleva al PRIMERO de esos paneles
+    // (de arriba hacia abajo del reporte, el mismo orden en que aparecen en `gruposPreview`).
+    if (!opciones?.omitirRevision) {
+      const primeraClaveConError = gruposPreview.map(claveGrupoDiario).find((clave) => clavesConErrores.has(clave));
+      if (primeraClaveConError) {
+        window.alert(
+          '⚠️ Todavía hay palabras que podrían estar mal escritas sin revisar. Corregilas (o marcalas como "Está bien escrita") antes de generar el PDF.',
+        );
+        document.getElementById(`resumen-${primeraClaveConError}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
     }
     setResaltarRevisar(false);
     setGenerando(true);
@@ -679,6 +706,7 @@ export function Reports() {
             onAbrir={abrirRevisionResumenes}
             onCambiarResumen={(clave, texto) => setResumenesEditados((prev) => ({ ...prev, [clave]: texto }))}
             onCorregirGlobal={corregirPalabraEnReporte}
+            onErroresOrtografia={marcarErroresOrtografia}
             onFotoGirada={reemplazarUrlFotoPreview}
             onFotoBorrada={eliminarFotoPreview}
           />
@@ -737,6 +765,7 @@ function BloqueRevisionResumenes({
   onAbrir,
   onCambiarResumen,
   onCorregirGlobal,
+  onErroresOrtografia,
   onFotoGirada,
   onFotoBorrada,
 }: {
@@ -748,6 +777,7 @@ function BloqueRevisionResumenes({
   onAbrir: () => void;
   onCambiarResumen: (clave: string, texto: string) => void;
   onCorregirGlobal: (palabra: string, correccion: string) => void;
+  onErroresOrtografia: (clave: string, hayErrores: boolean) => void;
   onFotoGirada: (fotoId: string, nuevaUrl: string) => void;
   onFotoBorrada: (fotoId: string) => void;
 }) {
@@ -784,7 +814,7 @@ function BloqueRevisionResumenes({
             .map((f) => ({ id: f.id!, visita_id: v.id!, url: f.url, etiqueta: f.etiqueta, tomada_en: f.tomada_en! })),
         );
         return (
-          <div key={clave} className="border-t border-panel-600/40 pt-3">
+          <div key={clave} id={`resumen-${clave}`} className="border-t border-panel-600/40 pt-3">
             <p className="text-2xl font-extrabold text-slate-900 leading-tight">
               {codigoYNombre({ codigo: g.estacion_codigo, nombre: g.estacion_nombre })}
             </p>
@@ -795,6 +825,7 @@ function BloqueRevisionResumenes({
               valor={resumenesEditados[clave] ?? parrafoResumenDia(g)}
               onCambiar={(t) => onCambiarResumen(clave, t)}
               onCorregirGlobal={onCorregirGlobal}
+              onErroresCambian={(hay) => onErroresOrtografia(clave, hay)}
             />
             <FotosGirables fotos={fotosGirables} onGirada={onFotoGirada} categorias={{ onBorrar: onFotoBorrada }} />
           </div>
