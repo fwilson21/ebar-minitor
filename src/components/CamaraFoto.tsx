@@ -204,6 +204,15 @@ export function CamaraFoto({
     // después de que el stream ya está listo — sin este chequeo, un toque muy rápido en el
     // disparador podía generar un canvas de 0x0.
     if (!video || tomadasRef.current >= maxFotos || !video.videoWidth) return;
+    // Se reserva el cupo ACÁ, de forma síncrona, antes de arrancar `canvas.toBlob` (que es async).
+    // Antes se incrementaba recién dentro del callback de `toBlob` — si el operador tocaba el
+    // disparador dos veces muy rápido (antes de que el primer toBlob resolviera), el segundo toque
+    // pasaba el chequeo de arriba con el mismo valor viejo de `tomadasRef` y se colaba una foto de
+    // más pese al tope (reportado de nuevo el 2026-09-13, Android y iPhone). El botón deshabilitado
+    // (`limiteAlcanzado`, basado en el estado `tomadas`) no alcanza a protegerlo porque React recién
+    // actualiza el DOM en el siguiente render, y dos toques pueden llegar antes de eso.
+    tomadasRef.current += 1;
+    setTomadas(tomadasRef.current);
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -225,14 +234,18 @@ export function CamaraFoto({
       (blob) => {
         if (blob) {
           onCapturar(blob, dispositivoEnHorizontal);
-          tomadasRef.current += 1;
-          setTomadas(tomadasRef.current);
           const numeroFoto = fotosAlAbrir + tomadasRef.current;
           const deTotal = totalMax ? ` de ${totalMax}` : '';
           setAvisoTexto(`✓ Foto ${numeroFoto}${deTotal} tomada`);
           setAvisoVisible(true);
           if (timeoutAvisoRef.current) window.clearTimeout(timeoutAvisoRef.current);
           timeoutAvisoRef.current = window.setTimeout(() => setAvisoVisible(false), 2200);
+        } else {
+          // No debería pasar nunca en la práctica, pero si el canvas no logra generar el blob se
+          // devuelve el cupo reservado arriba — si no, esa foto fallida dejaría el tope en falso
+          // "ya lleno" sin haber tomado nada.
+          tomadasRef.current -= 1;
+          setTomadas(tomadasRef.current);
         }
       },
       'image/jpeg',
