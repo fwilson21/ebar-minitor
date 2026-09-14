@@ -365,6 +365,31 @@ export async function incrustarFotosVisitas(visitas: VisitaParaReporte[]): Promi
   return resultado;
 }
 
+/**
+ * Igual que `incrustarFotosVisitas` pero para la evidencia de "EBAR sin visitar — motivo
+ * registrado" (`FilaNoVisitadaReporte.fotos`, migración 0063) — genérico en vez de acoplado al
+ * tipo de una visita porque acá no hay ninguna `VisitaParaReporte` de por medio.
+ */
+export async function incrustarFotosNoVisitadas<T extends { fotos?: Array<{ url: string; etiqueta?: string | null }> }>(
+  filas: T[],
+): Promise<T[]> {
+  const resultado: T[] = [];
+  for (const f of filas) {
+    if (!f.fotos?.length) {
+      resultado.push(f);
+      continue;
+    }
+    const convertidas = await enParalelo(f.fotos, 4, async (foto) => {
+      const b64 = await urlAImagenBase64(foto.url);
+      return b64 ? { url: b64, etiqueta: foto.etiqueta } : null;
+    });
+    const fotosValidas: NonNullable<T['fotos']> = [];
+    for (const c of convertidas) if (c) fotosValidas.push(c);
+    resultado.push({ ...f, fotos: fotosValidas });
+  }
+  return resultado;
+}
+
 export async function urlAImagenBase64(url: string): Promise<string | null> {
   try {
     const resp = await fetch(url);

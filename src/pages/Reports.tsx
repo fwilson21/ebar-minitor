@@ -14,12 +14,13 @@ import {
   type FilaNoVisitadaReporte,
   type GrupoDiario,
 } from '../lib/pdf';
-import { incrustarFotosVisitas } from '../lib/fotos';
+import { incrustarFotosVisitas, incrustarFotosNoVisitadas, urlMiniaturaDrive } from '../lib/fotos';
 import { reemplazarPalabra, esEscritorio } from '../lib/correctorEs';
 import { ResumenEditable } from '../components/ResumenEditable';
 import { FotosGirables } from '../components/FotosGirables';
+import { FotoLightbox } from '../components/FotoLightbox';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
-import type { EstacionEbar, Usuario } from '../lib/types';
+import type { EstacionEbar, Usuario, FotoLocal } from '../lib/types';
 import { codigoYNombre } from '../lib/agruparEstaciones';
 import { hoyLocal } from '../lib/fecha';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
@@ -89,6 +90,16 @@ export function Reports() {
   // resumen auto-generado de cada visita (con el corrector de ortografía) antes de generar el PDF.
   const [gruposPreview, setGruposPreview] = useState<GrupoDiario[]>([]);
   const [cargandoPreview, setCargandoPreview] = useState(false);
+  // "EBAR sin visitar — motivo registrado" (justificaciones, ver obtenerNoVisitadas) — se muestran
+  // también acá (con su foto de evidencia) para que quede TODO junto antes de generar: antes solo
+  // salían en el PDF final, sin que nadie las hubiera visto en la revisión (reportado por el
+  // usuario, 2026-09-13).
+  const [noVisitadasPreview, setNoVisitadasPreview] = useState<FilaNoVisitadaReporte[]>([]);
+  // Antes, "¿ya se revisó?" se leía de `gruposPreview.length === 0` — pero eso da falso "todavía
+  // no" cuando de verdad no hubo ninguna visita ese día (solo EBAR justificadas): nunca se podía
+  // pasar de esa pantalla porque `gruposPreview` se queda vacío SIEMPRE en ese caso, se haya
+  // revisado o no. Bandera aparte, que sí se pone en `true` con cualquier resultado (0 o más).
+  const [revisionHecha, setRevisionHecha] = useState(false);
   // Resúmenes retocados a mano, por `claveGrupoDiario`. Los grupos sin entrada usan el auto.
   const [resumenesEditados, setResumenesEditados] = useState<Record<string, string>>({});
   // Claves de los resúmenes que TODAVÍA tienen el panel "Palabras que podrían estar mal escritas"
@@ -346,7 +357,7 @@ export function Reports() {
           .lte('fecha_hora_llegada', `${fechaInicioEfectiva}T23:59:59`),
         supabase
           .from('justificaciones_no_visita')
-          .select('estacion_id, motivo, usuarios ( nombre_completo )')
+          .select('id, estacion_id, motivo, usuarios ( nombre_completo )')
           .eq('fecha', fechaInicioEfectiva),
         operadorEfectivo
           ? supabase.from('asignaciones_estacion').select('estacion_id, fecha').eq('operador_id', operadorEfectivo)
@@ -357,7 +368,7 @@ export function Reports() {
     const mapaJustificaciones = new Map(
       ((justificacionesDia ?? []) as any[]).map((j) => [
         j.estacion_id,
-        { motivo: j.motivo as string, registrado_por: (j.usuarios?.nombre_completo as string) ?? null },
+        { id: j.id as string, motivo: j.motivo as string, registrado_por: (j.usuarios?.nombre_completo as string) ?? null },
       ]),
     );
     // null = sin operador elegido, no se acota por asignación (foto de toda la empresa).
@@ -369,14 +380,37 @@ export function Reports() {
         )
       : null;
 
-    return ((todasActivas ?? []) as EstacionEbar[])
+    const filasFiltradas = ((todasActivas ?? []) as EstacionEbar[])
       .filter((e) => !idsConVisita.has(e.id) && mapaJustificaciones.has(e.id))
-      .filter((e) => idsAsignadosAlOperador === null || idsAsignadosAlOperador.has(e.id))
+      .filter((e) => idsAsignadosAlOperador === null || idsAsignadosAlOperador.has(e.id));
+
+    // Evidencia fotográfica de cada justificación (migración 0063) — 1 sola consulta con todos los
+    // ids relevantes en vez de una por EBAR. Todavía como URLs de miniatura (livianas); recién se
+    // convierten a base64 (pesado, una descarga por foto) al generar de verdad el PDF, ver
+    // `incrustarFotosNoVisitadas` en manejarGenerar — acá alcanza para mostrarlas en pantalla.
+    const idsJustificaciones = filasFiltradas.map((e) => mapaJustificaciones.get(e.id)!.id);
+    const fotosPorJustificacion = new Map<string, Array<{ url: string }>>();
+    if (idsJustificaciones.length > 0) {
+      const { data: fotosData } = await supabase
+        .from('fotos')
+        .select('justificacion_id, drive_file_id, url_publica')
+        .in('justificacion_id', idsJustificaciones);
+      for (const f of (fotosData as any[]) ?? []) {
+        const url = urlMiniaturaDrive(f.drive_file_id, f.url_publica);
+        if (!url) continue;
+        const lista = fotosPorJustificacion.get(f.justificacion_id) ?? [];
+        lista.push({ url });
+        fotosPorJustificacion.set(f.justificacion_id, lista);
+      }
+    }
+
+    return filasFiltradas
       .map((e) => ({
         nombre: e.nombre,
         codigo: e.codigo,
         motivo: mapaJustificaciones.get(e.id)!.motivo,
         registrado_por: mapaJustificaciones.get(e.id)!.registrado_por,
+        fotos: fotosPorJustificacion.get(mapaJustificaciones.get(e.id)!.id) ?? [],
       }))
       .sort((a, b) => a.codigo.localeCompare(b.codigo));
   }
@@ -385,6 +419,8 @@ export function Reports() {
   // ella los retoques) para no arrastrar un resumen editado a un reporte de otras visitas.
   useEffect(() => {
     setGruposPreview([]);
+    setNoVisitadasPreview([]);
+    setRevisionHecha(false);
     setResumenesEditados({});
     setClavesConErrores(new Set());
     setResaltarRevisar(false);
@@ -395,8 +431,12 @@ export function Reports() {
     setMensaje(null);
     setCargandoPreview(true);
     try {
-      const visitas = await obtenerVisitas();
-      if (visitas.length === 0) {
+      const [visitas, noVisitadas] = await Promise.all([obtenerVisitas(), obtenerNoVisitadas()]);
+      setNoVisitadasPreview(noVisitadas);
+      setRevisionHecha(true);
+      // Antes esto se rendía apenas no había visitas, aunque hubiera EBAR justificadas (sin
+      // visitar) para mostrar — el usuario reportó que esas no aparecían en la revisión.
+      if (visitas.length === 0 && noVisitadas.length === 0) {
         setMensaje('No hay visitas registradas para los filtros seleccionados.');
         setGruposPreview([]);
         return;
@@ -480,7 +520,7 @@ export function Reports() {
     // En computadora, Súper compacto: hay que revisar los resúmenes antes de generar (o usar
     // "Generar sin revisar", que pide doble confirmación). Se resalta en rojo el botón "Revisar
     // resúmenes" y se hace scroll hasta él.
-    if (mostrarRevisionResumenes && gruposPreview.length === 0 && !opciones?.omitirRevision) {
+    if (mostrarRevisionResumenes && !revisionHecha && !opciones?.omitirRevision) {
       setMensaje('Revisá los resúmenes de las visitas antes de generar (o usá "Generar sin revisar").');
       setResaltarRevisar(true);
       document.getElementById('boton-revisar-resumenes')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -515,7 +555,7 @@ export function Reports() {
         return;
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
-      const noVisitadas = await obtenerNoVisitadas();
+      const noVisitadas = await incrustarFotosNoVisitadas(await obtenerNoVisitadas());
 
       const blob = await generarReporteVisitas(
         visitas,
@@ -700,6 +740,7 @@ export function Reports() {
         <>
           <BloqueRevisionResumenes
             grupos={gruposPreview}
+            noVisitadas={noVisitadasPreview}
             cargando={cargandoPreview}
             resumenesEditados={resumenesEditados}
             resaltar={resaltarRevisar}
@@ -726,7 +767,7 @@ export function Reports() {
               >
                 {generando ? 'Generando…' : '📄 Generar PDF'}
               </button>
-              {gruposPreview.length === 0 && (
+              {!revisionHecha && (
                 <button onClick={generarSinRevisar} disabled={generando} className="boton-secundario">
                   ⚠️ Generar sin revisar
                 </button>
@@ -759,6 +800,7 @@ export function Reports() {
  * cada visita (con el corrector de ortografía) y girar sus fotos. */
 function BloqueRevisionResumenes({
   grupos,
+  noVisitadas,
   cargando,
   resumenesEditados,
   resaltar,
@@ -770,6 +812,10 @@ function BloqueRevisionResumenes({
   onFotoBorrada,
 }: {
   grupos: GrupoDiario[];
+  /** "EBAR sin visitar — motivo registrado" (justificaciones con evidencia, ver obtenerNoVisitadas)
+   * — de solo lectura acá (ni el corrector ni "girar" aplican a algo que no es un resumen de
+   * visita), pero tienen que verse en esta misma revisión antes de generar. */
+  noVisitadas: FilaNoVisitadaReporte[];
   cargando: boolean;
   resumenesEditados: Record<string, string>;
   /** Rojo + negrita cuando el usuario intentó generar sin revisar — para mandarlo acá primero. */
@@ -781,7 +827,7 @@ function BloqueRevisionResumenes({
   onFotoGirada: (fotoId: string, nuevaUrl: string) => void;
   onFotoBorrada: (fotoId: string) => void;
 }) {
-  const sinRevisar = grupos.length === 0;
+  const sinRevisar = grupos.length === 0 && noVisitadas.length === 0;
   return (
     <div className="tarjeta p-4 space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -832,10 +878,50 @@ function BloqueRevisionResumenes({
         );
       })}
 
+      {noVisitadas.map((f) => (
+        <div key={`nv-${f.codigo}`} className="border-t border-panel-600/40 pt-3">
+          <p className="text-2xl font-extrabold text-slate-900 leading-tight">{codigoYNombre({ codigo: f.codigo, nombre: f.nombre })}</p>
+          <p className="text-sm font-semibold text-slate-600 mb-1.5">EBAR sin visitar — motivo registrado{f.registrado_por ? ` (${f.registrado_por})` : ''}</p>
+          <p className="text-sm text-slate-700 whitespace-pre-wrap">{f.motivo || '-'}</p>
+          <GrillaFotosSoloVer fotos={f.fotos ?? []} />
+        </div>
+      ))}
+
       {sinRevisar && !cargando && (
         <p className="text-xs text-slate-500 border-t border-panel-600/40 pt-3">
           Tocá "Revisar resúmenes" para ver y corregir el texto de cada visita. Los botones de generar están abajo.
         </p>
+      )}
+    </div>
+  );
+}
+
+/** Grilla de solo ver (sin girar ni borrar) para la evidencia de "EBAR sin visitar" — doble clic
+ * la abre en grande (mismo visor con zoom que el resto de la app), clic afuera cierra. Aparte de
+ * `FotosGirables` porque esas fotos no tienen `visita_id` (`girarFotoSubida` lo necesita) y acá no
+ * hace falta ni girarlas ni borrarlas, solo confirmar que la evidencia es la esperada. */
+function GrillaFotosSoloVer({ fotos }: { fotos: Array<{ url: string }> }) {
+  const [abierta, setAbierta] = useState<number | null>(null);
+  if (fotos.length === 0) return null;
+  const comoFotoLocal: FotoLocal[] = fotos.map((f, i) => ({
+    id: `nv-${i}`,
+    url_publica: f.url,
+    tomada_en: '',
+    estado_subida: 'subida',
+  }));
+  return (
+    <div className="grid grid-cols-3 gap-2 mt-2 max-w-xs">
+      {fotos.map((f, i) => (
+        // eslint-disable-next-line jsx-a11y/alt-text
+        <img
+          key={i}
+          src={f.url}
+          onDoubleClick={() => setAbierta(i)}
+          className="aspect-square rounded-lg object-cover cursor-zoom-in bg-panel-700"
+        />
+      ))}
+      {abierta !== null && (
+        <FotoLightbox fotos={comoFotoLocal} indice={abierta} onCambiarIndice={setAbierta} onCerrar={() => setAbierta(null)} />
       )}
     </div>
   );

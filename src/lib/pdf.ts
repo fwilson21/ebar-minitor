@@ -207,6 +207,10 @@ export interface FilaNoVisitadaReporte {
   codigo: string;
   motivo: string | null;
   registrado_por: string | null;
+  /** Evidencia fotográfica de la justificación (migración 0063) — 0 a 3 fotos, ya en base64 para
+   * el PDF (ver `incrustarFotosNoVisitadas` en fotos.ts). Vacío en reportes generados antes de esa
+   * migración, o si algo falló al descargarlas — no bloquea nada, la fila igual se muestra. */
+  fotos?: Array<{ url: string; etiqueta?: string | null }>;
 }
 
 /** Encabezado tipo memo institucional (formato GADMFO: "INFORME No. ..." + tabla PARA/DE/ASUNTO/
@@ -246,22 +250,28 @@ function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
 
 /** "EBAR sin visitar" del día del reporte QUE YA TIENE motivo registrado (Reports.tsx filtra las
  * que no lo tienen antes de llegar acá — listar las 29 sin ninguna razón no aportaba nada) — solo
- * se agrega en "Reporte consolidado" de un solo día. Vacío = no se agrega nada. */
+ * se agrega en "Reporte consolidado" de un solo día. Vacío = no se agrega nada.
+ * Una tarjeta por EBAR (no una fila de tabla) porque desde la migración 0063 cada una puede traer
+ * hasta 3 fotos de evidencia — una tabla no da lugar cómodo para eso, a diferencia de un `stack`. */
 function bloqueNoVisitadas(filas: FilaNoVisitadaReporte[]): any {
   if (filas.length === 0) return null;
   return {
     stack: [
       { text: `EBAR sin visitar — motivo registrado (${filas.length})`, style: 'subtitulo', margin: [0, 4, 0, 4] },
-      {
-        table: {
-          widths: ['auto', '*', '*'],
-          body: [
-            [{ text: 'Código', bold: true }, { text: 'Estación', bold: true }, { text: 'Motivo', bold: true }],
-            ...filas.map((f) => [f.codigo, f.nombre, f.motivo ? `${f.motivo}${f.registrado_por ? ` (${f.registrado_por})` : ''}` : '-']),
-          ],
-        },
-        layout: 'lightHorizontalLines',
-      },
+      ...filas.map(
+        (f): any => ({
+          stack: [
+            { text: `${f.codigo} — ${f.nombre}`, bold: true, fontSize: 9.5, margin: [0, 6, 0, 1] },
+            {
+              text: f.motivo ? `${f.motivo}${f.registrado_por ? ` (${f.registrado_por})` : ''}` : '-',
+              fontSize: 9,
+              color: '#3B4A56',
+            },
+            bloqueFotos(f.fotos),
+          ].filter((x) => x !== null),
+          unbreakable: true,
+        }),
+      ),
     ],
     margin: [0, 0, 0, 16],
   };
