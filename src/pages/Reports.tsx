@@ -363,14 +363,25 @@ export function Reports() {
     let queryEstaciones = supabase.from('estaciones_ebar').select('id, nombre, codigo').eq('activa', true);
     if (estacionIds !== null) queryEstaciones = queryEstaciones.in('id', [...estacionIds]);
 
+    // Con un operador puntual elegido, "sin visitar" tiene que preguntar "¿la visitó ESE
+    // operador?", no "¿la visitó cualquiera?" — antes miraba visitas de TODOS los operadores, así
+    // que una EBAR que un compañero SÍ visitó ese día (aunque el operador del reporte no) quedaba
+    // excluida como si ya no hiciera falta justificarla, ocultando justificaciones reales (caso
+    // real reportado por el usuario 2026-09-14: Vega justificó "EBAR GARCIA MORENO" por lluvia,
+    // pero Edisson sí la había visitado ese mismo día — la justificación de Vega desaparecía del
+    // reporte). Sin operador elegido ("Todos los operadores"), sigue siendo cualquiera (tiene
+    // sentido ahí: es la foto de la empresa entera, no de una persona puntual).
+    let queryVisitas = supabase
+      .from('visitas')
+      .select('estacion_id, fecha_hora_llegada')
+      .gte('fecha_hora_llegada', `${fechaInicioEfectiva}T00:00:00`)
+      .lte('fecha_hora_llegada', `${fechaFinEfectiva}T23:59:59`);
+    if (operadorEfectivo) queryVisitas = queryVisitas.eq('operador_id', operadorEfectivo);
+
     const [{ data: todasActivas }, { data: visitasDelRango }, { data: justificacionesDelRango }, { data: asignacionesOperador }] =
       await Promise.all([
         queryEstaciones,
-        supabase
-          .from('visitas')
-          .select('estacion_id, fecha_hora_llegada')
-          .gte('fecha_hora_llegada', `${fechaInicioEfectiva}T00:00:00`)
-          .lte('fecha_hora_llegada', `${fechaFinEfectiva}T23:59:59`),
+        queryVisitas,
         supabase
           .from('justificaciones_no_visita')
           .select('id, estacion_id, fecha, motivo, usuarios ( nombre_completo )')
@@ -382,7 +393,8 @@ export function Reports() {
       ]);
 
     const estacionesPorId = new Map(((todasActivas ?? []) as EstacionEbar[]).map((e) => [e.id, e]));
-    // "estacionId|fecha" de cada día en que ESA EBAR sí tuvo una visita — para descartarla de la
+    // "estacionId|fecha" de cada día en que ESA EBAR sí tuvo una visita (del operador elegido, o
+    // de cualquiera si no hay uno elegido — ver `queryVisitas` arriba) — para descartarla de la
     // lista solo ESE día puntual (puede haberse justificado un día y visitado otro, dentro del
     // mismo rango).
     const clavesConVisita = new Set(
