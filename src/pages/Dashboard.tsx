@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
 import type { DashboardResumen, EstacionEbar, FotoLocal } from '../lib/types';
-import { ModalJustificarNoVisita } from '../components/ModalJustificarNoVisita';
+import { ModalJustificarNoVisita, TAMANO_MODAL_JUSTIFICAR_DEFAULT } from '../components/ModalJustificarNoVisita';
 import { urlMiniaturaDrive, subirFotoJustificacion } from '../lib/fotos';
 import { duracionVisita } from '../lib/duracionVisita';
 import { StationCard } from '../components/StationCard';
@@ -114,6 +114,7 @@ export function Dashboard() {
   const [detalleMetrica, setDetalleMetrica] = useState<FilaDetalleMetrica[] | null>(null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [tamanoModalMetrica, setTamanoModalMetrica] = useState(TAMANO_MODAL_METRICA_DEFAULT);
+  const [tamanoModalJustificar, setTamanoModalJustificar] = useState(TAMANO_MODAL_JUSTIFICAR_DEFAULT);
   const [justificaciones, setJustificaciones] = useState<MapaJustificaciones>({});
   // Estación sobre la que se está escribiendo (o editando) la justificación de "no visitada" —
   // null = modal cerrado. Abre el mismo modal desde "Tus EBAR de hoy" (operador) y "Pendientes de
@@ -169,6 +170,7 @@ export function Dashboard() {
   // seleccionada, a diferencia de `cargar()` de abajo).
   useEffect(() => {
     obtenerTamanoModal('modal_metrica_dashboard', TAMANO_MODAL_METRICA_DEFAULT).then(setTamanoModalMetrica);
+    obtenerTamanoModal('modal_justificar_no_visita', TAMANO_MODAL_JUSTIFICAR_DEFAULT).then(setTamanoModalJustificar);
   }, []);
 
   useEffect(() => {
@@ -646,6 +648,11 @@ export function Dashboard() {
     await guardarTamanoModal('modal_metrica_dashboard', t);
   }
 
+  async function guardarTamanoModalJustificar(t: { ancho: number; alto: number }) {
+    setTamanoModalJustificar(t);
+    await guardarTamanoModal('modal_justificar_no_visita', t);
+  }
+
   // Guarda (o edita) el motivo de "por qué no se visitó" para justificarEstacion, en la fecha que
   // se está viendo — una fila por estación+fecha (ver migración 0055), así que reescribir el mismo
   // día actualiza la fila existente en vez de duplicarla.
@@ -862,6 +869,9 @@ export function Dashboard() {
             setJustificarEstacion(null);
             setErrorJustificacion(null);
           }}
+          tamano={tamanoModalJustificar}
+          puedeRedimensionar={esAdministrador}
+          onGuardarTamano={guardarTamanoModalJustificar}
         />
       )}
     </div>
