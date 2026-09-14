@@ -326,12 +326,17 @@ export function Reports() {
   // "EBAR sin visitar CON MOTIVO REGISTRADO" — solo las que el operador (o supervisor/admin) ya
   // justificó (ver justificaciones_no_visita, migración 0055), no todas las que faltan por
   // visitar (esas ya se ven aparte en el Dashboard — acá listarlas todas sin motivo no aportaba
-  // nada, solo alargaba el PDF). Solo aplica a "Reporte consolidado" de un solo día
-  // (fechaInicio === fechaFin); en un rango de varios días o en los otros 2 tipos de reporte
-  // (diario por operador, de una sola estación) no hay una lista de "no visitadas" con un
-  // significado claro, así que queda vacía y el PDF no agrega la sección (ver bloqueNoVisitadas en
-  // pdf.ts). Si hay un operador elegido en el filtro de arriba (el propio, si quien mira es
-  // operador; el elegido a mano, si es administrador/supervisor), la lista se acota a las
+  // nada, solo alargaba el PDF). Aplica a "Reporte consolidado" y a "Diario por operador" de un
+  // solo día (fechaInicio === fechaFin) — antes SOLO aplicaba a "Consolidado", así que un
+  // administrador/supervisor generando el reporte de UN operador con "Diario por operador" (la
+  // forma más directa de pedir justo eso) no veía sus EBAR justificadas, aunque el propio operador
+  // SÍ las viera al generar su reporte con "Consolidado por fecha" (el tipo por defecto al abrir
+  // la pantalla, reportado por el usuario 2026-09-13). "Individual por estación" queda afuera: ahí
+  // el reporte es sobre una sola EBAR puntual, no tiene sentido "estaciones sin visitar". En un
+  // rango de varios días tampoco hay una lista de "no visitadas" con un significado claro, así que
+  // queda vacía y el PDF no agrega la sección (ver bloqueNoVisitadas en pdf.ts). Si hay un operador
+  // elegido en el filtro de arriba (el propio, si quien mira es operador; el elegido a mano, si es
+  // administrador/supervisor — obligatorio en "Diario por operador"), la lista se acota a las
   // estaciones asignadas a ESE operador (asignaciones_estacion) — antes mostraba SIEMPRE la foto
   // de toda la empresa sin importar el operador del filtro, y en el reporte de un operador
   // aparecían EBAR de otros compañeros que él no tenía por qué visitar (reportado por el usuario
@@ -339,7 +344,7 @@ export function Reports() {
   // la empresa. Si además se eligieron estaciones puntuales en el filtro, la lista se acota
   // también a esas.
   async function obtenerNoVisitadas(): Promise<FilaNoVisitadaReporte[]> {
-    if (tipo !== 'consolidado_fecha' || fechaInicioEfectiva !== fechaFinEfectiva) return [];
+    if ((tipo !== 'consolidado_fecha' && tipo !== 'diario_operador') || fechaInicioEfectiva !== fechaFinEfectiva) return [];
     if (estacionIds !== null && estacionIds.size === 0) return [];
 
     const operadorEfectivo = esAdmin ? operadorId : (usuario?.id ?? '');
