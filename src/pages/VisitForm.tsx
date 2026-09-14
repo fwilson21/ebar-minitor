@@ -507,6 +507,16 @@ export function VisitForm() {
         );
         if (continuar) {
           restaurarBorrador(datos);
+          // El borrador NO incluye `operador_id` (no es parte de `construirBorrador`) — sin esto,
+          // al seguir editando desde acá `operadorIdOriginal` se queda en su valor inicial (null) y
+          // el guardado cae al operador_id de quien está editando, reproduciendo el bug real ya
+          // encontrado una vez (2026-09-03, ver payload de manejarGuardar) por esta otra puerta que
+          // aquel arreglo no cubría: reanudar un borrador salta por completo la carga normal de la
+          // visita desde la base (bloque de abajo), que es donde se pone al día este dato.
+          if (visitaId) {
+            const { data: visitaOriginal } = await supabase.from('visitas').select('operador_id').eq('id', visitaId).single();
+            if (visitaOriginal) setOperadorIdOriginal(visitaOriginal.operador_id);
+          }
           setCargandoDatos(false);
           return;
         }
