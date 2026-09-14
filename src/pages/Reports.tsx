@@ -326,98 +326,117 @@ export function Reports() {
   // "EBAR sin visitar CON MOTIVO REGISTRADO" — solo las que el operador (o supervisor/admin) ya
   // justificó (ver justificaciones_no_visita, migración 0055), no todas las que faltan por
   // visitar (esas ya se ven aparte en el Dashboard — acá listarlas todas sin motivo no aportaba
-  // nada, solo alargaba el PDF). Aplica a "Reporte consolidado" y a "Diario por operador" de un
-  // solo día (fechaInicio === fechaFin) — antes SOLO aplicaba a "Consolidado", así que un
-  // administrador/supervisor generando el reporte de UN operador con "Diario por operador" (la
-  // forma más directa de pedir justo eso) no veía sus EBAR justificadas, aunque el propio operador
-  // SÍ las viera al generar su reporte con "Consolidado por fecha" (el tipo por defecto al abrir
-  // la pantalla, reportado por el usuario 2026-09-13). "Individual por estación" queda afuera: ahí
-  // el reporte es sobre una sola EBAR puntual, no tiene sentido "estaciones sin visitar". En un
-  // rango de varios días tampoco hay una lista de "no visitadas" con un significado claro, así que
-  // queda vacía y el PDF no agrega la sección (ver bloqueNoVisitadas en pdf.ts). Si hay un operador
-  // elegido en el filtro de arriba (el propio, si quien mira es operador; el elegido a mano, si es
-  // administrador/supervisor — obligatorio en "Diario por operador"), la lista se acota a las
-  // estaciones asignadas a ESE operador (asignaciones_estacion) — antes mostraba SIEMPRE la foto
-  // de toda la empresa sin importar el operador del filtro, y en el reporte de un operador
-  // aparecían EBAR de otros compañeros que él no tenía por qué visitar (reportado por el usuario
-  // con una captura real, 2026-09-09). Sin ningún operador elegido, sigue siendo la foto de toda
-  // la empresa. Si además se eligieron estaciones puntuales en el filtro, la lista se acota
-  // también a esas.
+  // nada, solo alargaba el PDF). Aplica a "Reporte consolidado" y a "Diario por operador"
+  // ("Individual por estación" queda afuera: ese reporte es sobre una sola EBAR puntual, no tiene
+  // sentido "estaciones sin visitar"). Recorre TODO el rango de fechas del reporte (no solo un día
+  // — pedido del usuario 2026-09-13: un reporte de una semana entera, de uno o de varios
+  // operadores, también debe traer las EBAR justificadas de cualquier día de esa semana), respetando
+  // "días específicos"/"solo fin de semana o feriado" igual que `obtenerVisitas`. Una EBAR puede
+  // salir más de una vez si se justificó en más de un día del rango — cada fila lleva su propia
+  // `fecha` (ver FilaNoVisitadaReporte). Si hay un operador elegido en el filtro de arriba (el
+  // propio, si quien mira es operador; el elegido a mano, si es administrador/supervisor —
+  // obligatorio en "Diario por operador"), la lista se acota a las estaciones asignadas a ESE
+  // operador (asignaciones_estacion) — antes mostraba SIEMPRE la foto de toda la empresa sin
+  // importar el operador del filtro, y en el reporte de un operador aparecían EBAR de otros
+  // compañeros que él no tenía por qué visitar (reportado por el usuario con una captura real,
+  // 2026-09-09). Sin ningún operador elegido, sigue siendo la foto de toda la empresa. Si además se
+  // eligieron estaciones puntuales en el filtro, la lista se acota también a esas.
   async function obtenerNoVisitadas(): Promise<FilaNoVisitadaReporte[]> {
-    if ((tipo !== 'consolidado_fecha' && tipo !== 'diario_operador') || fechaInicioEfectiva !== fechaFinEfectiva) return [];
+    if (tipo === 'individual_estacion') return [];
     if (estacionIds !== null && estacionIds.size === 0) return [];
+
+    // Mismos 3 criterios que `obtenerVisitas` para decidir qué días del rango entran: "días
+    // específicos" manda si está activo, si no el automático de fin de semana/feriado, si no todo
+    // el rango.
+    const diasDelRango: string[] = [];
+    for (let f = fechaInicioEfectiva; f <= fechaFinEfectiva; f = sumarUnDia(f)) diasDelRango.push(f);
+    const diasConsiderados = diasEspecificos
+      ? diasDelRango.filter((d) => diasElegidos.has(d))
+      : soloFinSemanaFeriado
+        ? diasDelRango.filter((d) => esDiaNoRegular(d, new Set(feriadosAdicionalesMap.keys())))
+        : diasDelRango;
+    if (diasConsiderados.length === 0) return [];
+    const diasSet = new Set(diasConsiderados);
 
     const operadorEfectivo = esAdmin ? operadorId : (usuario?.id ?? '');
 
     let queryEstaciones = supabase.from('estaciones_ebar').select('id, nombre, codigo').eq('activa', true);
     if (estacionIds !== null) queryEstaciones = queryEstaciones.in('id', [...estacionIds]);
 
-    const [{ data: todasActivas }, { data: visitasDelDia }, { data: justificacionesDia }, { data: asignacionesOperador }] =
+    const [{ data: todasActivas }, { data: visitasDelRango }, { data: justificacionesDelRango }, { data: asignacionesOperador }] =
       await Promise.all([
         queryEstaciones,
         supabase
           .from('visitas')
-          .select('estacion_id')
+          .select('estacion_id, fecha_hora_llegada')
           .gte('fecha_hora_llegada', `${fechaInicioEfectiva}T00:00:00`)
-          .lte('fecha_hora_llegada', `${fechaInicioEfectiva}T23:59:59`),
+          .lte('fecha_hora_llegada', `${fechaFinEfectiva}T23:59:59`),
         supabase
           .from('justificaciones_no_visita')
-          .select('id, estacion_id, motivo, usuarios ( nombre_completo )')
-          .eq('fecha', fechaInicioEfectiva),
+          .select('id, estacion_id, fecha, motivo, usuarios ( nombre_completo )')
+          .gte('fecha', fechaInicioEfectiva)
+          .lte('fecha', fechaFinEfectiva),
         operadorEfectivo
           ? supabase.from('asignaciones_estacion').select('estacion_id, fecha').eq('operador_id', operadorEfectivo)
           : Promise.resolve({ data: null as null }),
       ]);
 
-    const idsConVisita = new Set(((visitasDelDia ?? []) as any[]).map((v) => v.estacion_id));
-    const mapaJustificaciones = new Map(
-      ((justificacionesDia ?? []) as any[]).map((j) => [
-        j.estacion_id,
-        { id: j.id as string, motivo: j.motivo as string, registrado_por: (j.usuarios?.nombre_completo as string) ?? null },
-      ]),
+    const estacionesPorId = new Map(((todasActivas ?? []) as EstacionEbar[]).map((e) => [e.id, e]));
+    // "estacionId|fecha" de cada día en que ESA EBAR sí tuvo una visita — para descartarla de la
+    // lista solo ESE día puntual (puede haberse justificado un día y visitado otro, dentro del
+    // mismo rango).
+    const clavesConVisita = new Set(
+      ((visitasDelRango ?? []) as any[]).map((v) => `${v.estacion_id}|${(v.fecha_hora_llegada as string).slice(0, 10)}`),
     );
-    // null = sin operador elegido, no se acota por asignación (foto de toda la empresa).
+    // null = sin operador elegido, no se acota por asignación (foto de toda la empresa). Una
+    // asignación "por defecto" (fecha null) vale cualquier día del rango; una "especial" solo el
+    // día puntual que indica, si ese día entra en `diasConsiderados`.
     const idsAsignadosAlOperador = operadorEfectivo
       ? new Set(
           ((asignacionesOperador ?? []) as any[])
-            .filter((a) => a.fecha === null || a.fecha === fechaInicioEfectiva)
+            .filter((a) => a.fecha === null || diasSet.has(a.fecha))
             .map((a) => a.estacion_id),
         )
       : null;
 
-    const filasFiltradas = ((todasActivas ?? []) as EstacionEbar[])
-      .filter((e) => !idsConVisita.has(e.id) && mapaJustificaciones.has(e.id))
-      .filter((e) => idsAsignadosAlOperador === null || idsAsignadosAlOperador.has(e.id));
+    const justificacionesFiltradas = ((justificacionesDelRango ?? []) as any[])
+      .filter((j) => diasSet.has(j.fecha))
+      .filter((j) => estacionesPorId.has(j.estacion_id))
+      .filter((j) => !clavesConVisita.has(`${j.estacion_id}|${j.fecha}`))
+      .filter((j) => idsAsignadosAlOperador === null || idsAsignadosAlOperador.has(j.estacion_id));
+
+    if (justificacionesFiltradas.length === 0) return [];
 
     // Evidencia fotográfica de cada justificación (migración 0063) — 1 sola consulta con todos los
     // ids relevantes en vez de una por EBAR. Todavía como URLs de miniatura (livianas); recién se
     // convierten a base64 (pesado, una descarga por foto) al generar de verdad el PDF, ver
     // `incrustarFotosNoVisitadas` en manejarGenerar — acá alcanza para mostrarlas en pantalla.
-    const idsJustificaciones = filasFiltradas.map((e) => mapaJustificaciones.get(e.id)!.id);
     const fotosPorJustificacion = new Map<string, Array<{ url: string }>>();
-    if (idsJustificaciones.length > 0) {
-      const { data: fotosData } = await supabase
-        .from('fotos')
-        .select('justificacion_id, drive_file_id, url_publica')
-        .in('justificacion_id', idsJustificaciones);
-      for (const f of (fotosData as any[]) ?? []) {
-        const url = urlMiniaturaDrive(f.drive_file_id, f.url_publica);
-        if (!url) continue;
-        const lista = fotosPorJustificacion.get(f.justificacion_id) ?? [];
-        lista.push({ url });
-        fotosPorJustificacion.set(f.justificacion_id, lista);
-      }
+    const { data: fotosData } = await supabase
+      .from('fotos')
+      .select('justificacion_id, drive_file_id, url_publica')
+      .in('justificacion_id', justificacionesFiltradas.map((j) => j.id));
+    for (const f of (fotosData as any[]) ?? []) {
+      const url = urlMiniaturaDrive(f.drive_file_id, f.url_publica);
+      if (!url) continue;
+      const lista = fotosPorJustificacion.get(f.justificacion_id) ?? [];
+      lista.push({ url });
+      fotosPorJustificacion.set(f.justificacion_id, lista);
     }
 
-    return filasFiltradas
-      .map((e) => ({
-        nombre: e.nombre,
-        codigo: e.codigo,
-        motivo: mapaJustificaciones.get(e.id)!.motivo,
-        registrado_por: mapaJustificaciones.get(e.id)!.registrado_por,
-        fotos: fotosPorJustificacion.get(mapaJustificaciones.get(e.id)!.id) ?? [],
-      }))
-      .sort((a, b) => a.codigo.localeCompare(b.codigo));
+    return justificacionesFiltradas
+      .map((j) => {
+        const estacion = estacionesPorId.get(j.estacion_id)!;
+        return {
+          nombre: estacion.nombre,
+          codigo: estacion.codigo,
+          motivo: j.motivo as string,
+          registrado_por: (j.usuarios?.nombre_completo as string) ?? null,
+          fecha: j.fecha as string,
+          fotos: fotosPorJustificacion.get(j.id) ?? [],
+        };
+      })
+      .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.codigo.localeCompare(b.codigo));
   }
 
   // Al cambiar cualquier filtro, la vista previa de resúmenes queda obsoleta — se limpia (y con
@@ -884,9 +903,14 @@ function BloqueRevisionResumenes({
       })}
 
       {noVisitadas.map((f) => (
-        <div key={`nv-${f.codigo}`} className="border-t border-panel-600/40 pt-3">
+        // Clave con fecha incluida: en un rango de varios días la misma EBAR puede aparecer más de
+        // una vez, justificada en más de un día distinto.
+        <div key={`nv-${f.codigo}-${f.fecha}`} className="border-t border-panel-600/40 pt-3">
           <p className="text-2xl font-extrabold text-slate-900 leading-tight">{codigoYNombre({ codigo: f.codigo, nombre: f.nombre })}</p>
-          <p className="text-sm font-semibold text-slate-600 mb-1.5">EBAR sin visitar — motivo registrado{f.registrado_por ? ` (${f.registrado_por})` : ''}</p>
+          <p className="text-sm font-semibold text-slate-600 mb-1.5">
+            EBAR sin visitar — motivo registrado · {formatFechaCorta(f.fecha)}
+            {f.registrado_por ? ` (${f.registrado_por})` : ''}
+          </p>
           <p className="text-sm text-slate-700 whitespace-pre-wrap">{f.motivo || '-'}</p>
           <GrillaFotosSoloVer fotos={f.fotos ?? []} />
         </div>

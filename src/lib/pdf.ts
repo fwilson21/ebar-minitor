@@ -197,16 +197,19 @@ export interface DatosEncabezadoMemo {
   fecha: string | null;
 }
 
-/** Una EBAR sin ninguna visita en la fecha del reporte QUE YA TIENE justificación registrada (ver
- * migración 0055 / justificaciones_no_visita) — usada solo en "Reporte consolidado" de un solo
- * día (ver bloqueNoVisitadas). Reports.tsx ya filtra a solo las que tienen motivo antes de
- * armar esta lista — acá `motivo` nunca debería llegar null, pero el tipo se deja opcional por
- * si alguna vez se reutiliza esta interfaz sin ese filtro. */
+/** Una EBAR sin ninguna visita en un día del reporte QUE YA TIENE justificación registrada (ver
+ * migración 0055 / justificaciones_no_visita) — usada en "Reporte consolidado" y "Diario por
+ * operador" (ver bloqueNoVisitadas). Una fila por (EBAR, día) — un rango de varios días puede traer
+ * la misma EBAR más de una vez, una por cada día que se justificó sin visitarla. Reports.tsx ya
+ * filtra a solo las que tienen motivo antes de armar esta lista — acá `motivo` nunca debería llegar
+ * null, pero el tipo se deja opcional por si alguna vez se reutiliza esta interfaz sin ese filtro. */
 export interface FilaNoVisitadaReporte {
   nombre: string;
   codigo: string;
   motivo: string | null;
   registrado_por: string | null;
+  /** YYYY-MM-DD — el día puntual que se justificó, no el rango completo del reporte. */
+  fecha: string;
   /** Evidencia fotográfica de la justificación (migración 0063) — 0 a 3 fotos, ya en base64 para
    * el PDF (ver `incrustarFotosNoVisitadas` en fotos.ts). Vacío en reportes generados antes de esa
    * migración, o si algo falló al descargarlas — no bloquea nada, la fila igual se muestra. */
@@ -248,30 +251,44 @@ function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
   };
 }
 
-/** "EBAR sin visitar" del día del reporte QUE YA TIENE motivo registrado (Reports.tsx filtra las
- * que no lo tienen antes de llegar acá — listar las 29 sin ninguna razón no aportaba nada) — solo
- * se agrega en "Reporte consolidado" de un solo día. Vacío = no se agrega nada.
- * Una tarjeta por EBAR (no una fila de tabla) porque desde la migración 0063 cada una puede traer
- * hasta 3 fotos de evidencia — una tabla no da lugar cómodo para eso, a diferencia de un `stack`. */
+/** "EBAR sin visitar" del reporte QUE YA TIENE motivo registrado (Reports.tsx filtra las que no lo
+ * tienen antes de llegar acá — listar las 29 sin ninguna razón no aportaba nada) — se agrega en
+ * "Reporte consolidado" y "Diario por operador", de un solo día o de un rango de varios. Vacío = no
+ * se agrega nada. Agrupadas por día (subtítulo con la fecha) porque en un rango de varios días la
+ * misma EBAR puede aparecer más de una vez, un día distinto cada vez — sin la fecha no se podría
+ * distinguir cuál es cuál. Una tarjeta por EBAR (no una fila de tabla) porque desde la migración
+ * 0063 cada una puede traer hasta 3 fotos de evidencia — una tabla no da lugar cómodo para eso, a
+ * diferencia de un `stack`. */
 function bloqueNoVisitadas(filas: FilaNoVisitadaReporte[]): any {
   if (filas.length === 0) return null;
+  const porDia = new Map<string, FilaNoVisitadaReporte[]>();
+  for (const f of filas) {
+    if (!porDia.has(f.fecha)) porDia.set(f.fecha, []);
+    porDia.get(f.fecha)!.push(f);
+  }
+  const dias = [...porDia.keys()].sort();
   return {
     stack: [
       { text: `EBAR sin visitar — motivo registrado (${filas.length})`, style: 'subtitulo', margin: [0, 4, 0, 4] },
-      ...filas.map(
-        (f): any => ({
-          stack: [
-            { text: `${f.codigo} — ${f.nombre}`, bold: true, fontSize: 9.5, margin: [0, 6, 0, 1] },
-            {
-              text: f.motivo ? `${f.motivo}${f.registrado_por ? ` (${f.registrado_por})` : ''}` : '-',
-              fontSize: 9,
-              color: '#3B4A56',
-            },
-            bloqueFotos(f.fotos),
-          ].filter((x) => x !== null),
-          unbreakable: true,
-        }),
-      ),
+      ...dias.flatMap((fecha): any[] => [
+        // Un solo día en todo el reporte (el caso más común, "Consolidado" de una fecha puntual):
+        // repetir la fecha en cada tarjeta de abajo no aporta nada, con el título general alcanza.
+        ...(dias.length > 1 ? [{ text: formatFechaConDia(fecha), bold: true, fontSize: 10, color: '#1F2937', margin: [0, 8, 0, 2] }] : []),
+        ...porDia.get(fecha)!.map(
+          (f): any => ({
+            stack: [
+              { text: `${f.codigo} — ${f.nombre}`, bold: true, fontSize: 9.5, margin: [0, 6, 0, 1] },
+              {
+                text: f.motivo ? `${f.motivo}${f.registrado_por ? ` (${f.registrado_por})` : ''}` : '-',
+                fontSize: 9,
+                color: '#3B4A56',
+              },
+              bloqueFotos(f.fotos),
+            ].filter((x) => x !== null),
+            unbreakable: true,
+          }),
+        ),
+      ]),
     ],
     margin: [0, 0, 0, 16],
   };
