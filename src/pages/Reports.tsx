@@ -23,7 +23,7 @@ import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
 import type { EstacionEbar, Usuario, FotoLocal } from '../lib/types';
 import { codigoYNombre } from '../lib/agruparEstaciones';
 import { hoyLocal } from '../lib/fecha';
-import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO } from '../lib/agruparEstaciones';
+import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, compararParaInforme } from '../lib/agruparEstaciones';
 import { esDiaNoRegular } from '../lib/feriadosEcuador';
 import { SelectorDiasReporte } from '../components/SelectorDiasReporte';
 import { consultarDestinatarioInforme, actualizarDestinatarioInforme } from '../lib/destinatarioInforme';
@@ -360,7 +360,7 @@ export function Reports() {
 
     const operadorEfectivo = esAdmin ? operadorId : (usuario?.id ?? '');
 
-    let queryEstaciones = supabase.from('estaciones_ebar').select('id, nombre, codigo').eq('activa', true);
+    let queryEstaciones = supabase.from('estaciones_ebar').select('id, nombre, codigo, zona, tipo').eq('activa', true);
     if (estacionIds !== null) queryEstaciones = queryEstaciones.in('id', [...estacionIds]);
 
     // Con un operador puntual elegido, "sin visitar" tiene que preguntar "¿la visitó ESE
@@ -442,6 +442,8 @@ export function Reports() {
         return {
           nombre: estacion.nombre,
           codigo: estacion.codigo,
+          zona: estacion.zona,
+          tipo: estacion.tipo,
           motivo: j.motivo as string,
           registrado_por: (j.usuarios?.nombre_completo as string) ?? null,
           fecha: j.fecha as string,
@@ -893,45 +895,75 @@ function BloqueRevisionResumenes({
         </button>
       </div>
 
-      {grupos.map((g) => {
-        const clave = claveGrupoDiario(g);
-        const fotosGirables = g.visitas.flatMap((v) =>
-          (v.fotos ?? [])
-            .filter((f) => f.id && f.tomada_en && v.id)
-            .map((f) => ({ id: f.id!, visita_id: v.id!, url: f.url, etiqueta: f.etiqueta, tomada_en: f.tomada_en! })),
-        );
-        return (
-          <div key={clave} id={`resumen-${clave}`} className="border-t border-panel-600/40 pt-3">
-            <p className="text-2xl font-extrabold text-slate-900 leading-tight">
-              {codigoYNombre({ codigo: g.estacion_codigo, nombre: g.estacion_nombre })}
-            </p>
-            <p className="text-sm font-semibold text-slate-600 mb-1.5">
-              {g.operador_nombre} · {formatFechaCorta(g.fecha)}
-            </p>
-            <ResumenEditable
-              valor={resumenesEditados[clave] ?? parrafoResumenDia(g)}
-              onCambiar={(t) => onCambiarResumen(clave, t)}
-              onCorregirGlobal={onCorregirGlobal}
-              onErroresCambian={(hay) => onErroresOrtografia(clave, hay)}
-            />
-            <FotosGirables fotos={fotosGirables} onGirada={onFotoGirada} categorias={{ onBorrar: onFotoBorrada }} />
-          </div>
-        );
-      })}
-
-      {noVisitadas.map((f) => (
-        // Clave con fecha incluida: en un rango de varios días la misma EBAR puede aparecer más de
-        // una vez, justificada en más de un día distinto.
-        <div key={`nv-${f.codigo}-${f.fecha}`} className="border-t border-panel-600/40 pt-3">
-          <p className="text-2xl font-extrabold text-slate-900 leading-tight">{codigoYNombre({ codigo: f.codigo, nombre: f.nombre })}</p>
-          <p className="text-sm font-semibold text-slate-600 mb-1.5">
-            EBAR sin visitar — motivo registrado · {formatFechaCorta(f.fecha)}
-            {f.registrado_por ? ` (${f.registrado_por})` : ''}
-          </p>
-          <p className="text-sm text-slate-700 whitespace-pre-wrap">{f.motivo || '-'}</p>
-          <GrillaFotosSoloVer fotos={f.fotos ?? []} />
-        </div>
-      ))}
+      {/* Un solo orden: por fecha y luego por EBAR (mismo criterio que el PDF, ver
+          `compararParaInforme`), mezclando las visitas con las EBAR sin visitar de ese día — antes
+          salían todas las "sin visitar" primero, sin importar el día (pedido del usuario,
+          2026-09-14). */}
+      {[
+        ...grupos.map((g) => ({
+          tipoItem: 'visita' as const,
+          fecha: g.fecha,
+          zona: g.zona,
+          tipo: g.estacion_tipo ?? '',
+          codigo: g.estacion_codigo,
+          grupo: g,
+        })),
+        ...noVisitadas.map((f) => ({
+          tipoItem: 'sin_visitar' as const,
+          fecha: f.fecha,
+          zona: f.zona,
+          tipo: f.tipo,
+          codigo: f.codigo,
+          fila: f,
+        })),
+      ]
+        .sort(
+          (a, b) =>
+            a.fecha.localeCompare(b.fecha) ||
+            compararParaInforme({ zona: a.zona, tipo: a.tipo, codigo: a.codigo }, { zona: b.zona, tipo: b.tipo, codigo: b.codigo }),
+        )
+        .map((item) => {
+          if (item.tipoItem === 'visita') {
+            const g = item.grupo;
+            const clave = claveGrupoDiario(g);
+            const fotosGirables = g.visitas.flatMap((v) =>
+              (v.fotos ?? [])
+                .filter((f) => f.id && f.tomada_en && v.id)
+                .map((f) => ({ id: f.id!, visita_id: v.id!, url: f.url, etiqueta: f.etiqueta, tomada_en: f.tomada_en! })),
+            );
+            return (
+              <div key={clave} id={`resumen-${clave}`} className="border-t border-panel-600/40 pt-3">
+                <p className="text-2xl font-extrabold text-slate-900 leading-tight">
+                  {codigoYNombre({ codigo: g.estacion_codigo, nombre: g.estacion_nombre })}
+                </p>
+                <p className="text-sm font-semibold text-slate-600 mb-1.5">
+                  {g.operador_nombre} · {formatFechaCorta(g.fecha)}
+                </p>
+                <ResumenEditable
+                  valor={resumenesEditados[clave] ?? parrafoResumenDia(g)}
+                  onCambiar={(t) => onCambiarResumen(clave, t)}
+                  onCorregirGlobal={onCorregirGlobal}
+                  onErroresCambian={(hay) => onErroresOrtografia(clave, hay)}
+                />
+                <FotosGirables fotos={fotosGirables} onGirada={onFotoGirada} categorias={{ onBorrar: onFotoBorrada }} />
+              </div>
+            );
+          }
+          const f = item.fila;
+          // Clave con fecha incluida: en un rango de varios días la misma EBAR puede aparecer más
+          // de una vez, justificada en más de un día distinto.
+          return (
+            <div key={`nv-${f.codigo}-${f.fecha}`} className="border-t border-panel-600/40 pt-3">
+              <p className="text-2xl font-extrabold text-slate-900 leading-tight">{codigoYNombre({ codigo: f.codigo, nombre: f.nombre })}</p>
+              <p className="text-sm font-semibold text-slate-600 mb-1.5">
+                EBAR sin visitar — motivo registrado · {formatFechaCorta(f.fecha)}
+                {f.registrado_por ? ` (${f.registrado_por})` : ''}
+              </p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap">{f.motivo || '-'}</p>
+              <GrillaFotosSoloVer fotos={f.fotos ?? []} />
+            </div>
+          );
+        })}
 
       {sinRevisar && !cargando && (
         <p className="text-xs text-slate-500 border-t border-panel-600/40 pt-3">

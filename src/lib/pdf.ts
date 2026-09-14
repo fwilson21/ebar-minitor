@@ -199,7 +199,7 @@ export interface DatosEncabezadoMemo {
 
 /** Una EBAR sin ninguna visita en un día del reporte QUE YA TIENE justificación registrada (ver
  * migración 0055 / justificaciones_no_visita) — usada en "Reporte consolidado" y "Diario por
- * operador" (ver bloqueNoVisitadas). Una fila por (EBAR, día) — un rango de varios días puede traer
+ * operador" (ver bloqueUnaNoVisitada). Una fila por (EBAR, día) — un rango de varios días puede traer
  * la misma EBAR más de una vez, una por cada día que se justificó sin visitarla. Reports.tsx ya
  * filtra a solo las que tienen motivo antes de armar esta lista — acá `motivo` nunca debería llegar
  * null, pero el tipo se deja opcional por si alguna vez se reutiliza esta interfaz sin ese filtro. */
@@ -210,6 +210,12 @@ export interface FilaNoVisitadaReporte {
   registrado_por: string | null;
   /** YYYY-MM-DD — el día puntual que se justificó, no el rango completo del reporte. */
   fecha: string;
+  /** Para intercalarla en el mismo orden que las visitas de ese día (ver `compararParaInforme`) —
+   * pedido del usuario (2026-09-14): que el reporte vaya día por día y, dentro de cada día, las
+   * EBAR en orden (de menor a mayor), en vez de un bloque aparte con TODAS las justificadas antes
+   * que el resto de EBAR visitadas. */
+  zona: string;
+  tipo: string;
   /** Evidencia fotográfica de la justificación (migración 0063) — 0 a 3 fotos, ya en base64 para
    * el PDF (ver `incrustarFotosNoVisitadas` en fotos.ts). Vacío en reportes generados antes de esa
    * migración, o si algo falló al descargarlas — no bloquea nada, la fila igual se muestra. */
@@ -251,46 +257,33 @@ function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
   };
 }
 
-/** "EBAR sin visitar" del reporte QUE YA TIENE motivo registrado (Reports.tsx filtra las que no lo
- * tienen antes de llegar acá — listar las 29 sin ninguna razón no aportaba nada) — se agrega en
- * "Reporte consolidado" y "Diario por operador", de un solo día o de un rango de varios. Vacío = no
- * se agrega nada. Agrupadas por día (subtítulo con la fecha) porque en un rango de varios días la
- * misma EBAR puede aparecer más de una vez, un día distinto cada vez — sin la fecha no se podría
- * distinguir cuál es cuál. Una tarjeta por EBAR (no una fila de tabla) porque desde la migración
- * 0063 cada una puede traer hasta 3 fotos de evidencia — una tabla no da lugar cómodo para eso, a
- * diferencia de un `stack`. */
-function bloqueNoVisitadas(filas: FilaNoVisitadaReporte[]): any {
-  if (filas.length === 0) return null;
-  const porDia = new Map<string, FilaNoVisitadaReporte[]>();
-  for (const f of filas) {
-    if (!porDia.has(f.fecha)) porDia.set(f.fecha, []);
-    porDia.get(f.fecha)!.push(f);
-  }
-  const dias = [...porDia.keys()].sort();
+/** "EBAR sin visitar" QUE YA TIENE motivo registrado (Reports.tsx filtra las que no lo tienen
+ * antes de llegar acá — listar las 29 sin ninguna razón no aportaba nada) — una tarjeta por EBAR,
+ * pensada para intercalarse en el mismo orden día-por-día que las visitas (ver `generarReporteVisitas`
+ * más abajo: arma UNA sola lista ordenada por fecha y luego por `compararParaInforme`, mezclando
+ * grupos de visita con estas filas) — antes salían todas juntas en un bloque aparte, ANTES de
+ * cualquier EBAR visitada, sin importar el día (pedido del usuario 2026-09-14: que seas el día, y
+ * dentro de él, cada EBAR de menor a mayor, todas mezcladas). La etiqueta "Sin visitar" en la
+ * primera línea es la única pista de que esta tarjeta no es una visita real (no tiene estado de
+ * equipos ni datos de bombas) — antes ese contraste lo daba el título de sección aparte. */
+function bloqueUnaNoVisitada(f: FilaNoVisitadaReporte): any {
   return {
+    unbreakable: true,
     stack: [
-      { text: `EBAR sin visitar — motivo registrado (${filas.length})`, style: 'subtitulo', margin: [0, 4, 0, 4] },
-      ...dias.flatMap((fecha): any[] => [
-        // Un solo día en todo el reporte (el caso más común, "Consolidado" de una fecha puntual):
-        // repetir la fecha en cada tarjeta de abajo no aporta nada, con el título general alcanza.
-        ...(dias.length > 1 ? [{ text: formatFechaConDia(fecha), bold: true, fontSize: 10, color: '#1F2937', margin: [0, 8, 0, 2] }] : []),
-        ...porDia.get(fecha)!.map(
-          (f): any => ({
-            stack: [
-              { text: `${f.codigo} — ${f.nombre}`, bold: true, fontSize: 9.5, margin: [0, 6, 0, 1] },
-              {
-                text: f.motivo ? `${f.motivo}${f.registrado_por ? ` (${f.registrado_por})` : ''}` : '-',
-                fontSize: 9,
-                color: '#3B4A56',
-              },
-              bloqueFotos(f.fotos),
-            ].filter((x) => x !== null),
-            unbreakable: true,
-          }),
-        ),
-      ]),
-    ],
-    margin: [0, 0, 0, 16],
+      {
+        text: [
+          { text: `${f.codigo} — ${f.nombre}`, bold: true, fontSize: 9.5 },
+          { text: '  ·  Sin visitar', bold: true, fontSize: 8, color: '#B45309' },
+        ],
+        margin: [0, 6, 0, 1],
+      },
+      {
+        text: f.motivo ? `${f.motivo}${f.registrado_por ? ` (${f.registrado_por})` : ''}` : '-',
+        fontSize: 9,
+        color: '#3B4A56',
+      },
+      bloqueFotos(f.fotos),
+    ].filter((x) => x !== null),
   };
 }
 
@@ -1049,6 +1042,62 @@ export function generarReporteVisitas(
    * Reportes, por `claveGrupoDiario`. Los grupos sin entrada usan el resumen auto-generado. */
   resumenesEditados: Record<string, string> = {},
 ): Promise<Blob> {
+  // UNA sola secuencia ordenada por fecha y luego por `compararParaInforme` (EBAR/línea de
+  // conducción antes que PTAR, luego código) que mezcla los grupos de visita CON las EBAR sin
+  // visitar de ese mismo día — pedido del usuario (2026-09-14): antes "EBAR sin visitar" era un
+  // bloque aparte con TODAS las justificadas de cualquier día, siempre antes que el resto del
+  // reporte; ahora sale intercalada donde le corresponde por fecha y EBAR, como una más. La firma
+  // sigue yendo SOLO al final de todo el documento (bloqueFirmasFinales, sin cambios).
+  type ItemOrdenable = { fecha: string; zona: string; tipo: string; codigo: string; hora: string; bloque: any[] };
+  const itemsNoVisitadas: ItemOrdenable[] = noVisitadas.map((f) => ({
+    fecha: f.fecha,
+    zona: f.zona,
+    tipo: f.tipo,
+    codigo: f.codigo,
+    hora: '', // sin hora real — como criterio de desempate cae antes que cualquier visita del mismo día/EBAR (no debería coincidir nunca: si hay visita ese día, Reports.tsx ya la excluye de noVisitadas)
+    bloque: [bloqueUnaNoVisitada(f)],
+  }));
+  const compararItems = (a: ItemOrdenable, b: ItemOrdenable) =>
+    a.fecha.localeCompare(b.fecha) ||
+    compararParaInforme({ zona: a.zona, tipo: a.tipo, codigo: a.codigo }, { zona: b.zona, tipo: b.tipo, codigo: b.codigo }) ||
+    a.hora.localeCompare(b.hora);
+
+  const bloquesOrdenados =
+    formato === 'super_compacto'
+      ? // Súper compacto: un bloque por operador+EBAR+día, separados por una raya fina (no salto de
+        // página) — la idea es que quepan varios por hoja.
+        [
+          ...agruparVisitasPorDia(visitas).map(
+            (g): ItemOrdenable => ({
+              fecha: g.fecha,
+              zona: g.zona,
+              tipo: g.estacion_tipo ?? '',
+              codigo: g.estacion_codigo,
+              hora: g.operador_nombre, // desempate entre 2 operadores en la misma EBAR el mismo día
+              bloque: bloqueGrupoSuperCompacto(g, resumenesEditados[claveGrupoDiario(g)]),
+            }),
+          ),
+          ...itemsNoVisitadas,
+        ]
+          .sort(compararItems)
+          .flatMap((it, idx, arr) => [...it.bloque, idx < arr.length - 1 ? lineaCierreVisita() : null])
+      : // Compacto/Extenso: un bloque por visita (salto de página entre cada uno, igual que antes).
+        [
+          ...visitas.map(
+            (v): ItemOrdenable => ({
+              fecha: v.fecha_hora_llegada.slice(0, 10),
+              zona: v.zona,
+              tipo: v.estacion_tipo ?? '',
+              codigo: v.estacion_codigo,
+              hora: v.fecha_hora_llegada,
+              bloque: formato === 'compacto' ? bloqueVisitaCompacto(v) : bloqueVisita(v),
+            }),
+          ),
+          ...itemsNoVisitadas,
+        ]
+          .sort(compararItems)
+          .flatMap((it, idx, arr) => [...it.bloque, { text: '', pageBreak: idx < arr.length - 1 ? 'after' : undefined }]);
+
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',
     pageOrientation: 'portrait',
@@ -1091,35 +1140,10 @@ export function generarReporteVisitas(
     content: [
       encabezado(),
       bloqueEncabezadoMemo(memo),
-      // "EBAR sin visitar" va ACÁ (antes del detalle de visitas) para que siempre quede antes de
-      // cualquier firma — pedido del usuario, que antes la veía después de la firma del último
-      // operador porque se agregaba al final del documento.
-      bloqueNoVisitadas(noVisitadas),
-      // La firma del operador va SOLO al final del documento (ver bloqueFirmasFinales), no después
-      // de cada visita/bloque — pedido del usuario (2026-09-06).
-      // Súper compacto: un bloque por operador+EBAR+día (no por visita), sin salto de página
-      // entre bloques — la idea es que quepan varios por hoja; solo una raya fina los separa.
-      ...(formato === 'super_compacto'
-        ? agruparVisitasPorDia(visitas).flatMap((g, idx, arr) => [
-            ...bloqueGrupoSuperCompacto(g, resumenesEditados[claveGrupoDiario(g)]),
-            idx < arr.length - 1 ? lineaCierreVisita() : null,
-          ])
-        : // Compacto/Extenso: mismo orden que Súper compacto — por fecha, luego EBAR/línea de
-          // conducción antes que PTAR (ver compararParaInforme), luego código de estación.
-          [...visitas]
-            .sort(
-              (a, b) =>
-                a.fecha_hora_llegada.slice(0, 10).localeCompare(b.fecha_hora_llegada.slice(0, 10)) ||
-                compararParaInforme(
-                  { zona: a.zona, tipo: a.estacion_tipo ?? '', codigo: a.estacion_codigo },
-                  { zona: b.zona, tipo: b.estacion_tipo ?? '', codigo: b.estacion_codigo },
-                ) ||
-                a.fecha_hora_llegada.localeCompare(b.fecha_hora_llegada),
-            )
-            .flatMap((v, idx, arr) => [
-              ...(formato === 'compacto' ? bloqueVisitaCompacto(v) : bloqueVisita(v)),
-              { text: '', pageBreak: idx < arr.length - 1 ? 'after' : undefined },
-            ])),
+      // Día por día, y dentro de cada día cada EBAR en orden (visitadas y sin visitar mezcladas,
+      // ver `bloquesOrdenados` más arriba) — la firma del operador sigue yendo SOLO al final de
+      // todo el documento (bloqueFirmasFinales), no después de cada bloque.
+      ...bloquesOrdenados,
       ...bloqueFirmasFinales(visitas),
     ].filter(Boolean),
     styles: ESTILOS,
