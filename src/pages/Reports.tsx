@@ -567,8 +567,13 @@ export function Reports() {
     setGenerando(true);
     setAvisoCompartirManual(false);
     try {
-      const visitasSinFotos = await obtenerVisitas();
-      if (visitasSinFotos.length === 0) {
+      // Las dos se piden juntas (antes `obtenerNoVisitadas` ni se llamaba si no había visitas) —
+      // un operador puede no haber tenido NINGUNA visita real en todo el rango y aun así tener EBAR
+      // justificadas ese período (reportado por el usuario, 2026-09-13: el reporte de un operador
+      // que solo justificó, sin visitar nada, cortaba acá con "No hay visitas registradas" antes de
+      // llegar siquiera a buscar sus justificaciones).
+      const [visitasSinFotos, noVisitadasSinFotos] = await Promise.all([obtenerVisitas(), obtenerNoVisitadas()]);
+      if (visitasSinFotos.length === 0 && noVisitadasSinFotos.length === 0) {
         setMensaje(
           diasEspecificos
             ? 'No hay visitas registradas en los días elegidos.'
@@ -579,7 +584,7 @@ export function Reports() {
         return;
       }
       const visitas = await incrustarFotosVisitas(visitasSinFotos);
-      const noVisitadas = await incrustarFotosNoVisitadas(await obtenerNoVisitadas());
+      const noVisitadas = await incrustarFotosNoVisitadas(noVisitadasSinFotos);
 
       const blob = await generarReporteVisitas(
         visitas,
