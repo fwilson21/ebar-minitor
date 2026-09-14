@@ -20,6 +20,7 @@ interface FotoDetalle {
   url_publica: string | null;
   drive_file_id: string | null;
   descripcion: string | null;
+  tomada_en: string;
 }
 
 interface EquipoDetalle {
@@ -207,6 +208,9 @@ export function VisitaDetalle() {
   if (error || !visita) return <p className="p-4 text-gauge-danger">{error ?? 'Visita no encontrada.'}</p>;
 
   const esLineaConduccion = estacion?.tipo === 'linea_conduccion';
+  // `rpc_detalle_visita` (migración 0064) ya las devuelve ordenadas por `tomada_en` ascendente —
+  // el `.filter()` de abajo preserva ese orden, así que cada sección sale de izquierda a derecha
+  // de la más antigua a la más actual, pedido del usuario.
   const todasLasFotos = visita.fotos ?? [];
   const fotosPorSeccion = (nombre: string | null): FotoLocal[] =>
     todasLasFotos
@@ -214,7 +218,7 @@ export function VisitaDetalle() {
       .map((f) => ({
         id: f.id,
         url_publica: urlMiniaturaDrive(f.drive_file_id, f.url_publica),
-        tomada_en: visita.fecha_hora_llegada,
+        tomada_en: f.tomada_en,
         estado_subida: 'subida' as const,
       }));
 

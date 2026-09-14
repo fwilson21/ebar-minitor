@@ -52,7 +52,10 @@ export function formatearFechaHoraFoto(fechaISO: string): string {
   const mes = MESES_ABREV[d.getMonth()];
   const horas = String(d.getHours()).padStart(2, '0');
   const minutos = String(d.getMinutes()).padStart(2, '0');
-  return `${dia}-${mes}-${d.getFullYear()} ${horas}:${minutos}`;
+  // Segundos agregados (pedido del usuario, 2026-09-13): formato 24h hh:mm:ss completo, antes se
+  // cortaba en minutos.
+  const segundos = String(d.getSeconds()).padStart(2, '0');
+  return `${dia}-${mes}-${d.getFullYear()} ${horas}:${minutos}:${segundos}`;
 }
 
 export function esMismoDia(fechaISOa: string, fechaISOb: string): boolean {

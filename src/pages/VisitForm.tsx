@@ -545,7 +545,7 @@ export function VisitForm() {
           .from('visitas')
           .select(
             `*, registros_bombas ( bomba_id, numero_bomba, estado, voltaje, amperaje, horas_operacion_acumuladas, observaciones ),
-             fotos ( id, url_publica, drive_file_id, descripcion )`
+             fotos ( id, url_publica, drive_file_id, descripcion, tomada_en )`
           )
           .eq('id', visitaId)
           .single();
@@ -558,7 +558,13 @@ export function VisitForm() {
           setNivelTanque(visita.nivel_tanque);
           setObservaciones(visita.observaciones_generales ?? '');
 
-          const todasLasFotos = (visita.fotos as any[]) ?? [];
+          // Supabase no garantiza ningún orden en particular para el `select` anidado de arriba —
+          // se ordenan acá por `tomada_en` (la hora REAL en que se tomó cada una, no la de llegada
+          // de la visita entera) para que salgan de izquierda a derecha de la más antigua a la más
+          // actual, pedido del usuario.
+          const todasLasFotos = ((visita.fotos as any[]) ?? [])
+            .slice()
+            .sort((a, b) => new Date(a.tomada_en).getTime() - new Date(b.tomada_en).getTime());
           const fotosPorSeccion = (nombre: string | null): FotoLocal[] =>
             todasLasFotos
               .filter((f) => (nombre ? f.descripcion === nombre : !f.descripcion))
@@ -566,7 +572,7 @@ export function VisitForm() {
                 id: f.id,
                 url_publica: urlMiniaturaDrive(f.drive_file_id, f.url_publica),
                 drive_file_id: f.drive_file_id ?? undefined,
-                tomada_en: visita.fecha_hora_llegada,
+                tomada_en: f.tomada_en,
                 estado_subida: 'subida' as const,
               }));
 
