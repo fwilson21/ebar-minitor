@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { EstacionEbar, FotoLocal } from '../lib/types';
 import { PhotoCapture } from './PhotoCapture';
 
@@ -46,8 +47,14 @@ export function ModalJustificarNoVisita({
   const [motivo, setMotivo] = useState(motivoInicial);
   const puedeGuardar = motivo.trim().length > 0 && fotos.length > 0 && !guardando && !cargandoFotos;
 
-  return (
+  return createPortal(
     <>
+      {/* Portal a document.body: este modal se centra con `transform` (translate-x/y), y eso — spec
+          de CSS — redefine el marco de referencia de cualquier hijo `position: fixed` (como el
+          visor de fotos ampliadas de PhotoCapture/FotoLightbox). Sin el portal, el visor quedaba
+          encogido al tamaño de ESTE modal en vez de cubrir toda la pantalla como en una visita
+          normal (reportado por el usuario, 2026-09-13, con captura). Mismo arreglo ya usado en
+          Reports.tsx (BloqueSeleccionEstacion) y PanelPlanillaHorasExtras.tsx. */}
       <div className="fixed inset-0 bg-black/50 z-20" onClick={onCerrar} />
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-panel-800 border border-panel-600/60 rounded-xl shadow-xl w-[min(420px,94vw)] max-h-[90vh] overflow-y-auto p-4 space-y-3">
         <div className="flex items-center justify-between">
@@ -92,6 +99,7 @@ export function ModalJustificarNoVisita({
           </button>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
