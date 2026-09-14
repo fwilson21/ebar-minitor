@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { FotoLocal } from '../lib/types';
 import { useObjectUrls } from '../lib/useObjectUrls';
 
@@ -165,7 +166,15 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
   const src = foto.blob ? urls[foto.id] : foto.url_publica;
   const fontSizeEtiqueta = anchoFoto ? Math.max(12, Math.round(anchoFoto * 0.035)) : 14;
 
-  return (
+  // Portal a document.body: si este visor se abre desde dentro de un modal que se centra con
+  // `transform` (translate-x/y) — como ModalJustificarNoVisita — ese `transform` en el ANCESTRO
+  // redefine (spec de CSS) el marco de referencia de este `position: fixed`, y el visor queda
+  // encogido al tamaño de ese modal en vez de cubrir toda la pantalla (reportado por el usuario,
+  // 2026-09-13, con captura — el primer intento de arreglo portaló el modal contenedor en vez de
+  // este componente, y no alcanzó: el `transform` seguía siendo un ANCESTRO directo del visor
+  // dentro del mismo árbol portalado). Portando el visor mismo, sin importar dónde se use, queda
+  // resuelto de raíz para cualquier lugar de la app que lo abra, no solo para este caso puntual.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center overflow-hidden"
       onClick={onClickFondo}
@@ -243,6 +252,7 @@ export function FotoLightbox({ fotos, indice, onCambiarIndice, onCerrar, etiquet
           )}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
