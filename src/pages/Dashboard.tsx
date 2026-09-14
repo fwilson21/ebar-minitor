@@ -126,6 +126,9 @@ export function Dashboard() {
   // de la base antes de mostrar el modal con algo. Al justificar una EBAR nueva arranca vacío.
   const [fotosJustificar, setFotosJustificar] = useState<FotoLocal[]>([]);
   const [cargandoFotosJustificar, setCargandoFotosJustificar] = useState(false);
+  // Borrar un justificativo desde el modal "EBAR justificadas" (pedido del usuario, 2026-09-13) —
+  // por estación mientras se está borrando, para deshabilitar solo ESE botón (no todo el modal).
+  const [borrandoJustificacion, setBorrandoJustificacion] = useState<Set<string>>(new Set());
 
   // Se dispara cada vez que se abre el modal (justificarEstacion pasa de null a una estación) —
   // si esa EBAR ya tenía una justificación guardada ese día, trae sus fotos; si es nueva, arranca
@@ -604,6 +607,40 @@ export function Dashboard() {
     );
   }
 
+  // "✏️ Editar" de una fila de "EBAR justificadas" — cierra este modal (evita superponerlo con el
+  // de "¿Por qué no se visitó?", que reusa el mismo mecanismo de siempre) y lo abre ya cargado con
+  // el motivo y las fotos existentes.
+  function editarJustificacionDesdeModal(fila: FilaDetalleMetrica) {
+    cerrarModalMetrica();
+    setJustificarEstacion(fila);
+  }
+
+  // "🗑 Borrar" de una fila de "EBAR justificadas" — solo admin/supervisor (RLS de
+  // justificaciones_no_visita, migración 0055; las fotos de evidencia se borran solas por
+  // `on delete cascade`, el archivo en Drive queda huérfano, mismo criterio que borrar una foto
+  // suelta en cualquier otro lado de la app).
+  async function borrarJustificacion(fila: FilaDetalleMetrica) {
+    const justificacionId = justificaciones[fila.id]?.id;
+    if (!justificacionId) return;
+    if (!window.confirm(`¿Eliminar el justificativo de "${fila.nombre}"? Esta acción no se puede deshacer.`)) return;
+    setBorrandoJustificacion((prev) => new Set(prev).add(fila.id));
+    const { error } = await supabase.from('justificaciones_no_visita').delete().eq('id', justificacionId);
+    setBorrandoJustificacion((prev) => {
+      const copia = new Set(prev);
+      copia.delete(fila.id);
+      return copia;
+    });
+    if (error) {
+      alert(`No se pudo eliminar: ${error.message}`);
+      return;
+    }
+    setJustificaciones((prev) => {
+      const { [fila.id]: _, ...resto } = prev;
+      return resto;
+    });
+    setDetalleMetrica((prev) => (prev ? prev.filter((f) => f.id !== fila.id) : prev));
+  }
+
   async function guardarTamanoModalMetrica(t: { ancho: number; alto: number }) {
     setTamanoModalMetrica(t);
     await guardarTamanoModal('modal_metrica_dashboard', t);
@@ -799,6 +836,12 @@ export function Dashboard() {
           filas={detalleMetrica}
           cargando={cargandoDetalle}
           esAdmin={esAdministrador}
+          // Editar/borrar un justificativo (RLS de justificaciones_no_visita: solo admin/
+          // supervisor pueden borrar) — la lista "EBAR justificadas" es la única que la usa.
+          puedeGestionarJustificaciones={esAdmin}
+          borrandoJustificacion={borrandoJustificacion}
+          onEditarJustificacion={editarJustificacionDesdeModal}
+          onBorrarJustificacion={borrarJustificacion}
           tamano={tamanoModalMetrica}
           onGuardarTamano={guardarTamanoModalMetrica}
           onCerrar={cerrarModalMetrica}
@@ -1245,10 +1288,18 @@ function Metrica({
 
 /** Una fila de ModalListaEstaciones (mismo aspecto sea cual sea el agrupado — por zona+tipo o por
  * operador) — enlace directo a la ficha de la estación, con el conteo de veces que apareció. */
-function FilaEstacionDetalle({ estacion: e }: { estacion: FilaDetalleMetrica }) {
+function FilaEstacionDetalle({
+  estacion: e,
+  acciones,
+}: {
+  estacion: FilaDetalleMetrica;
+  /** Solo en "EBAR justificadas", solo admin/supervisor — pedido del usuario (2026-09-13) para
+   * poder corregir o eliminar un justificativo sin tener que entrar a la EBAR y buscarlo. */
+  acciones?: { borrando: boolean; onEditar: () => void; onBorrar: () => void };
+}) {
   const ubicacion = direccionOParroquia(e);
-  return (
-    <Link to={`/estaciones/${e.id}`} className="tarjeta p-3 flex items-center justify-between gap-2 hover:border-gauge-ok/50 transition">
+  const contenido = (
+    <>
       <div className="min-w-0">
         <p className="text-sm font-medium text-slate-900 truncate">{e.nombre}</p>
         {/* Muchas EBAR tienen nombre = código a propósito (ver migración 0041) — repetirlo acá no
@@ -1290,9 +1341,42 @@ function FilaEstacionDetalle({ estacion: e }: { estacion: FilaDetalleMetrica }) 
         )}
         <div className="flex items-center gap-2">
           {e.count > 1 && <span className="text-xs text-slate-500">×{e.count}</span>}
+          {acciones && (
+            <>
+              <button
+                type="button"
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  acciones.onEditar();
+                }}
+                disabled={acciones.borrando}
+                className="text-xs font-semibold px-2 py-0.5 rounded-full border border-gauge-ok/50 text-gauge-ok bg-gauge-ok/10 hover:bg-gauge-ok/20 transition disabled:opacity-40"
+              >
+                ✏️ Editar
+              </button>
+              <button
+                type="button"
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  acciones.onBorrar();
+                }}
+                disabled={acciones.borrando}
+                className="text-xs font-semibold px-2 py-0.5 rounded-full border border-gauge-danger/50 text-gauge-danger bg-gauge-danger/10 hover:bg-gauge-danger/20 transition disabled:opacity-40"
+              >
+                {acciones.borrando ? '…' : '🗑 Borrar'}
+              </button>
+            </>
+          )}
           <span className="text-xs text-gauge-ok">Ver →</span>
         </div>
       </div>
+    </>
+  );
+  return (
+    <Link to={`/estaciones/${e.id}`} className="tarjeta p-3 flex items-center justify-between gap-2 hover:border-gauge-ok/50 transition">
+      {contenido}
     </Link>
   );
 }
@@ -1323,6 +1407,10 @@ function ModalListaEstaciones({
   filas,
   cargando,
   esAdmin,
+  puedeGestionarJustificaciones,
+  borrandoJustificacion,
+  onEditarJustificacion,
+  onBorrarJustificacion,
   tamano,
   onGuardarTamano,
   onCerrar,
@@ -1333,12 +1421,18 @@ function ModalListaEstaciones({
   filas: FilaDetalleMetrica[] | null;
   cargando: boolean;
   esAdmin: boolean;
+  /** Solo tiene efecto en "justificadas" — admin/supervisor pueden editar/borrar cualquiera. */
+  puedeGestionarJustificaciones: boolean;
+  borrandoJustificacion: Set<string>;
+  onEditarJustificacion: (fila: FilaDetalleMetrica) => void;
+  onBorrarJustificacion: (fila: FilaDetalleMetrica) => void;
   tamano: { ancho: number; alto: number };
   onGuardarTamano: (t: { ancho: number; alto: number }) => void;
   onCerrar: () => void;
 }) {
   const [tam, setTam] = useState(tamano);
   const agruparPorOperadorAqui = tipoMetrica === 'visitas' || tipoMetrica === 'justificadas';
+  const mostrarAccionesJustificacion = tipoMetrica === 'justificadas' && puedeGestionarJustificaciones;
   const gruposOperador = useMemo(() => (agruparPorOperadorAqui ? agruparPorOperador(filas ?? []) : []), [filas, agruparPorOperadorAqui]);
   const gruposZona = useMemo(() => (agruparPorOperadorAqui ? [] : agruparPorZonaYTipo(filas ?? [])), [filas, agruparPorOperadorAqui]);
 
@@ -1373,7 +1467,19 @@ function ModalListaEstaciones({
                   </p>
                   <div className="space-y-1.5">
                     {estaciones.map((e) => (
-                      <FilaEstacionDetalle key={e.id} estacion={e} />
+                      <FilaEstacionDetalle
+                        key={e.id}
+                        estacion={e}
+                        acciones={
+                          mostrarAccionesJustificacion
+                            ? {
+                                borrando: borrandoJustificacion.has(e.id),
+                                onEditar: () => onEditarJustificacion(e),
+                                onBorrar: () => onBorrarJustificacion(e),
+                              }
+                            : undefined
+                        }
+                      />
                     ))}
                   </div>
                 </div>
