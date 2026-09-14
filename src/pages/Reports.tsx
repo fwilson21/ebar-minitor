@@ -933,7 +933,7 @@ function BloqueRevisionResumenes({
           // EBAR"), por eso las tarjetas de abajo ya no repiten la fecha por su cuenta.
           const encabezadoDia =
             idx === 0 || arr[idx - 1].fecha !== item.fecha ? (
-              <p key={`dia-${item.fecha}`} className="text-lg font-bold text-slate-800 pt-3 first:pt-0">
+              <p key={`dia-${item.fecha}`} className="text-lg font-bold text-sky-700 pt-3 first:pt-0">
                 {formatFechaLarga(item.fecha)}
               </p>
             ) : null;

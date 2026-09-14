@@ -1080,6 +1080,7 @@ export function generarReporteVisitas(
     text: formatFechaLarga(fecha),
     style: 'estacionTitulo',
     fontSize: 13,
+    color: '#0369A1', // azul (mismo tono "sky-700" que usa la pantalla) — pedido del usuario, 2026-09-14
     margin: [0, 10, 0, 6],
   });
 
