@@ -216,6 +216,10 @@ export interface FilaNoVisitadaReporte {
    * que el resto de EBAR visitadas. */
   zona: string;
   tipo: string;
+  /** Dirección/parroquia de la estación (ver `direccionOParroquia`) — se muestra en vez de repetir
+   * el código/nombre dos veces cuando coinciden (pedido del usuario, 2026-09-14, mismo criterio que
+   * ya usa el título de una visita real, ver `titulo`/`estacion_ubicacion` en `bloqueGrupoSuperCompacto`). */
+  ubicacion?: string | null;
   /** Evidencia fotográfica de la justificación (migración 0063) — 0 a 3 fotos, ya en base64 para
    * el PDF (ver `incrustarFotosNoVisitadas` en fotos.ts). Vacío en reportes generados antes de esa
    * migración, o si algo falló al descargarlas — no bloquea nada, la fila igual se muestra. */
@@ -262,26 +266,30 @@ function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
  * pensada para intercalarse en el mismo orden día-por-día que las visitas (ver `generarReporteVisitas`
  * más abajo: arma UNA sola lista ordenada por fecha y luego por `compararParaInforme`, mezclando
  * grupos de visita con estas filas) — antes salían todas juntas en un bloque aparte, ANTES de
- * cualquier EBAR visitada, sin importar el día (pedido del usuario 2026-09-14: que seas el día, y
- * dentro de él, cada EBAR de menor a mayor, todas mezcladas). La etiqueta "Sin visitar" en la
- * primera línea es la única pista de que esta tarjeta no es una visita real (no tiene estado de
- * equipos ni datos de bombas) — antes ese contraste lo daba el título de sección aparte. */
+ * cualquier EBAR visitada, sin importar el día (pedido del usuario 2026-09-14: que sea el día, y
+ * dentro de él, cada EBAR de menor a mayor, todas mezcladas). Mismo criterio que una visita real
+ * para el título (código + nombre, con la dirección al lado si la hay — muchas EBAR tienen
+ * nombre = código a propósito, repetirlo dos veces no aporta nada) y para la fecha (va UNA sola
+ * vez como encabezado del día, no acá — ver el bloque de encabezados de día en
+ * `generarReporteVisitas`). La etiqueta "Sin visitar — motivo registrado" es la única pista de
+ * que esta tarjeta no es una visita real (no tiene estado de equipos ni datos de bombas). */
 function bloqueUnaNoVisitada(f: FilaNoVisitadaReporte): any {
+  const titulo = codigoYNombre({ codigo: f.codigo, nombre: f.nombre });
   return {
     unbreakable: true,
     stack: [
+      { text: f.ubicacion ? `${titulo} — ${f.ubicacion}` : titulo, style: 'estacionTitulo', margin: [0, 4, 0, 1] },
+      { text: 'Sin visitar — motivo registrado', bold: true, fontSize: 8, color: '#B45309', margin: [0, 0, 0, 3] },
       {
         text: [
-          { text: `${f.codigo} — ${f.nombre}`, bold: true, fontSize: 9.5 },
-          { text: '  ·  Sin visitar', bold: true, fontSize: 8, color: '#B45309' },
+          { text: 'Registrado por: ', bold: true },
+          f.registrado_por ?? '-',
+          { text: `     Zona: ${f.zona}`, color: '#5B7184' },
         ],
-        margin: [0, 6, 0, 1],
+        fontSize: 8,
+        margin: [0, 0, 0, 4],
       },
-      {
-        text: f.motivo ? `${f.motivo}${f.registrado_por ? ` (${f.registrado_por})` : ''}` : '-',
-        fontSize: 9,
-        color: '#3B4A56',
-      },
+      { text: f.motivo || '-', fontSize: 9, color: '#3B4A56', margin: [0, 0, 0, 4] },
       bloqueFotos(f.fotos),
     ].filter((x) => x !== null),
   };
@@ -890,11 +898,12 @@ function bloqueGrupoSuperCompacto(g: GrupoDiario, resumenEditado?: string): any[
       margin: [0, 4, 0, 3],
     },
     {
+      // Sin "Fecha:" acá — antes se repetía en cada tarjeta; ahora la fecha va UNA sola vez como
+      // encabezado del día (ver el bloque de encabezados de día en `generarReporteVisitas`),
+      // pedido del usuario (2026-09-14) para no tener que leerla de nuevo en cada EBAR.
       text: [
         { text: 'Operador: ', bold: true },
         g.operador_nombre,
-        { text: '     Fecha: ', bold: true },
-        formatFechaDMY(g.fecha),
         { text: `     Zona: ${g.zona}`, color: '#5B7184' },
       ],
       fontSize: 8,
@@ -1062,6 +1071,18 @@ export function generarReporteVisitas(
     compararParaInforme({ zona: a.zona, tipo: a.tipo, codigo: a.codigo }, { zona: b.zona, tipo: b.tipo, codigo: b.codigo }) ||
     a.hora.localeCompare(b.hora);
 
+  // Encabezado de día ("07 de septiembre de 2026") UNA sola vez antes del primer bloque de ese
+  // día — pedido del usuario (2026-09-14): "la fecha debe ir al inicio... y de ahí cada EBAR", en
+  // vez de repetirla dentro de cada tarjeta (por eso se sacó "Fecha:" de `bloqueGrupoSuperCompacto`
+  // y nunca se agregó a `bloqueUnaNoVisitada`). Como `bloquesOrdenados` ya viene ordenado por
+  // fecha, alcanza con comparar contra el item anterior.
+  const bloqueEncabezadoDia = (fecha: string): any => ({
+    text: formatFechaLarga(fecha),
+    style: 'estacionTitulo',
+    fontSize: 13,
+    margin: [0, 10, 0, 6],
+  });
+
   const bloquesOrdenados =
     formato === 'super_compacto'
       ? // Súper compacto: un bloque por operador+EBAR+día, separados por una raya fina (no salto de
@@ -1080,7 +1101,11 @@ export function generarReporteVisitas(
           ...itemsNoVisitadas,
         ]
           .sort(compararItems)
-          .flatMap((it, idx, arr) => [...it.bloque, idx < arr.length - 1 ? lineaCierreVisita() : null])
+          .flatMap((it, idx, arr) => [
+            idx === 0 || arr[idx - 1].fecha !== it.fecha ? bloqueEncabezadoDia(it.fecha) : null,
+            ...it.bloque,
+            idx < arr.length - 1 ? lineaCierreVisita() : null,
+          ])
       : // Compacto/Extenso: un bloque por visita (salto de página entre cada uno, igual que antes).
         [
           ...visitas.map(
@@ -1096,7 +1121,11 @@ export function generarReporteVisitas(
           ...itemsNoVisitadas,
         ]
           .sort(compararItems)
-          .flatMap((it, idx, arr) => [...it.bloque, { text: '', pageBreak: idx < arr.length - 1 ? 'after' : undefined }]);
+          .flatMap((it, idx, arr) => [
+            idx === 0 || arr[idx - 1].fecha !== it.fecha ? bloqueEncabezadoDia(it.fecha) : null,
+            ...it.bloque,
+            { text: '', pageBreak: idx < arr.length - 1 ? 'after' : undefined },
+          ]);
 
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'A4',

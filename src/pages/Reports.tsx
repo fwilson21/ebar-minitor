@@ -21,10 +21,11 @@ import { FotosGirables } from '../components/FotosGirables';
 import { FotoLightbox } from '../components/FotoLightbox';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
 import type { EstacionEbar, Usuario, FotoLocal } from '../lib/types';
-import { codigoYNombre } from '../lib/agruparEstaciones';
+import { codigoYNombre, direccionOParroquia } from '../lib/agruparEstaciones';
 import { hoyLocal } from '../lib/fecha';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, compararParaInforme } from '../lib/agruparEstaciones';
 import { esDiaNoRegular } from '../lib/feriadosEcuador';
+import { formatFechaLarga } from '../lib/informeSemanal';
 import { SelectorDiasReporte } from '../components/SelectorDiasReporte';
 import { consultarDestinatarioInforme, actualizarDestinatarioInforme } from '../lib/destinatarioInforme';
 
@@ -360,7 +361,10 @@ export function Reports() {
 
     const operadorEfectivo = esAdmin ? operadorId : (usuario?.id ?? '');
 
-    let queryEstaciones = supabase.from('estaciones_ebar').select('id, nombre, codigo, zona, tipo').eq('activa', true);
+    let queryEstaciones = supabase
+      .from('estaciones_ebar')
+      .select('id, nombre, codigo, zona, tipo, direccion, parroquia')
+      .eq('activa', true);
     if (estacionIds !== null) queryEstaciones = queryEstaciones.in('id', [...estacionIds]);
 
     // Con un operador puntual elegido, "sin visitar" tiene que preguntar "¿la visitó ESE
@@ -444,6 +448,7 @@ export function Reports() {
           codigo: estacion.codigo,
           zona: estacion.zona,
           tipo: estacion.tipo,
+          ubicacion: direccionOParroquia(estacion),
           motivo: j.motivo as string,
           registrado_por: (j.usuarios?.nombre_completo as string) ?? null,
           fecha: j.fecha as string,
@@ -922,7 +927,17 @@ function BloqueRevisionResumenes({
             a.fecha.localeCompare(b.fecha) ||
             compararParaInforme({ zona: a.zona, tipo: a.tipo, codigo: a.codigo }, { zona: b.zona, tipo: b.tipo, codigo: b.codigo }),
         )
-        .map((item) => {
+        .flatMap((item, idx, arr) => {
+          // Encabezado de día UNA sola vez, antes del primer bloque de ese día — mismo criterio que
+          // el PDF (pedido del usuario 2026-09-14: "la fecha debe ir al inicio... y de ahí cada
+          // EBAR"), por eso las tarjetas de abajo ya no repiten la fecha por su cuenta.
+          const encabezadoDia =
+            idx === 0 || arr[idx - 1].fecha !== item.fecha ? (
+              <p key={`dia-${item.fecha}`} className="text-lg font-bold text-slate-800 pt-3 first:pt-0">
+                {formatFechaLarga(item.fecha)}
+              </p>
+            ) : null;
+
           if (item.tipoItem === 'visita') {
             const g = item.grupo;
             const clave = claveGrupoDiario(g);
@@ -931,14 +946,13 @@ function BloqueRevisionResumenes({
                 .filter((f) => f.id && f.tomada_en && v.id)
                 .map((f) => ({ id: f.id!, visita_id: v.id!, url: f.url, etiqueta: f.etiqueta, tomada_en: f.tomada_en! })),
             );
-            return (
+            return [
+              encabezadoDia,
               <div key={clave} id={`resumen-${clave}`} className="border-t border-panel-600/40 pt-3">
                 <p className="text-2xl font-extrabold text-slate-900 leading-tight">
                   {codigoYNombre({ codigo: g.estacion_codigo, nombre: g.estacion_nombre })}
                 </p>
-                <p className="text-sm font-semibold text-slate-600 mb-1.5">
-                  {g.operador_nombre} · {formatFechaCorta(g.fecha)}
-                </p>
+                <p className="text-sm font-semibold text-slate-600 mb-1.5">{g.operador_nombre}</p>
                 <ResumenEditable
                   valor={resumenesEditados[clave] ?? parrafoResumenDia(g)}
                   onCambiar={(t) => onCambiarResumen(clave, t)}
@@ -946,23 +960,28 @@ function BloqueRevisionResumenes({
                   onErroresCambian={(hay) => onErroresOrtografia(clave, hay)}
                 />
                 <FotosGirables fotos={fotosGirables} onGirada={onFotoGirada} categorias={{ onBorrar: onFotoBorrada }} />
-              </div>
-            );
+              </div>,
+            ];
           }
           const f = item.fila;
-          // Clave con fecha incluida: en un rango de varios días la misma EBAR puede aparecer más
-          // de una vez, justificada en más de un día distinto.
-          return (
+          // Título con la dirección al lado (mismo criterio que una visita real) en vez de repetir
+          // código y nombre dos veces cuando son iguales — pedido del usuario, 2026-09-14.
+          const titulo = codigoYNombre({ codigo: f.codigo, nombre: f.nombre });
+          return [
+            encabezadoDia,
+            // Clave con fecha incluida: en un rango de varios días la misma EBAR puede aparecer más
+            // de una vez, justificada en más de un día distinto.
             <div key={`nv-${f.codigo}-${f.fecha}`} className="border-t border-panel-600/40 pt-3">
-              <p className="text-2xl font-extrabold text-slate-900 leading-tight">{codigoYNombre({ codigo: f.codigo, nombre: f.nombre })}</p>
+              <p className="text-2xl font-extrabold text-slate-900 leading-tight">
+                {f.ubicacion ? `${titulo} — ${f.ubicacion}` : titulo}
+              </p>
               <p className="text-sm font-semibold text-slate-600 mb-1.5">
-                EBAR sin visitar — motivo registrado · {formatFechaCorta(f.fecha)}
-                {f.registrado_por ? ` (${f.registrado_por})` : ''}
+                EBAR sin visitar — motivo registrado{f.registrado_por ? ` (${f.registrado_por})` : ''}
               </p>
               <p className="text-sm text-slate-700 whitespace-pre-wrap">{f.motivo || '-'}</p>
               <GrillaFotosSoloVer fotos={f.fotos ?? []} />
-            </div>
-          );
+            </div>,
+          ];
         })}
 
       {sinRevisar && !cargando && (
