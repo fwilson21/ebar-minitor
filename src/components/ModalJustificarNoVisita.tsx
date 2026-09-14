@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { EstacionEbar, FotoLocal } from '../lib/types';
 import { PhotoCapture } from './PhotoCapture';
 import { ManijaRedimension, type TamanoModal } from './ManijaRedimension';
+import { BotonDictado } from './BotonDictado';
 
 type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona' | 'tipo' | 'direccion' | 'parroquia'>;
 
@@ -91,14 +92,17 @@ export function ModalJustificarNoVisita({
           </p>
           <div>
             <label className="etiqueta">Motivo</label>
-            <textarea
-              className="campo break-words"
-              rows={3}
-              placeholder="Ej: el equipo estaba en otra EBAR / en otra actividad"
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              autoFocus
-            />
+            <div className="relative">
+              <textarea
+                className="campo break-words pr-10"
+                rows={3}
+                placeholder="Ej: el equipo estaba en otra EBAR / en otra actividad"
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                autoFocus
+              />
+              <BotonDictado valorActual={motivo} onTexto={setMotivo} />
+            </div>
           </div>
           <div>
             <label className="etiqueta">Evidencia fotográfica (obligatoria, 1 a 3 fotos)</label>
