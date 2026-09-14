@@ -3,12 +3,13 @@ import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
-import type { Bomba, EstacionEbar, EstadoEstacion } from '../lib/types';
+import type { Bomba, EstacionEbar, EstadoEstacion, FotoLocal } from '../lib/types';
 import { direccionOParroquia } from '../lib/agruparEstaciones';
 import { EstadoBadge } from '../components/EstadoBadge';
 import { VOLTAJE_MAX, VOLTAJE_MIN } from '../lib/types';
 import { abrirBlob, descargarBlob, generarReporteVisitas } from '../lib/pdf';
-import { incrustarFotosVisitas } from '../lib/fotos';
+import { incrustarFotosVisitas, urlMiniaturaDrive } from '../lib/fotos';
+import { FotoLightbox } from '../components/FotoLightbox';
 import { obtenerVisitasPorEstacion } from '../lib/visitasReporte';
 import { CLAVE_CACHE_ESTACIONES, leerCacheLocal } from '../lib/cacheLocal';
 import { hoyLocal } from '../lib/fecha';
@@ -18,6 +19,46 @@ import { duracionVisita } from '../lib/duracionVisita';
 import { consultarDestinatarioInforme } from '../lib/destinatarioInforme';
 
 const VISITAS_EN_PDF = 30;
+
+// Mismo formato corto "13-sep-2026" que usa el resto de la app (ver MESES_ABREV en fotos.ts) —
+// acá aparte porque esta fecha (justificaciones_no_visita.fecha) es un `date` de solo YYYY-MM-DD,
+// no un timestamp con hora.
+const MESES_ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function formatFechaCortaLocal(fechaISO: string): string {
+  const [anio, mes, dia] = fechaISO.split('-');
+  return `${dia}-${MESES_ABREV[Number(mes) - 1]}-${anio}`;
+}
+
+/** Grilla de solo ver (sin girar ni borrar) para la evidencia de una justificación — doble clic la
+ * abre en grande (mismo visor con zoom que el resto de la app). Aparte de un componente "girable"
+ * porque esas fotos no tienen `visita_id` y acá no hace falta ni girarlas ni borrarlas, solo
+ * confirmar que la evidencia es la esperada (mismo patrón que GrillaFotosSoloVer en Reports.tsx). */
+function GrillaFotosSoloVer({ fotos }: { fotos: Array<{ url: string }> }) {
+  const [abierta, setAbierta] = useState<number | null>(null);
+  if (fotos.length === 0) return null;
+  const comoFotoLocal: FotoLocal[] = fotos.map((f, i) => ({
+    id: `j-${i}`,
+    url_publica: f.url,
+    tomada_en: '',
+    estado_subida: 'subida',
+  }));
+  return (
+    <div className="grid grid-cols-3 gap-2 mt-2 max-w-xs">
+      {fotos.map((f, i) => (
+        // eslint-disable-next-line jsx-a11y/alt-text
+        <img
+          key={i}
+          src={f.url}
+          onDoubleClick={() => setAbierta(i)}
+          className="aspect-square rounded-lg object-cover cursor-zoom-in bg-panel-700"
+        />
+      ))}
+      {abierta !== null && (
+        <FotoLightbox fotos={comoFotoLocal} indice={abierta} onCambiarIndice={setAbierta} onCerrar={() => setAbierta(null)} />
+      )}
+    </div>
+  );
+}
 
 // La gestión de bombas y el cambio de estado a mano (ambos solo administrador) no funcionan sin
 // conexión — a diferencia de registrar una visita, no hay ninguna cola offline para esto (son
@@ -36,6 +77,18 @@ interface EquipoHistorial {
   observaciones?: string | null;
   numeros_afectados?: number[] | null;
   tiene?: boolean | null;
+}
+
+/** "¿Por qué no se visitó?" ya guardada para esta EBAR (ver justificaciones_no_visita, migración
+ * 0055 + evidencia fotográfica, migración 0063) — antes "Ver →" desde el modal "EBAR justificadas"
+ * del Dashboard traía a esta pantalla sin mostrar nada de la justificación (reportado por el
+ * usuario, 2026-09-13, con captura): esta pantalla no sabía que existían. */
+interface JustificacionEstacion {
+  id: string;
+  fecha: string;
+  motivo: string;
+  registrado_por: string;
+  fotos: Array<{ url: string }>;
 }
 
 interface HistorialItem {
@@ -113,6 +166,7 @@ export function StationDetail() {
   const editorDistribucion = useEditorDistribucion('estacion_detalle');
   const [estacion, setEstacion] = useState<EstacionEbar | null>(null);
   const [historial, setHistorial] = useState<HistorialItem[]>([]);
+  const [justificaciones, setJustificaciones] = useState<JustificacionEstacion[]>([]);
   const [cargando, setCargando] = useState(true);
   // Por defecto, el historial arranca mostrando solo las visitas de HOY (antes se veían mezcladas
   // las de todos los días de una vez, hasta 30 visitas atrás). El filtro de mes arranca en el mes
@@ -133,15 +187,33 @@ export function StationDetail() {
   useEffect(() => {
     if (!id) return;
     async function cargar() {
-      const [{ data: est }, { data: hist }] = await Promise.all([
+      const [{ data: est }, { data: hist }, { data: justif }] = await Promise.all([
         supabase.from('estaciones_ebar').select('*').eq('id', id).single(),
         supabase.rpc('rpc_historial_estacion', { p_estacion_id: id, p_limite: 30 }),
+        supabase
+          .from('justificaciones_no_visita')
+          .select('id, fecha, motivo, usuarios ( nombre_completo ), fotos ( drive_file_id, url_publica )')
+          .eq('estacion_id', id)
+          .order('fecha', { ascending: false })
+          .limit(30),
       ]);
       // Sin conexión: usar la copia de esta estación guardada la última vez que se cargó
       // la lista de Estaciones (ver Stations.tsx), para poder llegar igual a "Nueva visita".
       const estacionFinal = est ?? leerCacheLocal<EstacionEbar[]>(CLAVE_CACHE_ESTACIONES)?.find((e) => e.id === id) ?? null;
       setEstacion(estacionFinal as EstacionEbar | null);
       setHistorial((hist as HistorialItem[]) ?? []);
+      setJustificaciones(
+        ((justif as any[]) ?? []).map((j) => ({
+          id: j.id,
+          fecha: j.fecha,
+          motivo: j.motivo,
+          registrado_por: j.usuarios?.nombre_completo ?? '-',
+          fotos: ((j.fotos as any[]) ?? [])
+            .map((f) => urlMiniaturaDrive(f.drive_file_id, f.url_publica))
+            .filter((u): u is string => !!u)
+            .map((url) => ({ url })),
+        })),
+      );
       setCargando(false);
     }
 
@@ -276,6 +348,15 @@ export function StationDetail() {
   // Clasificado por operador (en vez de una sola lista larga) — mismo orden cronológico de
   // `historial` (más reciente primero) dentro de cada grupo, agrupado y ordenado por nombre.
   const historialPorOperador = agruparPorOperador(historialFiltrado);
+  // Mismos 3 filtros de fecha que el historial de visitas (mes/desde/hasta) — el de operador queda
+  // afuera a propósito: son criterios de personas distintos (quien VISITÓ vs. quien JUSTIFICÓ), no
+  // tiene el mismo significado reusar el mismo selector para los dos.
+  const justificacionesFiltradas = justificaciones.filter((j) => {
+    if (filtroMes && j.fecha.slice(0, 7) !== filtroMes) return false;
+    if (filtroDesde && j.fecha < filtroDesde) return false;
+    if (filtroHasta && j.fecha > filtroHasta) return false;
+    return true;
+  });
 
   function limpiarFiltros() {
     setFiltroMes('');
@@ -385,6 +466,21 @@ export function StationDetail() {
             Agrega hasta 4 bombas por estación. Desactivar una bomba la oculta del formulario de visitas sin borrar su historial.
           </p>
           {mensajeBombas && <p className="text-xs text-gauge-danger">{mensajeBombas}</p>}
+        </div>
+      )}
+
+      {justificacionesFiltradas.length > 0 && (
+        <div className="tarjeta p-4 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-700">EBAR sin visitar — motivo registrado</h2>
+          {justificacionesFiltradas.map((j) => (
+            <div key={j.id} className="border-t border-panel-600/40 pt-3 first:border-t-0 first:pt-0">
+              <p className="text-xs font-semibold text-slate-500">
+                {formatFechaCortaLocal(j.fecha)} · {j.registrado_por}
+              </p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap mt-0.5">{j.motivo}</p>
+              <GrillaFotosSoloVer fotos={j.fotos} />
+            </div>
+          ))}
         </div>
       )}
 
