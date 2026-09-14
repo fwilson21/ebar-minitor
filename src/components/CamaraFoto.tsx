@@ -51,6 +51,13 @@ export function CamaraFoto({
   // Espejo de `tomadas` para leer el conteo exacto dentro del callback async de toBlob (dos
   // disparos muy seguidos leerían el mismo valor viejo del estado y numerarían las dos "Foto 1").
   const tomadasRef = useRef(0);
+  // "Enfriamiento" del disparador tras cada foto (pedido del usuario, 2026-09-13) — DISTINTO del
+  // arreglo de la carrera de arriba: ese ya impedía pasarse del tope aunque se dispare rapidísimo;
+  // esto además evita que el operador queme sin querer las 3 fotos de un capítulo con toques
+  // repetidos muy seguidos (un rebote del dedo, o el navegador repitiendo el evento) antes de
+  // llegar a mirar el aviso "Foto N de M" y decidir si esa foto ya le sirvió.
+  const [enEnfriamiento, setEnEnfriamiento] = useState(false);
+  const timeoutEnfriamientoRef = useRef<number | null>(null);
   // Fotos que el subtema ya tenía cuando se abrió la cámara — congelado (el padre vuelve a
   // renderizar con un valor más alto cada vez que se agrega una foto, y acá se necesita el de
   // partida para numerar bien el aviso).
@@ -181,6 +188,7 @@ export function CamaraFoto({
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       if (timeoutAvisoRef.current) window.clearTimeout(timeoutAvisoRef.current);
+      if (timeoutEnfriamientoRef.current) window.clearTimeout(timeoutEnfriamientoRef.current);
     };
   }, [intento]);
 
@@ -203,7 +211,7 @@ export function CamaraFoto({
     // videoWidth/videoHeight siguen en 0 hasta que el video carga sus metadatos, un instante
     // después de que el stream ya está listo — sin este chequeo, un toque muy rápido en el
     // disparador podía generar un canvas de 0x0.
-    if (!video || tomadasRef.current >= maxFotos || !video.videoWidth) return;
+    if (!video || tomadasRef.current >= maxFotos || !video.videoWidth || enEnfriamiento) return;
     // Se reserva el cupo ACÁ, de forma síncrona, antes de arrancar `canvas.toBlob` (que es async).
     // Antes se incrementaba recién dentro del callback de `toBlob` — si el operador tocaba el
     // disparador dos veces muy rápido (antes de que el primer toBlob resolviera), el segundo toque
@@ -213,6 +221,13 @@ export function CamaraFoto({
     // actualiza el DOM en el siguiente render, y dos toques pueden llegar antes de eso.
     tomadasRef.current += 1;
     setTomadas(tomadasRef.current);
+    // Enfriamiento de ~900ms antes de dejar disparar de nuevo (pedido del usuario, 2026-09-13) —
+    // esto es aparte de lo de arriba: no es para impedir pasarse del tope (ya cubierto), sino para
+    // que un toque repetido muy rápido no queme sin querer el cupo entero de un capítulo antes de
+    // que el operador llegue a ver el aviso "Foto N de M" y decidir si le sirvió esa toma.
+    setEnEnfriamiento(true);
+    if (timeoutEnfriamientoRef.current) window.clearTimeout(timeoutEnfriamientoRef.current);
+    timeoutEnfriamientoRef.current = window.setTimeout(() => setEnEnfriamiento(false), 900);
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -370,7 +385,7 @@ export function CamaraFoto({
         <button
           type="button"
           onClick={disparar}
-          disabled={!listo || limiteAlcanzado}
+          disabled={!listo || limiteAlcanzado || enEnfriamiento}
           aria-label="Tomar foto"
           className="w-16 h-16 rounded-full bg-white border-4 border-slate-300 disabled:opacity-40 active:scale-95 transition"
         />
