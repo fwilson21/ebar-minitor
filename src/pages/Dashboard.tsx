@@ -3,8 +3,9 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
-import type { DashboardResumen, EstacionEbar } from '../lib/types';
+import type { DashboardResumen, EstacionEbar, FotoLocal } from '../lib/types';
 import { ModalJustificarNoVisita } from '../components/ModalJustificarNoVisita';
+import { urlMiniaturaDrive, subirFotoJustificacion } from '../lib/fotos';
 import { duracionVisita } from '../lib/duracionVisita';
 import { StationCard } from '../components/StationCard';
 import { detectarVisitasSospechosas, type ParSospechoso, type VisitaParaChequeo } from '../lib/visitasSospechosas';
@@ -39,7 +40,7 @@ type EstacionSimple = Pick<EstacionEbar, 'id' | 'nombre' | 'codigo' | 'zona' | '
 type EstacionAsignadaHoy = EstacionSimple & { visitasHoy: number };
 /** Justificación de "por qué no se visitó" ya guardada para la fecha del Dashboard, por estación
  * — a lo sumo una por EBAR (ver migración 0055). */
-type MapaJustificaciones = Record<string, { motivo: string; creado_por: string; creado_por_nombre: string }>;
+type MapaJustificaciones = Record<string, { id: string; motivo: string; creado_por: string; creado_por_nombre: string }>;
 type AsignacionBajoMinimo = {
   operador_id: string;
   operador_nombre: string;
@@ -120,6 +121,46 @@ export function Dashboard() {
   const [justificarEstacion, setJustificarEstacion] = useState<EstacionSimple | null>(null);
   const [guardandoJustificacion, setGuardandoJustificacion] = useState(false);
   const [errorJustificacion, setErrorJustificacion] = useState<string | null>(null);
+  // Evidencia fotográfica del modal "¿Por qué no se visitó?" (migración 0063) — controlada acá
+  // (no adentro del modal) porque al EDITAR una justificación que ya tenía fotos hay que traerlas
+  // de la base antes de mostrar el modal con algo. Al justificar una EBAR nueva arranca vacío.
+  const [fotosJustificar, setFotosJustificar] = useState<FotoLocal[]>([]);
+  const [cargandoFotosJustificar, setCargandoFotosJustificar] = useState(false);
+
+  // Se dispara cada vez que se abre el modal (justificarEstacion pasa de null a una estación) —
+  // si esa EBAR ya tenía una justificación guardada ese día, trae sus fotos; si es nueva, arranca
+  // vacío en vez de arrastrar las de la última que se haya justificado en esta sesión.
+  useEffect(() => {
+    if (!justificarEstacion) return;
+    const existente = justificaciones[justificarEstacion.id];
+    if (!existente) {
+      setFotosJustificar([]);
+      return;
+    }
+    let vivo = true;
+    setCargandoFotosJustificar(true);
+    supabase
+      .from('fotos')
+      .select('id, drive_file_id, url_publica, tomada_en')
+      .eq('justificacion_id', existente.id)
+      .order('tomada_en')
+      .then(({ data }) => {
+        if (!vivo) return;
+        setFotosJustificar(
+          ((data as any[]) ?? []).map((f) => ({
+            id: f.id as string,
+            url_publica: urlMiniaturaDrive(f.drive_file_id, f.url_publica),
+            tomada_en: f.tomada_en as string,
+            estado_subida: 'subida' as const,
+          })),
+        );
+        setCargandoFotosJustificar(false);
+      });
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justificarEstacion]);
 
   // Tamaño guardado del modal de detalle — se carga una sola vez (no depende de la fecha
   // seleccionada, a diferencia de `cargar()` de abajo).
@@ -151,7 +192,7 @@ export function Dashboard() {
           .lte('fecha_hora_llegada', `${fecha}T23:59:59`),
         supabase.from('feriados_adicionales').select('fecha'),
         supabase.from('justificaciones_no_visita')
-          .select('estacion_id, motivo, creado_por, usuarios ( nombre_completo )')
+          .select('id, estacion_id, motivo, creado_por, usuarios ( nombre_completo )')
           .eq('fecha', fecha),
       ]);
 
@@ -160,6 +201,7 @@ export function Dashboard() {
       const mapaJustificaciones: MapaJustificaciones = {};
       for (const j of (justificacionesDia as any[]) ?? []) {
         mapaJustificaciones[j.estacion_id] = {
+          id: j.id,
           motivo: j.motivo,
           creado_por: j.creado_por,
           creado_por_nombre: j.usuarios?.nombre_completo ?? '-',
@@ -188,11 +230,19 @@ export function Dashboard() {
         }
       }
 
-      // Mismo filtro por asignación que el resto de secciones de operador — para admin/supervisor
-      // (idsAsignadosHoy null) queda el mapa completo, con todas las EBAR justificadas ese día.
+      // Para operador (incluye "Entrar como" viendo la app a nombre de otro operador): además del
+      // filtro por asignación de siempre, solo SUS PROPIAS justificaciones — antes se colaba
+      // cualquier justificación de una EBAR que ese operador tuviera asignada aunque la hubiera
+      // escrito otra persona (ej. una EBAR compartida entre 2 operadores, o el admin justificándola
+      // por él), inflando el contador de "EBAR justificadas" con algo que ese operador no hizo.
+      // Para admin/supervisor (idsAsignadosHoy null) queda el mapa completo, de todos.
       setJustificaciones(
         idsAsignadosHoy
-          ? Object.fromEntries(Object.entries(mapaJustificaciones).filter(([id]) => idsAsignadosHoy!.has(id)))
+          ? Object.fromEntries(
+              Object.entries(mapaJustificaciones).filter(
+                ([id, j]) => idsAsignadosHoy!.has(id) && j.creado_por === usuario!.id,
+              ),
+            )
           : mapaJustificaciones,
       );
 
@@ -564,22 +614,43 @@ export function Dashboard() {
   // día actualiza la fila existente en vez de duplicarla.
   async function guardarJustificacion(motivo: string) {
     if (!justificarEstacion || !usuario) return;
+    // Cinturón además del botón ya deshabilitado en el modal si falta alguna — por si acaso.
+    if (fotosJustificar.length === 0) {
+      setErrorJustificacion('Se necesita al menos 1 foto de evidencia.');
+      return;
+    }
     setGuardandoJustificacion(true);
     setErrorJustificacion(null);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('justificaciones_no_visita')
       .upsert(
         { estacion_id: justificarEstacion.id, fecha, motivo, creado_por: usuario.id },
         { onConflict: 'estacion_id,fecha' },
-      );
-    setGuardandoJustificacion(false);
-    if (error) {
+      )
+      .select('id')
+      .single();
+    if (error || !data) {
+      setGuardandoJustificacion(false);
       setErrorJustificacion('No se pudo guardar. Intenta de nuevo.');
       return;
     }
+    // Las fotos ya subidas (reabrir para editar el motivo sin tocar la evidencia) no tienen
+    // `blob` — `subirFotoJustificacion` las ignora solo. Solo se suben las nuevas de esta sesión.
+    try {
+      for (const foto of fotosJustificar) {
+        await subirFotoJustificacion(data.id as string, foto);
+      }
+    } catch (err: any) {
+      setGuardandoJustificacion(false);
+      setErrorJustificacion(
+        `Se guardó el motivo, pero no se pudieron subir todas las fotos: ${err.message ?? err}. Volvé a abrir esta justificación para reintentar.`,
+      );
+      return;
+    }
+    setGuardandoJustificacion(false);
     setJustificaciones((prev) => ({
       ...prev,
-      [justificarEstacion.id]: { motivo, creado_por: usuario.id, creado_por_nombre: usuario.nombre_completo },
+      [justificarEstacion.id]: { id: data.id as string, motivo, creado_por: usuario.id, creado_por_nombre: usuario.nombre_completo },
     }));
     setJustificarEstacion(null);
   }
@@ -738,6 +809,9 @@ export function Dashboard() {
         <ModalJustificarNoVisita
           estacion={justificarEstacion}
           motivoInicial={justificaciones[justificarEstacion.id]?.motivo ?? ''}
+          fotos={fotosJustificar}
+          cargandoFotos={cargandoFotosJustificar}
+          onFotosChange={setFotosJustificar}
           guardando={guardandoJustificacion}
           error={errorJustificacion}
           onGuardar={guardarJustificacion}

@@ -19,7 +19,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { corsHeaders } from '../_shared/cors.ts';
 
 interface Payload {
-  visita_id: string;
+  /** Exactamente uno de `visita_id`/`justificacion_id` — igual que la fila de `fotos` que termina
+   * generando (ver migración 0063). `justificacion_id` es para la evidencia fotográfica de
+   * "¿por qué no se visitó?" (ModalJustificarNoVisita) en vez de una foto de visita normal. */
+  visita_id?: string;
+  justificacion_id?: string;
   file_base64: string;
   content_type: string;
   descripcion?: string | null;
@@ -44,8 +48,9 @@ Deno.serve(async (req) => {
 
   try {
     const body: Payload = await req.json();
-    const { visita_id, file_base64, content_type } = body;
+    const { visita_id, justificacion_id, file_base64, content_type } = body;
     const reemplazarFotoId = body.reemplazar_foto_id ?? null;
+    if (!visita_id && !justificacion_id) return json({ error: 'Falta visita_id o justificacion_id.' }, 400);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAdmin = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -80,21 +85,44 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Obtener datos de la visita para nombrar/organizar la carpeta correctamente.
-    const { data: visita, error: visitaError } = await supabaseAdmin
-      .from('visitas')
-      .select('fecha_hora_llegada, estaciones_ebar ( codigo )')
-      .eq('id', visita_id)
-      .single();
-    if (visitaError) throw visitaError;
-
-    const fecha = (visita.fecha_hora_llegada as string).slice(0, 10);
-    const codigoEstacion = (visita as any).estaciones_ebar?.codigo ?? 'SIN_CODIGO';
+    // Obtener fecha + código de estación para nombrar/organizar la carpeta correctamente — de la
+    // visita, o de la justificación (join a la EBAR) si es evidencia de "no visitada".
+    let fecha: string;
+    let codigoEstacion: string;
+    if (visita_id) {
+      const { data: visita, error: visitaError } = await supabaseAdmin
+        .from('visitas')
+        .select('fecha_hora_llegada, estaciones_ebar ( codigo )')
+        .eq('id', visita_id)
+        .single();
+      if (visitaError) throw visitaError;
+      fecha = (visita.fecha_hora_llegada as string).slice(0, 10);
+      codigoEstacion = (visita as any).estaciones_ebar?.codigo ?? 'SIN_CODIGO';
+    } else {
+      const { data: justificacion, error: justificacionError } = await supabaseAdmin
+        .from('justificaciones_no_visita')
+        .select('fecha, estaciones_ebar ( codigo )')
+        .eq('id', justificacion_id)
+        .single();
+      if (justificacionError) throw justificacionError;
+      fecha = justificacion.fecha as string;
+      codigoEstacion = (justificacion as any).estaciones_ebar?.codigo ?? 'SIN_CODIGO';
+    }
+    const idParaNombrar = (visita_id ?? justificacion_id)!;
 
     const appsScriptUrl = Deno.env.get('GOOGLE_DRIVE_WEBAPP_URL');
     if (appsScriptUrl) {
+      // OJO: este Apps Script vive fuera de este repo (Google) y su contrato original solo
+      // conocía `visita_id` — se le mandan `fecha`/`codigo_estacion` ya calculados por si los sabe
+      // aprovechar para justificaciones (que no tienen fila en `visitas`), pero si el script hace
+      // su PROPIA consulta a Supabase usando `visita_id` para ubicar la carpeta, una subida de
+      // justificación (sin `visita_id`) podría fallar ahí — no fue posible confirmarlo sin ver ese
+      // script. Avisar al usuario si falla justo la subida de fotos de una justificación.
       const resultado = await subirArchivoViaAppsScript(appsScriptUrl, {
         visita_id,
+        justificacion_id,
+        fecha,
+        codigo_estacion: codigoEstacion,
         file_base64,
         content_type,
         descripcion: body.descripcion ?? null,
@@ -102,7 +130,7 @@ Deno.serve(async (req) => {
       if (reemplazarFotoId) {
         await actualizarRegistroFoto(supabaseAdmin, reemplazarFotoId, resultado);
       } else {
-        await insertarRegistroFoto(supabaseAdmin, visita_id, {
+        await insertarRegistroFoto(supabaseAdmin, { visita_id, justificacion_id }, {
           file_id: resultado.file_id,
           folder_id: resultado.folder_id,
           url_publica: resultado.url_publica,
@@ -118,7 +146,7 @@ Deno.serve(async (req) => {
     const carpetaFecha = await obtenerOcrearCarpeta(accessToken, fecha, rootFolderId);
     const carpetaEstacion = await obtenerOcrearCarpeta(accessToken, codigoEstacion, carpetaFecha);
 
-    const nombreArchivo = `${visita_id}_${Date.now()}.jpg`;
+    const nombreArchivo = `${idParaNombrar}_${Date.now()}.jpg`;
     const archivo = await subirArchivo(accessToken, nombreArchivo, content_type, file_base64, carpetaEstacion);
     const resultado = {
       file_id: archivo.id,
@@ -129,7 +157,7 @@ Deno.serve(async (req) => {
     if (reemplazarFotoId) {
       await actualizarRegistroFoto(supabaseAdmin, reemplazarFotoId, resultado);
     } else {
-      await insertarRegistroFoto(supabaseAdmin, visita_id, {
+      await insertarRegistroFoto(supabaseAdmin, { visita_id, justificacion_id }, {
         file_id: resultado.file_id,
         folder_id: resultado.folder_id,
         url_publica: resultado.url_publica,
@@ -146,7 +174,10 @@ Deno.serve(async (req) => {
 // ----------------------------------------------------------------------------
 // Autenticación de la cuenta de servicio (JWT firmado con la clave privada del JSON)
 // ----------------------------------------------------------------------------
-async function subirArchivoViaAppsScript(url: string, payload: Payload): Promise<{ file_id: string; folder_id: string; url_publica: string }> {
+async function subirArchivoViaAppsScript(
+  url: string,
+  payload: Payload & { fecha: string; codigo_estacion: string },
+): Promise<{ file_id: string; folder_id: string; url_publica: string }> {
   const secreto = Deno.env.get('GOOGLE_DRIVE_WEBAPP_SECRET');
   const resp = await fetch(url, {
     method: 'POST',
@@ -164,11 +195,12 @@ async function subirArchivoViaAppsScript(url: string, payload: Payload): Promise
 
 async function insertarRegistroFoto(
   supabaseAdmin: any,
-  visitaId: string,
+  duenio: { visita_id?: string; justificacion_id?: string },
   datos: { file_id: string; folder_id: string; url_publica: string; descripcion?: string | null },
 ) {
   const { error } = await supabaseAdmin.from('fotos').insert({
-    visita_id: visitaId,
+    visita_id: duenio.visita_id ?? null,
+    justificacion_id: duenio.justificacion_id ?? null,
     drive_file_id: datos.file_id,
     drive_folder_id: datos.folder_id,
     url_publica: datos.url_publica,

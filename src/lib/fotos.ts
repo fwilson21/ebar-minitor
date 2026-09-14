@@ -286,6 +286,21 @@ async function rotarFotoSubida(url: string, tomadaEn: string, sentido: SentidoGi
  * que quien llama sea admin/supervisor, o el operador dueño de esa visita). El archivo viejo de
  * Drive queda huérfano. Devuelve la nueva URL de miniatura, lista para `<img>`. Requiere conexión.
  */
+/**
+ * Sube UNA foto tomada en el modal "¿Por qué no se visitó?" (evidencia de la justificación,
+ * migración 0063) — a diferencia de las fotos de visita, se sube al toque (sin cola offline: el
+ * Dashboard ya requiere conexión para justificar). Ignora fotos que ya tenían `blob` vacío
+ * (ya estaban subidas de antes, ej. reabriendo para editar el motivo sin tocar las fotos).
+ */
+export async function subirFotoJustificacion(justificacionId: string, foto: FotoLocal): Promise<void> {
+  if (!foto.blob) return;
+  const { base64, contentType } = await prepararBlobParaSubida(foto.blob);
+  const { error } = await supabase.functions.invoke('upload-to-drive', {
+    body: { justificacion_id: justificacionId, file_base64: base64, content_type: contentType },
+  });
+  if (error) throw new Error(await mensajeErrorFuncion(error));
+}
+
 export async function girarFotoSubida(
   foto: { id: string; visita_id: string; url: string; tomada_en: string },
   sentido: SentidoGiro,
