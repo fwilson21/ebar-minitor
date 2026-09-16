@@ -58,6 +58,16 @@ export function CamaraFoto({
   // llegar a mirar el aviso "Foto N de M" y decidir si esa foto ya le sirvió.
   const [enEnfriamiento, setEnEnfriamiento] = useState(false);
   const timeoutEnfriamientoRef = useRef<number | null>(null);
+  // Traba REAL del enfriamiento — `enEnfriamiento` (estado) recién queda `true` en el próximo
+  // render, así que dos disparos casi simultáneos (reportado de nuevo el 2026-09-16, Android e
+  // iPhone, con o sin conexión: 2 fotos IDÉNTICAS — mismo segundo estampado — con un solo toque)
+  // podían ejecutar `disparar()` dos veces antes de que React llegara a pintar el botón
+  // deshabilitado — un doble toque del dedo, o el propio navegador entregando 2 eventos para un
+  // mismo toque, algo conocido en pantallas táctiles. Un `ref` se actualiza al instante (no espera
+  // ningún render), así que una segunda llamada re-entrante ve el bloqueo ya puesto aunque llegue
+  // en el mismo instante que la primera. `enEnfriamiento` (estado) se mantiene solo para pintar el
+  // botón gris/deshabilitado — la traba de verdad es este ref.
+  const disparandoRef = useRef(false);
   // Fotos que el subtema ya tenía cuando se abrió la cámara — congelado (el padre vuelve a
   // renderizar con un valor más alto cada vez que se agrega una foto, y acá se necesita el de
   // partida para numerar bien el aviso).
@@ -211,7 +221,17 @@ export function CamaraFoto({
     // videoWidth/videoHeight siguen en 0 hasta que el video carga sus metadatos, un instante
     // después de que el stream ya está listo — sin este chequeo, un toque muy rápido en el
     // disparador podía generar un canvas de 0x0.
-    if (!video || tomadasRef.current >= maxFotos || !video.videoWidth || enEnfriamiento) return;
+    if (!video || tomadasRef.current >= maxFotos || !video.videoWidth || disparandoRef.current) return;
+    // Traba sincrónica PRIMERO que nada — ver comentario de `disparandoRef` arriba. Tiene que ser
+    // la primerísima cosa que se marca, antes de tocar `tomadasRef` siquiera, para que una llamada
+    // re-entrante (el segundo evento de un doble toque) quede bloqueada apenas entra a la función.
+    disparandoRef.current = true;
+    setEnEnfriamiento(true);
+    if (timeoutEnfriamientoRef.current) window.clearTimeout(timeoutEnfriamientoRef.current);
+    timeoutEnfriamientoRef.current = window.setTimeout(() => {
+      disparandoRef.current = false;
+      setEnEnfriamiento(false);
+    }, 900);
     // Se reserva el cupo ACÁ, de forma síncrona, antes de arrancar `canvas.toBlob` (que es async).
     // Antes se incrementaba recién dentro del callback de `toBlob` — si el operador tocaba el
     // disparador dos veces muy rápido (antes de que el primer toBlob resolviera), el segundo toque
@@ -221,13 +241,6 @@ export function CamaraFoto({
     // actualiza el DOM en el siguiente render, y dos toques pueden llegar antes de eso.
     tomadasRef.current += 1;
     setTomadas(tomadasRef.current);
-    // Enfriamiento de ~900ms antes de dejar disparar de nuevo (pedido del usuario, 2026-09-13) —
-    // esto es aparte de lo de arriba: no es para impedir pasarse del tope (ya cubierto), sino para
-    // que un toque repetido muy rápido no queme sin querer el cupo entero de un capítulo antes de
-    // que el operador llegue a ver el aviso "Foto N de M" y decidir si le sirvió esa toma.
-    setEnEnfriamiento(true);
-    if (timeoutEnfriamientoRef.current) window.clearTimeout(timeoutEnfriamientoRef.current);
-    timeoutEnfriamientoRef.current = window.setTimeout(() => setEnEnfriamiento(false), 900);
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
