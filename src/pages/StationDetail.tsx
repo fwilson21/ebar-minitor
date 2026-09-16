@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { suscribirseCambios } from '../lib/realtime';
 import { useAuth } from '../contexts/AuthContext';
@@ -172,10 +172,35 @@ export function StationDetail() {
   // las de todos los días de una vez, hasta 30 visitas atrás). El filtro de mes arranca en el mes
   // actual (antes vacío) y el rango de fechas arranca en hoy-hoy; el usuario amplía cualquiera de
   // los dos para ver otros días. "Ver todo el historial" (más abajo) limpia los 4 filtros.
-  const [filtroMes, setFiltroMes] = useState(() => hoyLocal().slice(0, 7));
-  const [filtroDesde, setFiltroDesde] = useState(hoyLocal);
-  const [filtroHasta, setFiltroHasta] = useState(hoyLocal);
-  const [filtroOperador, setFiltroOperador] = useState('');
+  //
+  // Viven en la URL (searchParams), no en useState — antes, al entrar a ver/editar una visita y
+  // tocar "← Volver", esta pantalla se DESMONTA (es una ruta distinta) y vuelve a montar de cero al
+  // regresar: un useState normal no sobrevive eso y los filtros volvían siempre a "hoy", perdiendo
+  // el rango que el usuario había puesto (reportado por el usuario, 2026-09-16, con captura — mismo
+  // síntoma de fondo que el "patrón de bug del botón Volver" ya conocido en el proyecto, aunque acá
+  // la causa es otra: no una navegación duplicada, sino estado local que no sobrevive al
+  // desmontaje). La URL sí sobrevive: es lo que el navegador restaura solo al ir "atrás".
+  // `searchParams.has(...)` distingue "el usuario nunca tocó este filtro" (usa hoy/mes actual por
+  // defecto) de "el usuario lo dejó vacío a propósito" (con "Ver todo el historial", ver
+  // `limpiarFiltros` más abajo) — un valor ausente y uno presente-pero-vacío no son lo mismo.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const hoy = hoyLocal();
+  const filtroMes = searchParams.has('mes') ? searchParams.get('mes')! : hoy.slice(0, 7);
+  const filtroDesde = searchParams.has('desde') ? searchParams.get('desde')! : hoy;
+  const filtroHasta = searchParams.has('hasta') ? searchParams.get('hasta')! : hoy;
+  const filtroOperador = searchParams.get('operador') ?? '';
+  // `replace: true`: cambiar un filtro no debe amontonar entradas de historial (si no, "← Volver"
+  // desde la ficha de la estación empezaría a desandar filtros en vez de salir de la pantalla).
+  function actualizarFiltro(clave: 'mes' | 'desde' | 'hasta' | 'operador', valor: string) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set(clave, valor);
+        return next;
+      },
+      { replace: true },
+    );
+  }
   const [exportando, setExportando] = useState(false);
   const [mensajeExport, setMensajeExport] = useState<string | null>(null);
   const [bombasAdmin, setBombasAdmin] = useState<Bomba[]>([]);
@@ -359,10 +384,17 @@ export function StationDetail() {
   });
 
   function limpiarFiltros() {
-    setFiltroMes('');
-    setFiltroDesde('');
-    setFiltroHasta('');
-    setFiltroOperador('');
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('mes', '');
+        next.set('desde', '');
+        next.set('hasta', '');
+        next.set('operador', '');
+        return next;
+      },
+      { replace: true },
+    );
   }
 
   return (
@@ -508,7 +540,7 @@ export function StationDetail() {
                 type="month"
                 className="campo py-1.5 text-sm"
                 value={filtroMes}
-                onChange={(e) => setFiltroMes(e.target.value)}
+                onChange={(e) => actualizarFiltro('mes', e.target.value)}
               />
             </label>
             <label className="flex flex-col gap-1 text-xs text-slate-500">
@@ -518,7 +550,7 @@ export function StationDetail() {
                 className="campo py-1.5 text-sm"
                 value={filtroDesde}
                 max={filtroHasta || undefined}
-                onChange={(e) => setFiltroDesde(e.target.value)}
+                onChange={(e) => actualizarFiltro('desde', e.target.value)}
               />
             </label>
             <label className="flex flex-col gap-1 text-xs text-slate-500">
@@ -528,13 +560,13 @@ export function StationDetail() {
                 className="campo py-1.5 text-sm"
                 value={filtroHasta}
                 min={filtroDesde || undefined}
-                onChange={(e) => setFiltroHasta(e.target.value)}
+                onChange={(e) => actualizarFiltro('hasta', e.target.value)}
               />
             </label>
             <select
               className="campo py-1.5 text-sm"
               value={filtroOperador}
-              onChange={(e) => setFiltroOperador(e.target.value)}
+              onChange={(e) => actualizarFiltro('operador', e.target.value)}
             >
               <option value="">Todos los operadores</option>
               {operadoresDisponibles.map((op) => (
