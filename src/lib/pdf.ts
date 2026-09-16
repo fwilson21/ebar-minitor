@@ -231,8 +231,12 @@ export interface FilaNoVisitadaReporte {
  * Semanal como en el Reporte consolidado/de estación/diario e Historial de estación (todos los que
  * arma generarReporteVisitas). Va después de encabezado() (el membrete institucional). */
 function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
-  const filaEtiqueta = (texto: string) => ({ text: texto, bold: true, fillColor: '#DCE4E9', margin: [4, 3, 4, 3] });
-  const filaValor = (contenido: any) => ({ ...contenido, fillColor: '#FFFFFF', margin: [6, 3, 6, 3] });
+  // fontSize 9 explícito (antes caía al tamaño por defecto del documento, 8) — pedido del usuario
+  // (2026-09-16): que el encabezado PARA/DE/ASUNTO/FECHA entre en la misma jerarquía que el resto
+  // (queda al nivel del párrafo de resumen y del subtítulo institucional, un escalón por debajo de
+  // los títulos de día/EBAR — ver comentario grande en ESTILOS más abajo en pdf.ts).
+  const filaEtiqueta = (texto: string) => ({ text: texto, bold: true, fontSize: 9, fillColor: '#DCE4E9', margin: [4, 3, 4, 3] });
+  const filaValor = (contenido: any) => ({ ...contenido, fontSize: 9, fillColor: '#FFFFFF', margin: [6, 3, 6, 3] });
   return {
     stack: [
       // Solo Informe Semanal tiene un N.º de informe propio (formato GADMFO); los reportes de
@@ -1031,11 +1035,19 @@ function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null,
   };
 }
 
-// Escala de tamaños con jerarquía clara (pedido del usuario, 2026-09-16, con captura señalando que
-// no guardaban armonía entre sí — ej. el título de una EBAR (12pt) casi empataba con el encabezado
-// de día (13pt) que debería quedar claramente por encima, siendo un nivel más general). De mayor a
-// menor: encabezado de día (14) > título de EBAR (11) > texto normal del resumen (9.5) > datos
-// chicos tipo "Operador/Zona" o pie de firma (8) > detalles mínimos (7).
+// Escala de tamaños con jerarquía clara (pedido del usuario, 2026-09-16, con 2 capturas: primero
+// señaló que el título de EBAR (12pt) casi empataba con el encabezado de día (13pt) que debería
+// quedar claramente por encima; después pidió que TODO el texto del reporte entrara en esa misma
+// jerarquía, incluido el resumen y el encabezado PARA/DE/ASUNTO/FECHA — antes caían al tamaño por
+// defecto del documento (8) sin relación con el resto). De mayor a menor:
+//   14 — encabezado de día ("Lunes 7 de septiembre de 2026"), lo más general de todo el reporte.
+//   11 — títulos de nivel EBAR/institucional (título de EBAR, nombre de la institución, "Reporte...").
+//   10 — subtítulos dentro de un bloque (ej. "Registro de bombas", "Estado de equipos").
+//    9 — texto que se lee de corrido: el párrafo de resumen de una visita, el encabezado
+//        PARA/DE/ASUNTO/FECHA, el subtítulo institucional, el nombre en la firma.
+//    8 — datos chicos de acompañamiento ("Operador: ... Zona: ..."), texto por defecto del resto
+//        del documento.
+//    7 — detalles mínimos (etiqueta bajo la firma, pie de página).
 const ESTILOS = {
   institucionalTitulo: { fontSize: 11, bold: true, color: '#0B1521' },
   institucionalSub: { fontSize: 9, bold: true, color: '#16303F' },
