@@ -1031,11 +1031,16 @@ function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null,
   };
 }
 
+// Escala de tamaños con jerarquía clara (pedido del usuario, 2026-09-16, con captura señalando que
+// no guardaban armonía entre sí — ej. el título de una EBAR (12pt) casi empataba con el encabezado
+// de día (13pt) que debería quedar claramente por encima, siendo un nivel más general). De mayor a
+// menor: encabezado de día (14) > título de EBAR (11) > texto normal del resumen (9.5) > datos
+// chicos tipo "Operador/Zona" o pie de firma (8) > detalles mínimos (7).
 const ESTILOS = {
   institucionalTitulo: { fontSize: 11, bold: true, color: '#0B1521' },
   institucionalSub: { fontSize: 9, bold: true, color: '#16303F' },
   tituloReporte: { fontSize: 11, bold: true, color: '#16303F' },
-  estacionTitulo: { fontSize: 12, bold: true, fillColor: '#EEF2F6' },
+  estacionTitulo: { fontSize: 11, bold: true, fillColor: '#EEF2F6' },
   subtitulo: { fontSize: 10, bold: true, color: '#16303F' },
   firmaNombre: { fontSize: 9, bold: true },
   firmaEtiqueta: { fontSize: 7, color: '#5B7184' },
@@ -1079,7 +1084,8 @@ export function generarReporteVisitas(
   const bloqueEncabezadoDia = (fecha: string): any => ({
     text: formatFechaLarga(fecha),
     style: 'estacionTitulo',
-    fontSize: 13,
+    fontSize: 14, // el nivel más alto de la jerarquía del cuerpo del reporte — ver comentario en ESTILOS
+    fillColor: undefined, // sin el resaltado gris de 'estacionTitulo' (ese es para el título de la EBAR, un nivel más abajo)
     color: '#0369A1', // azul (mismo tono "sky-700" que usa la pantalla) — pedido del usuario, 2026-09-14
     margin: [0, 10, 0, 6],
   });
