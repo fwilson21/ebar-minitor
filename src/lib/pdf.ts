@@ -235,8 +235,8 @@ function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
   // (2026-09-16): que el encabezado PARA/DE/ASUNTO/FECHA entre en la misma jerarquía que el resto
   // (queda al nivel del párrafo de resumen y del subtítulo institucional, un escalón por debajo de
   // los títulos de día/EBAR — ver comentario grande en ESTILOS más abajo en pdf.ts).
-  const filaEtiqueta = (texto: string) => ({ text: texto, bold: true, fontSize: 9, fillColor: '#DCE4E9', margin: [4, 3, 4, 3] });
-  const filaValor = (contenido: any) => ({ ...contenido, fontSize: 9, fillColor: '#FFFFFF', margin: [6, 3, 6, 3] });
+  const filaEtiqueta = (texto: string) => ({ text: texto, bold: true, fontSize: 11, fillColor: '#DCE4E9', margin: [4, 3, 4, 3] });
+  const filaValor = (contenido: any) => ({ ...contenido, fontSize: 11, fillColor: '#FFFFFF', margin: [6, 3, 6, 3] });
   return {
     stack: [
       // Solo Informe Semanal tiene un N.º de informe propio (formato GADMFO); los reportes de
@@ -1035,16 +1035,16 @@ function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null,
   };
 }
 
-// Escala de tamaños con jerarquía clara (pedido del usuario, 2026-09-16, con 2 capturas: primero
-// señaló que el título de EBAR (12pt) casi empataba con el encabezado de día (13pt) que debería
-// quedar claramente por encima; después pidió que TODO el texto del reporte entrara en esa misma
-// jerarquía, incluido el resumen y el encabezado PARA/DE/ASUNTO/FECHA — antes caían al tamaño por
-// defecto del documento (8) sin relación con el resto). De mayor a menor:
-//   14 — encabezado de día ("Lunes 7 de septiembre de 2026"), lo más general de todo el reporte.
-//   11 — títulos de nivel EBAR/institucional (título de EBAR, nombre de la institución, "Reporte...").
+// Escala de tamaños con jerarquía clara (pedido del usuario, 2026-09-16, con varias capturas —
+// última ronda: encabezado de día bajado a 12 y el cuadro PARA/DE/ASUNTO/FECHA subido a 11, los
+// dos puntuales — el resto de la escala, definida en la ronda anterior, no cambió). De mayor a
+// menor:
+//   12 — encabezado de día ("Lunes 7 de septiembre de 2026"), lo más general de todo el reporte.
+//   11 — cuadro PARA/DE/ASUNTO/FECHA, y títulos de nivel EBAR/institucional (título de EBAR,
+//        nombre de la institución, "Reporte...").
 //   10 — subtítulos dentro de un bloque (ej. "Registro de bombas", "Estado de equipos").
-//    9 — texto que se lee de corrido: el párrafo de resumen de una visita, el encabezado
-//        PARA/DE/ASUNTO/FECHA, el subtítulo institucional, el nombre en la firma.
+//    9 — el resto del texto que se lee de corrido: el párrafo de resumen de una visita, el
+//        subtítulo institucional, el nombre en la firma.
 //    8 — datos chicos de acompañamiento ("Operador: ... Zona: ..."), texto por defecto del resto
 //        del documento.
 //    7 — detalles mínimos (etiqueta bajo la firma, pie de página).
@@ -1096,7 +1096,7 @@ export function generarReporteVisitas(
   const bloqueEncabezadoDia = (fecha: string): any => ({
     text: formatFechaLarga(fecha),
     style: 'estacionTitulo',
-    fontSize: 14, // el nivel más alto de la jerarquía del cuerpo del reporte — ver comentario en ESTILOS
+    fontSize: 12, // el nivel más alto de la jerarquía del cuerpo del reporte — ver comentario en ESTILOS
     fillColor: undefined, // sin el resaltado gris de 'estacionTitulo' (ese es para el título de la EBAR, un nivel más abajo)
     color: '#0369A1', // azul (mismo tono "sky-700" que usa la pantalla) — pedido del usuario, 2026-09-14
     margin: [0, 10, 0, 6],
