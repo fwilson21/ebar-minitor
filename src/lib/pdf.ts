@@ -235,8 +235,8 @@ function bloqueEncabezadoMemo(datos: DatosEncabezadoMemo): any {
   // (2026-09-16): que el encabezado PARA/DE/ASUNTO/FECHA entre en la misma jerarquía que el resto
   // (queda al nivel del párrafo de resumen y del subtítulo institucional, un escalón por debajo de
   // los títulos de día/EBAR — ver comentario grande en ESTILOS más abajo en pdf.ts).
-  const filaEtiqueta = (texto: string) => ({ text: texto, bold: true, fontSize: 11, fillColor: '#DCE4E9', margin: [4, 3, 4, 3] });
-  const filaValor = (contenido: any) => ({ ...contenido, fontSize: 11, fillColor: '#FFFFFF', margin: [6, 3, 6, 3] });
+  const filaEtiqueta = (texto: string) => ({ text: texto, bold: true, fontSize: 10, fillColor: '#DCE4E9', margin: [4, 3, 4, 3] });
+  const filaValor = (contenido: any) => ({ ...contenido, fontSize: 10, fillColor: '#FFFFFF', margin: [6, 3, 6, 3] });
   return {
     stack: [
       // Solo Informe Semanal tiene un N.º de informe propio (formato GADMFO); los reportes de
@@ -1035,14 +1035,14 @@ function bloqueFirma(nombre: string, etiqueta: string, firmaUrl?: string | null,
   };
 }
 
-// Escala de tamaños con jerarquía clara (pedido del usuario, 2026-09-16, con varias capturas —
-// última ronda: encabezado de día bajado a 12 y el cuadro PARA/DE/ASUNTO/FECHA subido a 11, los
-// dos puntuales — el resto de la escala, definida en la ronda anterior, no cambió). De mayor a
-// menor:
+// Escala de tamaños con jerarquía clara (pedido del usuario, 2026-09-16/17, con varias rondas de
+// ajuste puntual sobre capturas reales — el cuadro PARA/DE/ASUNTO/FECHA en particular pasó por
+// 8 (por defecto) → 9 → 11 → 10, hasta quedar en el mismo nivel que un subtítulo de bloque). De
+// mayor a menor:
 //   12 — encabezado de día ("Lunes 7 de septiembre de 2026"), lo más general de todo el reporte.
-//   11 — cuadro PARA/DE/ASUNTO/FECHA, y títulos de nivel EBAR/institucional (título de EBAR,
-//        nombre de la institución, "Reporte...").
-//   10 — subtítulos dentro de un bloque (ej. "Registro de bombas", "Estado de equipos").
+//   11 — títulos de nivel EBAR/institucional (título de EBAR, nombre de la institución, "Reporte...").
+//   10 — cuadro PARA/DE/ASUNTO/FECHA, y subtítulos dentro de un bloque (ej. "Registro de bombas",
+//        "Estado de equipos").
 //    9 — el resto del texto que se lee de corrido: el párrafo de resumen de una visita, el
 //        subtítulo institucional, el nombre en la firma.
 //    8 — datos chicos de acompañamiento ("Operador: ... Zona: ..."), texto por defecto del resto
