@@ -88,9 +88,9 @@ const adaptadorSupabase: AdaptadorSync = {
     if (error) throw error;
   },
 
-  async subirFotoADrive(visitaId, { base64, contentType, descripcion }) {
+  async subirFotoADrive(visitaId, { base64, contentType, descripcion }, clienteFotoId) {
     const { error } = await supabase.functions.invoke('upload-to-drive', {
-      body: { visita_id: visitaId, file_base64: base64, content_type: contentType, descripcion },
+      body: { visita_id: visitaId, file_base64: base64, content_type: contentType, descripcion, cliente_foto_id: clienteFotoId },
     });
     if (error) throw new Error(await mensajeErrorFuncion(error));
   },

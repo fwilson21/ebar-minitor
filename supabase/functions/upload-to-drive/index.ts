@@ -33,6 +33,14 @@ interface Payload {
    * suya (revisando su informe desde una computadora — ver "modo consulta"). El archivo viejo de
    * Drive queda huérfano (mismo criterio que borrar una foto suelta). */
   reemplazar_foto_id?: string | null;
+  /** UUID generado en el celular al tomar la foto (`FotoLocal.id`, migración 0067) — clave de
+   * idempotencia: si la subida anterior de ESTA MISMA foto sí llegó a Drive y a la base pero la
+   * respuesta se perdió por una conexión inestable (reportado 2026-09-23, wifi de una institución
+   * sin salida confiable a internet), el celular la reintenta creyendo que falló; sin esto, cada
+   * reintento subía un archivo nuevo a Drive y una fila nueva en `fotos` — confirmado con una
+   * visita real (5 filas para una sección con tope de 3). Solo aplica a subidas nuevas, no a
+   * "girar" (`reemplazar_foto_id`), que no es un reintento automático. */
+  cliente_foto_id?: string | null;
 }
 
 function json(body: unknown, status = 200) {
@@ -54,6 +62,24 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAdmin = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+    // Idempotencia (migración 0067): si esta foto (por su id de celular) YA se subió antes, no
+    // repetir ni la subida a Drive ni el insert — se devuelve el resultado que ya había quedado
+    // guardado. Antes de tocar Drive siquiera, para no crear un archivo huérfano de más.
+    if (!reemplazarFotoId && body.cliente_foto_id) {
+      const { data: existente } = await supabaseAdmin
+        .from('fotos')
+        .select('drive_file_id, drive_folder_id, url_publica')
+        .eq('cliente_id', body.cliente_foto_id)
+        .maybeSingle();
+      if (existente?.drive_file_id) {
+        return json({
+          file_id: existente.drive_file_id,
+          folder_id: existente.drive_folder_id,
+          url_publica: existente.url_publica,
+        });
+      }
+    }
 
     // "Girar una foto ya subida" (reemplazar_foto_id) reemplaza un archivo existente en Drive —
     // a diferencia de la subida normal (una fila nueva), acá se valida el rol del que llama antes
@@ -130,7 +156,7 @@ Deno.serve(async (req) => {
       if (reemplazarFotoId) {
         await actualizarRegistroFoto(supabaseAdmin, reemplazarFotoId, resultado);
       } else {
-        await insertarRegistroFoto(supabaseAdmin, { visita_id, justificacion_id }, {
+        await insertarRegistroFoto(supabaseAdmin, { visita_id, justificacion_id, cliente_foto_id: body.cliente_foto_id }, {
           file_id: resultado.file_id,
           folder_id: resultado.folder_id,
           url_publica: resultado.url_publica,
@@ -157,7 +183,7 @@ Deno.serve(async (req) => {
     if (reemplazarFotoId) {
       await actualizarRegistroFoto(supabaseAdmin, reemplazarFotoId, resultado);
     } else {
-      await insertarRegistroFoto(supabaseAdmin, { visita_id, justificacion_id }, {
+      await insertarRegistroFoto(supabaseAdmin, { visita_id, justificacion_id, cliente_foto_id: body.cliente_foto_id }, {
         file_id: resultado.file_id,
         folder_id: resultado.folder_id,
         url_publica: resultado.url_publica,
@@ -195,12 +221,13 @@ async function subirArchivoViaAppsScript(
 
 async function insertarRegistroFoto(
   supabaseAdmin: any,
-  duenio: { visita_id?: string; justificacion_id?: string },
+  duenio: { visita_id?: string; justificacion_id?: string; cliente_foto_id?: string | null },
   datos: { file_id: string; folder_id: string; url_publica: string; descripcion?: string | null },
 ) {
   const { error } = await supabaseAdmin.from('fotos').insert({
     visita_id: duenio.visita_id ?? null,
     justificacion_id: duenio.justificacion_id ?? null,
+    cliente_id: duenio.cliente_foto_id ?? null,
     drive_file_id: datos.file_id,
     drive_folder_id: datos.folder_id,
     url_publica: datos.url_publica,

@@ -20,7 +20,15 @@ export interface AdaptadorSync {
   upsertRegistrosBombas(registros: Record<string, unknown>[]): Promise<void>;
   /** Solo aplica en modo edición: borra registros de bombas que quedaron deseleccionadas. */
   borrarRegistrosBombasNoSeleccionados(visitaId: string, idsSeleccionados: string[]): Promise<void>;
-  subirFotoADrive(visitaId: string, datos: { base64: string; contentType: string; descripcion?: string | null }): Promise<void>;
+  /** `clienteFotoId` (migración 0067) es el `FotoLocal.id` — estable entre reintentos de la MISMA
+   * foto, para que el servidor pueda detectar "esta ya se subió antes" y no duplicarla si un
+   * reintento por mala conexión llega después de que la subida anterior sí había llegado a buen
+   * puerto (la respuesta se perdió, no la subida en sí). */
+  subirFotoADrive(
+    visitaId: string,
+    datos: { base64: string; contentType: string; descripcion?: string | null },
+    clienteFotoId: string,
+  ): Promise<void>;
 }
 
 // `iniciarAutoSincronizacion` dispara la sincronización desde varios eventos (recuperar
@@ -162,7 +170,7 @@ async function sincronizarUnaVisita(item: VisitaPendiente, adaptador: AdaptadorS
   await subirEnParalelo(fotosPorSubir, 4, async ({ foto, descripcion }) => {
     if (!foto.blob) return;
     const { base64, contentType } = await prepararBlobParaSubida(foto.blob);
-    await adaptador.subirFotoADrive(visitaId, { base64, contentType, descripcion: descripcion ?? null });
+    await adaptador.subirFotoADrive(visitaId, { base64, contentType, descripcion: descripcion ?? null }, foto.id);
     // Se marca y persiste de inmediato (no al final de toda la visita): si otra foto de la
     // misma visita falla después y hay que reintentar, esta ya no se debe volver a subir —
     // si no, cada reintento crea una copia nueva en Drive y una fila duplicada en `fotos`.

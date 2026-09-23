@@ -153,10 +153,10 @@ const adaptadorFetch: AdaptadorSync = {
     await llamarREST(`/rest/v1/registros_bombas?visita_id=eq.${visitaId}${filtroExcluir}`, { method: 'DELETE' });
   },
 
-  async subirFotoADrive(visitaId, { base64, contentType, descripcion }) {
+  async subirFotoADrive(visitaId, { base64, contentType, descripcion }, clienteFotoId) {
     await llamarREST(`/functions/v1/upload-to-drive`, {
       method: 'POST',
-      body: JSON.stringify({ visita_id: visitaId, file_base64: base64, content_type: contentType, descripcion }),
+      body: JSON.stringify({ visita_id: visitaId, file_base64: base64, content_type: contentType, descripcion, cliente_foto_id: clienteFotoId }),
     });
   },
 };
