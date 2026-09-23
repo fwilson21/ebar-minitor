@@ -212,7 +212,7 @@ export function StationDetail() {
   useEffect(() => {
     if (!id) return;
     async function cargar() {
-      const [{ data: est }, { data: hist }, { data: justif }] = await Promise.all([
+      const [{ data: est }, { data: hist, error: errHist }, { data: justif, error: errJustif }] = await Promise.all([
         supabase.from('estaciones_ebar').select('*').eq('id', id).single(),
         supabase.rpc('rpc_historial_estacion', { p_estacion_id: id, p_limite: 30 }),
         supabase
@@ -226,19 +226,31 @@ export function StationDetail() {
       // la lista de Estaciones (ver Stations.tsx), para poder llegar igual a "Nueva visita".
       const estacionFinal = est ?? leerCacheLocal<EstacionEbar[]>(CLAVE_CACHE_ESTACIONES)?.find((e) => e.id === id) ?? null;
       setEstacion(estacionFinal as EstacionEbar | null);
-      setHistorial((hist as HistorialItem[]) ?? []);
-      setJustificaciones(
-        ((justif as any[]) ?? []).map((j) => ({
-          id: j.id,
-          fecha: j.fecha,
-          motivo: j.motivo,
-          registrado_por: j.usuarios?.nombre_completo ?? '-',
-          fotos: ((j.fotos as any[]) ?? [])
-            .map((f) => urlMiniaturaDrive(f.drive_file_id, f.url_publica))
-            .filter((u): u is string => !!u)
-            .map((url) => ({ url })),
-        })),
-      );
+      // Esta pantalla vuelve a pedir todo cada vez que `visitas` cambia (ver suscribirseCambios más
+      // abajo) — el canal de tiempo real se reconecta solo al cambiar de red (ej. pasar del wifi
+      // del celular al wifi de la institución), y si esa consulta falla por mala conexión, `hist`/
+      // `justif` llegan `null`. Antes eso vaciaba de golpe el historial que ya se estaba viendo
+      // (reportado por Lapo, 2026-09-23: "la visita se guarda pero al conectarse al wifi de la
+      // institución los datos desaparecen, y vuelven al reconectar al wifi del celular" — no era
+      // que los datos se perdieran de la base, era que ESTA pantalla los reemplazaba por una lista
+      // vacía cada vez que un refresco fallaba). Ahora, si la consulta falló, se deja lo que ya
+      // había en pantalla en vez de reemplazarlo por nada — mismo criterio que ya usa `estacion`
+      // arriba (cae al dato guardado en vez de a la nada).
+      if (!errHist) setHistorial((hist as HistorialItem[]) ?? []);
+      if (!errJustif) {
+        setJustificaciones(
+          ((justif as any[]) ?? []).map((j) => ({
+            id: j.id,
+            fecha: j.fecha,
+            motivo: j.motivo,
+            registrado_por: j.usuarios?.nombre_completo ?? '-',
+            fotos: ((j.fotos as any[]) ?? [])
+              .map((f) => urlMiniaturaDrive(f.drive_file_id, f.url_publica))
+              .filter((u): u is string => !!u)
+              .map((url) => ({ url })),
+          })),
+        );
+      }
       setCargando(false);
     }
 
