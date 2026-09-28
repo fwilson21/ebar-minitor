@@ -223,7 +223,9 @@ export interface FilaNoVisitadaReporte {
   /** Evidencia fotográfica de la justificación (migración 0063) — 0 a 3 fotos, ya en base64 para
    * el PDF (ver `incrustarFotosNoVisitadas` en fotos.ts). Vacío en reportes generados antes de esa
    * migración, o si algo falló al descargarlas — no bloquea nada, la fila igual se muestra. */
-  fotos?: Array<{ url: string; etiqueta?: string | null }>;
+  fotos?: Array<{ url: string; etiqueta?: string | null; id?: string; tomada_en?: string | null }>;
+  /** Id de la justificación — para poder girar sus fotos en la vista previa de Reportes. */
+  justificacion_id?: string;
 }
 
 /** Encabezado tipo memo institucional (formato GADMFO: "INFORME No. ..." + tabla PARA/DE/ASUNTO/

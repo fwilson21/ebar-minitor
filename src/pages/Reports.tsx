@@ -18,9 +18,8 @@ import { incrustarFotosVisitas, incrustarFotosNoVisitadas, urlMiniaturaDrive } f
 import { reemplazarPalabra, esEscritorio } from '../lib/correctorEs';
 import { ResumenEditable } from '../components/ResumenEditable';
 import { FotosGirables } from '../components/FotosGirables';
-import { FotoLightbox } from '../components/FotoLightbox';
 import { SELECT_VISITA_REPORTE, mapearVisitaFila } from '../lib/visitasReporte';
-import type { EstacionEbar, Usuario, FotoLocal } from '../lib/types';
+import type { EstacionEbar, Usuario } from '../lib/types';
 import { codigoYNombre, direccionOParroquia } from '../lib/agruparEstaciones';
 import { hoyLocal } from '../lib/fecha';
 import { agruparPorZonaYTipo, ETIQUETA_ZONA, ETIQUETA_TIPO, compararParaInforme } from '../lib/agruparEstaciones';
@@ -437,16 +436,16 @@ export function Reports() {
     // ids relevantes en vez de una por EBAR. Todavía como URLs de miniatura (livianas); recién se
     // convierten a base64 (pesado, una descarga por foto) al generar de verdad el PDF, ver
     // `incrustarFotosNoVisitadas` en manejarGenerar — acá alcanza para mostrarlas en pantalla.
-    const fotosPorJustificacion = new Map<string, Array<{ url: string }>>();
+    const fotosPorJustificacion = new Map<string, Array<{ id: string; url: string; tomada_en: string | null }>>();
     const { data: fotosData } = await supabase
       .from('fotos')
-      .select('justificacion_id, drive_file_id, url_publica')
+      .select('id, justificacion_id, drive_file_id, url_publica, tomada_en')
       .in('justificacion_id', justificacionesFiltradas.map((j) => j.id));
     for (const f of (fotosData as any[]) ?? []) {
       const url = urlMiniaturaDrive(f.drive_file_id, f.url_publica);
       if (!url) continue;
       const lista = fotosPorJustificacion.get(f.justificacion_id) ?? [];
-      lista.push({ url });
+      lista.push({ id: f.id, url, tomada_en: f.tomada_en ?? null });
       fotosPorJustificacion.set(f.justificacion_id, lista);
     }
 
@@ -463,6 +462,7 @@ export function Reports() {
           registrado_por: (j.usuarios?.nombre_completo as string) ?? null,
           fecha: j.fecha as string,
           fotos: fotosPorJustificacion.get(j.id) ?? [],
+          justificacion_id: j.id as string,
         };
       })
       .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.codigo.localeCompare(b.codigo));
@@ -506,6 +506,9 @@ export function Reports() {
   // Una foto de la vista previa se giró (se reemplazó en Drive) — se apunta la URL nueva para que
   // la miniatura y el PDF de esta sesión la muestren girada (la base ya quedó actualizada).
   function reemplazarUrlFotoPreview(fotoId: string, nuevaUrl: string) {
+    setNoVisitadasPreview((prev) =>
+      prev.map((f) => ({ ...f, fotos: (f.fotos ?? []).map((x) => (x.id === fotoId ? { ...x, url: nuevaUrl } : x)) })),
+    );
     setGruposPreview((prev) =>
       prev.map((g) => ({
         ...g,
@@ -989,7 +992,21 @@ function BloqueRevisionResumenes({
                 EBAR sin visitar — motivo registrado{f.registrado_por ? ` (${f.registrado_por})` : ''}
               </p>
               <p className="text-sm text-slate-700 whitespace-pre-wrap">{f.motivo || '-'}</p>
-              <GrillaFotosSoloVer fotos={f.fotos ?? []} />
+              {/* Mismo tamaño y botones de girar que las fotos de una visita (pedido del usuario
+                  2026-09-28 — antes eran miniaturas chicas de solo ver). Sin ✕ de borrar: la
+                  evidencia no tiene "capítulos" entre los que elegir una. */}
+              <FotosGirables
+                fotos={(f.fotos ?? [])
+                  .filter((x) => x.id && f.justificacion_id)
+                  .map((x) => ({
+                    id: x.id!,
+                    justificacion_id: f.justificacion_id!,
+                    url: x.url,
+                    tomada_en: x.tomada_en ?? `${f.fecha}T12:00:00`,
+                  }))}
+                onGirada={onFotoGirada}
+                pie="Evidencia"
+              />
             </div>,
           ];
         })}
@@ -998,37 +1015,6 @@ function BloqueRevisionResumenes({
         <p className="text-xs text-slate-500 border-t border-panel-600/40 pt-3">
           Tocá "Revisar resúmenes" para ver y corregir el texto de cada visita. Los botones de generar están abajo.
         </p>
-      )}
-    </div>
-  );
-}
-
-/** Grilla de solo ver (sin girar ni borrar) para la evidencia de "EBAR sin visitar" — doble clic
- * la abre en grande (mismo visor con zoom que el resto de la app), clic afuera cierra. Aparte de
- * `FotosGirables` porque esas fotos no tienen `visita_id` (`girarFotoSubida` lo necesita) y acá no
- * hace falta ni girarlas ni borrarlas, solo confirmar que la evidencia es la esperada. */
-function GrillaFotosSoloVer({ fotos }: { fotos: Array<{ url: string }> }) {
-  const [abierta, setAbierta] = useState<number | null>(null);
-  if (fotos.length === 0) return null;
-  const comoFotoLocal: FotoLocal[] = fotos.map((f, i) => ({
-    id: `nv-${i}`,
-    url_publica: f.url,
-    tomada_en: '',
-    estado_subida: 'subida',
-  }));
-  return (
-    <div className="grid grid-cols-3 gap-2 mt-2 max-w-xs">
-      {fotos.map((f, i) => (
-        // eslint-disable-next-line jsx-a11y/alt-text
-        <img
-          key={i}
-          src={f.url}
-          onDoubleClick={() => setAbierta(i)}
-          className="aspect-square rounded-lg object-cover cursor-zoom-in bg-panel-700"
-        />
-      ))}
-      {abierta !== null && (
-        <FotoLightbox fotos={comoFotoLocal} indice={abierta} onCambiarIndice={setAbierta} onCerrar={() => setAbierta(null)} />
       )}
     </div>
   );

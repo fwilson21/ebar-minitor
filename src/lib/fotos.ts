@@ -305,7 +305,10 @@ export async function subirFotoJustificacion(justificacionId: string, foto: Foto
 }
 
 export async function girarFotoSubida(
-  foto: { id: string; visita_id: string; url: string; tomada_en: string },
+  // Foto de una visita (`visita_id`) o evidencia de una EBAR sin visitar (`justificacion_id`,
+  // vista previa de Reportes — pedido del usuario 2026-09-28: que se puedan girar igual que las
+  // de visita). Exactamente uno de los dos, igual que la fila de `fotos`.
+  foto: { id: string; visita_id?: string; justificacion_id?: string; url: string; tomada_en: string },
   sentido: SentidoGiro,
 ): Promise<string> {
   if (!navigator.onLine) throw new Error('Necesitas conexión a internet para girar una foto ya guardada.');
@@ -315,6 +318,7 @@ export async function girarFotoSubida(
   const { data, error } = await supabase.functions.invoke('upload-to-drive', {
     body: {
       visita_id: foto.visita_id,
+      justificacion_id: foto.justificacion_id,
       file_base64: base64,
       content_type: contentType,
       reemplazar_foto_id: foto.id,

@@ -4,7 +4,16 @@ import { etiquetaFoto } from '../lib/pdf';
 import { FotoLightbox } from './FotoLightbox';
 import type { FotoLocal } from '../lib/types';
 
-type FotoGirable = { id: string; visita_id: string; url: string; etiqueta?: string | null; tomada_en: string };
+/** `visita_id` para una foto de visita, `justificacion_id` para la evidencia de una EBAR sin
+ * visitar (ver `girarFotoSubida`). */
+type FotoGirable = {
+  id: string;
+  visita_id?: string;
+  justificacion_id?: string;
+  url: string;
+  etiqueta?: string | null;
+  tomada_en: string;
+};
 
 /** Adapta una `FotoGirable` (sin `blob`, ya subida a Drive) a lo que espera `FotoLightbox`. */
 function comoFotoLocal(f: FotoGirable): FotoLocal {
@@ -22,8 +31,12 @@ export function FotosGirables({
   fotos,
   onGirada,
   categorias,
+  pie,
 }: {
   fotos: FotoGirable[];
+  /** Texto fijo debajo de cada foto (modo plano) en vez de su categoría — ej. "Evidencia" para
+   * las fotos de una EBAR sin visitar, que no tienen capítulo y saldrían como "Foto general". */
+  pie?: string;
   onGirada: (fotoId: string, nuevaUrl: string) => void;
   /** Si viene, agrupa `fotos` por categoría (misma etiqueta que ya se mostraba debajo de cada una)
    * y solo muestra la PRIMERA de cada una — el informe lleva 1 foto por capítulo, mostrar 2 o 3
@@ -181,8 +194,8 @@ export function FotosGirables({
         {fotos.map((f) =>
           tarjeta(
             f,
-            <span className="block text-[10px] text-slate-500 mt-0.5 truncate" title={etiquetaFoto(f.etiqueta)}>
-              {etiquetaFoto(f.etiqueta)}
+            <span className="block text-[10px] text-slate-500 mt-0.5 truncate" title={pie ?? etiquetaFoto(f.etiqueta)}>
+              {pie ?? etiquetaFoto(f.etiqueta)}
             </span>,
             fotos,
           ),

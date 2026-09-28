@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type TouchEvent } from 'react';
+
+/** Tope del zoom digital (recorte): más allá de 3× la foto queda demasiado pixelada para servir. */
+const ZOOM_DIGITAL_MAX = 3;
+/** Tope del zoom propio de la cámara — algunos celulares ofrecen 10× o más, pero con los botones
+ * 1×/2×/3× y el pellizco alcanza de sobra para una EBAR. */
+const ZOOM_NATIVO_TOPE = 5;
 
 interface Props {
   /** Cuántas fotos más se pueden tomar en esta sesión — el disparador se apaga solo al llegar acá. */
@@ -110,6 +116,35 @@ export function CamaraFoto({
   const [sensorSinRespuesta, setSensorSinRespuesta] = useState(false);
   const [horizontalManual, setHorizontalManual] = useState(false);
 
+  // Zoom (pedido del usuario 2026-09-28: "la cámara no deja hacer zoom") — pellizcando la pantalla
+  // o con los botones 1×/2×/3×. Si la cámara ofrece zoom propio (`getCapabilities().zoom`, lo
+  // habitual en Android/Chrome) se usa ese, que es de mejor calidad; si no (iPhone/Safari no lo
+  // expone), zoom DIGITAL: la vista previa se agranda con CSS y al disparar se recorta el centro
+  // del cuadro en la misma proporción — lo que se ve es lo que queda en la foto.
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
+  const zoomNativoRef = useRef<{ min: number; max: number } | null>(null);
+  const [zoomMax, setZoomMax] = useState(ZOOM_DIGITAL_MAX);
+  const pellizcoRef = useRef<{ distancia: number; zoom: number } | null>(null);
+
+  function aplicarZoom(valor: number) {
+    const max = zoomNativoRef.current ? Math.min(zoomNativoRef.current.max, ZOOM_NATIVO_TOPE) : ZOOM_DIGITAL_MAX;
+    const nuevo = Math.min(max, Math.max(1, Math.round(valor * 10) / 10));
+    if (nuevo === zoomRef.current) return;
+    zoomRef.current = nuevo;
+    setZoom(nuevo);
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (zoomNativoRef.current && track) {
+      const nativo = Math.max(zoomNativoRef.current.min, nuevo);
+      track.applyConstraints({ advanced: [{ zoom: nativo } as MediaTrackConstraintSet] }).catch(() => {});
+    }
+  }
+
+  function distanciaToques(e: TouchEvent) {
+    const [a, b] = [e.touches[0], e.touches[1]];
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  }
+
   useEffect(() => {
     let activo = true;
     let huboLectura = false;
@@ -188,6 +223,18 @@ export function CamaraFoto({
         }
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
+        // ¿La cámara trae zoom propio? (ver `aplicarZoom`) — si no, queda en null y se usa el digital.
+        const track = stream.getVideoTracks()[0];
+        const capZoom = (track?.getCapabilities?.() as { zoom?: { min: number; max: number } } | undefined)?.zoom;
+        if (capZoom && capZoom.max > 1) {
+          zoomNativoRef.current = { min: capZoom.min, max: capZoom.max };
+          setZoomMax(Math.min(capZoom.max, ZOOM_NATIVO_TOPE));
+        } else {
+          zoomNativoRef.current = null;
+          setZoomMax(ZOOM_DIGITAL_MAX);
+        }
+        zoomRef.current = 1;
+        setZoom(1);
         setListo(true);
       })
       .catch(() => {
@@ -246,7 +293,17 @@ export function CamaraFoto({
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
+    // Zoom digital: se recorta el centro del cuadro (1/zoom de ancho y alto) y se estira al mismo
+    // tamaño de siempre, para que el sello de fecha y el resto del proceso no noten diferencia.
+    // Con zoom nativo el cuadro ya llega agrandado desde la cámara, no hay que recortar nada.
+    const zoomDigital = zoomNativoRef.current ? 1 : zoomRef.current;
+    if (zoomDigital > 1) {
+      const sw = video.videoWidth / zoomDigital;
+      const sh = video.videoHeight / zoomDigital;
+      ctx.drawImage(video, (video.videoWidth - sw) / 2, (video.videoHeight - sh) / 2, sw, sh, 0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.drawImage(video, 0, 0);
+    }
     // Se lee justo acá, en el instante del disparo — no en `onCapturar` ni más tarde, porque el
     // operador puede seguir moviendo el celular después de tocar el botón. Orden: acelerómetro (si
     // dio una lectura confiable) → interruptor manual (solo aparece si el sensor nunca respondió,
@@ -314,18 +371,43 @@ export function CamaraFoto({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        onLoadedMetadata={(e) => {
-          const v = e.currentTarget;
-          setTamanoVideo({ w: v.videoWidth, h: v.videoHeight });
+    // Con el iPhone en horizontal no aparecía el botón de disparar (reportado 2026-09-28): el
+    // <video> era hijo directo de la columna flex y, al no tener `min-h-0`, su altura "natural"
+    // (el cuadro de la cámara escalado al ancho de la pantalla, más alto que la pantalla acostada)
+    // empujaba la barra de botones fuera de la vista. Ahora el video va dentro de un contenedor que
+    // sí puede achicarse (`min-h-0` + `overflow-hidden`), y la barra respeta las zonas seguras del
+    // iPhone (muesca/barra de inicio) con `env(safe-area-inset-*)`.
+    <div
+      className="fixed inset-0 z-50 bg-black flex flex-col"
+      style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+    >
+      <div
+        className="relative flex-1 min-h-0 overflow-hidden touch-none"
+        onTouchStart={(e) => {
+          if (e.touches.length === 2) pellizcoRef.current = { distancia: distanciaToques(e), zoom: zoomRef.current };
         }}
-        className="flex-1 w-full h-full object-cover"
-      />
+        onTouchMove={(e) => {
+          if (e.touches.length === 2 && pellizcoRef.current) {
+            aplicarZoom(pellizcoRef.current.zoom * (distanciaToques(e) / pellizcoRef.current.distancia));
+          }
+        }}
+        onTouchEnd={(e) => {
+          if (e.touches.length < 2) pellizcoRef.current = null;
+        }}
+      >
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            setTamanoVideo({ w: v.videoWidth, h: v.videoHeight });
+          }}
+          className="absolute inset-0 w-full h-full object-cover"
+          style={!zoomNativoRef.current && zoom > 1 ? { transform: `scale(${zoom})` } : undefined}
+        />
+      </div>
       {!listo && <p className="absolute inset-0 flex items-center justify-center text-white text-sm">Abriendo cámara…</p>}
 
       {/* Orientación detectada por el sensor, EN VIVO — para poder confirmar de un vistazo (girando
@@ -391,7 +473,27 @@ export function CamaraFoto({
         )}
       </div>
 
-      <div className="flex items-center justify-between px-6 py-5 bg-black/85">
+      {listo && (
+        <div className="flex justify-center gap-2 py-2 bg-black/85">
+          {[1, 2, 3].filter((n) => n <= zoomMax).map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => aplicarZoom(n)}
+              className={`w-11 h-8 rounded-full text-xs font-semibold ${
+                Math.round(zoom) === n ? 'bg-white text-slate-900' : 'bg-white/20 text-white'
+              }`}
+            >
+              {n}×
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div
+        className="flex items-center justify-between px-6 pt-3 bg-black/85"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      >
         <button type="button" onClick={cerrar} className="text-white text-sm px-3 py-2">
           ✕ Cancelar
         </button>

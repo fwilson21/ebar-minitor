@@ -99,13 +99,16 @@ Deno.serve(async (req) => {
       const esAdminOSupervisor = perfil?.rol === 'administrador' || perfil?.rol === 'supervisor';
       if (!esAdminOSupervisor) {
         if (perfil?.rol !== 'operador') return json({ error: 'No autorizado.' }, 403);
+        // Dueño = el operador de la visita, o quien escribió la justificación si es evidencia de
+        // una EBAR sin visitar (girar esas fotos desde Reportes, pedido del usuario 2026-09-28).
         const { data: fotoDueña } = await supabaseAdmin
           .from('fotos')
-          .select('visitas ( operador_id )')
+          .select('visitas ( operador_id ), justificaciones_no_visita ( creado_por )')
           .eq('id', reemplazarFotoId)
           .single();
-        const operadorDeLaVisita = (fotoDueña as any)?.visitas?.operador_id;
-        if (!operadorDeLaVisita || operadorDeLaVisita !== user.id) {
+        const dueño =
+          (fotoDueña as any)?.visitas?.operador_id ?? (fotoDueña as any)?.justificaciones_no_visita?.creado_por;
+        if (!dueño || dueño !== user.id) {
           return json({ error: 'Solo podés girar fotos de tus propias visitas.' }, 403);
         }
       }
