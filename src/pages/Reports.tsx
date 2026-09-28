@@ -297,10 +297,13 @@ export function Reports() {
       .gte('fecha_hora_llegada', `${fechaInicioEfectiva}T00:00:00`)
       .lte('fecha_hora_llegada', `${fechaFinEfectiva}T23:59:59`);
 
-    if (tipo === 'diario_operador') {
-      query = query.eq('operador_id', esAdmin ? operadorId : (usuario?.id ?? ''));
-    } else if (esAdmin && operadorId) {
-      query = query.eq('operador_id', operadorId);
+    // Un operador (no admin/supervisor) solo ve SUS visitas en cualquier tipo de reporte — antes el
+    // "Consolidado"/"Individual por estación" traía las de todos los compañeros que la RLS le
+    // dejara ver (pedido del usuario 2026-09-28: cada reporte muestra solo lo que ese operador
+    // reportó). Mismo criterio que `cargarEstaciones` y `obtenerNoVisitadas`.
+    const operadorEfectivo = esAdmin ? operadorId : (usuario?.id ?? '');
+    if (tipo === 'diario_operador' || operadorEfectivo) {
+      query = query.eq('operador_id', operadorEfectivo);
     }
 
     if (estacionIds !== null) {
@@ -382,15 +385,22 @@ export function Reports() {
       .lte('fecha_hora_llegada', `${fechaFinEfectiva}T23:59:59`);
     if (operadorEfectivo) queryVisitas = queryVisitas.eq('operador_id', operadorEfectivo);
 
+    // Con un operador elegido, solo las justificaciones que ESE operador escribió (creado_por) —
+    // antes entraba cualquiera de una EBAR asignada a él, y en el reporte de Vega salía la de Lapo
+    // del 05-sep-2026 (reportado por el usuario 2026-09-28: cada reporte muestra solo lo que ese
+    // operador reportó).
+    let queryJustificaciones = supabase
+      .from('justificaciones_no_visita')
+      .select('id, estacion_id, fecha, motivo, usuarios ( nombre_completo )')
+      .gte('fecha', fechaInicioEfectiva)
+      .lte('fecha', fechaFinEfectiva);
+    if (operadorEfectivo) queryJustificaciones = queryJustificaciones.eq('creado_por', operadorEfectivo);
+
     const [{ data: todasActivas }, { data: visitasDelRango }, { data: justificacionesDelRango }, { data: asignacionesOperador }] =
       await Promise.all([
         queryEstaciones,
         queryVisitas,
-        supabase
-          .from('justificaciones_no_visita')
-          .select('id, estacion_id, fecha, motivo, usuarios ( nombre_completo )')
-          .gte('fecha', fechaInicioEfectiva)
-          .lte('fecha', fechaFinEfectiva),
+        queryJustificaciones,
         operadorEfectivo
           ? supabase.from('asignaciones_estacion').select('estacion_id, fecha').eq('operador_id', operadorEfectivo)
           : Promise.resolve({ data: null as null }),
