@@ -8,12 +8,14 @@
 // domingo, al lunes siguiente; si cae viernes o lunes, no se traslada. Año Nuevo (1-ene),
 // Navidad (25-dic) y Martes de Carnaval NUNCA se trasladan.
 //
-// Simplificación consciente: la ley tiene reglas especiales cuando DOS feriados caen en días
-// consecutivos (ej. Día de los Difuntos 2-nov y Independencia de Cuenca 3-nov, que algunos años
-// quedan pegados) — esas combinaciones no están implementadas acá, cada fecha se traslada de
-// forma independiente. En el año en que eso pase, el "puente" exacto podría no coincidir al
-// 100% con la resolución oficial — para eso está la pantalla de "Feriados adicionales", donde
-// el administrador/supervisor puede agregar o corregir una fecha puntual.
+// Día de los Difuntos (2-nov) e Independencia de Cuenca (3-nov) SIEMPRE caen pegados, así que se
+// tratan como un BLOQUE de 2 días seguidos que se mueve entero hacia el fin de semana más cercano
+// (ver `bloqueNoviembre`) — antes cada uno se trasladaba por separado y en 2026 (lunes 2 / martes
+// 3) el martes 3 se "trasladaba" al lunes 2 y el 3 de noviembre desaparecía del calendario
+// (reportado por el usuario 2026-09-30). Resultados que coinciden con los calendarios oficiales:
+// 2023 jue 2 + vie 3, 2024 vie 1 + lun 4, 2025 lun 3 + mar 4, 2026 lun 2 + mar 3. Si algún año la
+// resolución oficial difiere, para eso está la pantalla de "Feriados adicionales", donde el
+// administrador/supervisor puede agregar o corregir una fecha puntual.
 
 const NUNCA_TRASLADABLES = new Set(['01-01', '12-25']); // MM-DD
 
@@ -32,8 +34,6 @@ const FERIADOS_FIJOS: FeriadoBase[] = [
   { mes: 7, dia: 30, nombre: 'Provincialización de Orellana', trasladable: true },
   { mes: 8, dia: 10, nombre: 'Primer Grito de Independencia', trasladable: true },
   { mes: 10, dia: 9, nombre: 'Independencia de Guayaquil', trasladable: true },
-  { mes: 11, dia: 2, nombre: 'Día de los Difuntos', trasladable: true },
-  { mes: 11, dia: 3, nombre: 'Independencia de Cuenca', trasladable: true },
   { mes: 12, dia: 25, nombre: 'Navidad', trasladable: false },
 ];
 
@@ -77,6 +77,27 @@ function trasladar(fecha: Date): Date {
   return fecha; // viernes o lunes: sin traslado
 }
 
+/** Fechas finales del bloque 2-nov (Difuntos) + 3-nov (Independencia de Cuenca), según el día de
+ * la semana en que cae el 2-nov — ver nota de cabecera. */
+function bloqueNoviembre(anio: number): [Date, Date] {
+  const difuntos = new Date(anio, 10, 2);
+  const cuenca = new Date(anio, 10, 3);
+  switch (difuntos.getDay()) {
+    case 2: // mar/mié → lun/mar
+      return [sumarDias(difuntos, -1), sumarDias(cuenca, -1)];
+    case 3: // mié/jue → jue/vie
+      return [sumarDias(difuntos, 1), sumarDias(cuenca, 1)];
+    case 5: // vie/sáb → jue/vie
+      return [sumarDias(difuntos, -1), sumarDias(cuenca, -1)];
+    case 6: // sáb/dom → vie/lun
+      return [sumarDias(difuntos, -1), sumarDias(cuenca, 1)];
+    case 0: // dom/lun → lun/mar
+      return [sumarDias(difuntos, 1), sumarDias(cuenca, 1)];
+    default: // lun/mar y jue/vie ya quedan pegados a un fin de semana: sin traslado
+      return [difuntos, cuenca];
+  }
+}
+
 /** Calcula el calendario de feriados (fecha ISO → nombre(s)) para un año dado. Cuando dos
  * feriados distintos se trasladan al mismo día (pasa, ej. en 2026 con Cantonización + Día del
  * Trabajo), se acumulan ambos nombres en vez de que uno pise al otro. */
@@ -93,6 +114,10 @@ export function calcularFeriados(anio: number): Map<string, string[]> {
     const final = f.trasladable && !NUNCA_TRASLADABLES.has(claveMD) ? trasladar(original) : original;
     agregar(final, f.nombre);
   }
+
+  const [difuntos, cuenca] = bloqueNoviembre(anio);
+  agregar(difuntos, 'Día de los Difuntos');
+  agregar(cuenca, 'Independencia de Cuenca');
 
   const pascua = domingoPascua(anio);
   agregar(sumarDias(pascua, -48), 'Lunes de Carnaval');
