@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
   encolarEdicionVisita, encolarVisita, sincronizarPendientes,
-  guardarBorradorVisita, obtenerBorradorVisita, eliminarBorradorVisita,
+  guardarBorradorVisita, obtenerBorradorVisita, eliminarBorradorVisita, obtenerPendientes,
 } from '../lib/offline';
 import { esMismoDia, formatearFechaHoraFoto, urlMiniaturaDrive } from '../lib/fotos';
 import { hoyLocal } from '../lib/fecha';
@@ -357,6 +357,8 @@ export function VisitForm() {
   useEffect(() => {
     if (!hayCambios || !estacionId) return;
     const t = setTimeout(() => {
+      // Si mientras tanto la visita ya se guardó de verdad, no revivir el borrador recién borrado.
+      if (guardadoRef.current) return;
       guardarBorradorVisita(claveBorrador(), estacionId, visitaId, construirBorrador());
     }, 1500);
     return () => clearTimeout(t);
@@ -495,7 +497,33 @@ export function VisitForm() {
       }
 
       const clave = `visita:${estacionId}:${visitaId ?? 'nueva'}`;
-      const borrador = await obtenerBorradorVisita(clave);
+      let borrador = await obtenerBorradorVisita(clave);
+      // Borrador "fantasma" de una visita NUEVA que en realidad ya se guardó (ver el comentario
+      // en manejarGuardar): si ya existe una visita de este operador en esta EBAR con la MISMA
+      // hora de llegada — en la base o todavía en la cola del celular — el borrador sobró. Se
+      // borra solo, sin preguntar, para que no se pueda guardar una copia sin fotos. Cubre
+      // también los borradores que ya quedaron guardados en los celulares antes del arreglo.
+      if (borrador && !visitaId && usuario) {
+        const llegada = (borrador.datos as ReturnType<typeof construirBorrador>).horaLlegada;
+        const enCola = (await obtenerPendientes()).some(
+          (p) => !p.visita_id && p.payload.estacion_id === estacionId && p.payload.fecha_hora_llegada === llegada,
+        );
+        let enBase = false;
+        if (!enCola && navigator.onLine) {
+          const { data: yaGuardada } = await supabase
+            .from('visitas')
+            .select('id')
+            .eq('estacion_id', estacionId)
+            .eq('operador_id', usuario.id)
+            .eq('fecha_hora_llegada', llegada)
+            .limit(1);
+          enBase = (yaGuardada?.length ?? 0) > 0;
+        }
+        if (enCola || enBase) {
+          await eliminarBorradorVisita(clave);
+          borrador = undefined;
+        }
+      }
       if (borrador) {
         const datos = borrador.datos as ReturnType<typeof construirBorrador>;
         const llegadaTexto = new Date(datos.horaLlegada).toLocaleString('es-EC', {
@@ -959,7 +987,17 @@ export function VisitForm() {
           if (errorVisita) throw errorVisita;
           await encolarVisita(payload);
         }
-        await sincronizarPendientes();
+        // La visita ya está a salvo (en la base y en la cola del celular): el borrador se borra
+        // YA, y la subida de fotos sigue sola en segundo plano (barra de sincronización) en vez de
+        // hacer esperar al operador. Antes se esperaba a que subieran TODAS las fotos antes de
+        // borrar el borrador — con mala señal eso tardaba horas (visita real de Zambrano: 3,5 h),
+        // el operador salía de la pantalla antes, el borrador quedaba vivo y al día siguiente la
+        // app le ofrecía "continuar la visita en pausa" en esa EBAR: al guardarla salía una COPIA
+        // de la visita del día anterior SIN fotos (el servidor reconoce esas fotos como ya subidas
+        // con la original y no las repite). Reportado por el usuario 2026-09-30.
+        guardadoRef.current = true;
+        await eliminarBorradorVisita(claveBorrador());
+        void sincronizarPendientes();
       } else if (modoEdicion && visitaId) {
         await encolarEdicionVisita(visitaId, payload);
       } else {
